@@ -1,7 +1,6 @@
 window.FILM_STOCK_CONFIG = {
-  // "mock"이면 브라우저 샘플 데이터로 동작합니다.
-  // Apps Script 배포 URL을 넣고 "appsScript"로 바꾸면 실제 Google Sheets를 사용합니다.
-  dataMode: "mock",
-  appsScriptUrl: "",
+  // Google Apps Script Web App URL을 통해 실제 Google Sheets 데이터와 연결합니다.
+  dataMode: "appsScript",
+  appsScriptUrl: "https://script.google.com/macros/s/AKfycbz97fRilvOAUp7kRWwNnt4e9RH4Vbd3cX1ASYiyIBthWrn-rYsaxa83ln-_TAz7pJYu/exec",
   appPublicUrl: ""
 };

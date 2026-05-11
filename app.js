@@ -875,7 +875,6 @@ async function login() {
     showToast("로그인 확인 중입니다.");
     const data = await window.FilmStockApi.login({ loginId, password, dealerCode });
     applyRemoteSession(data);
-    await refreshData(false);
   } else {
     const account = mockLogin(loginId, dealerCode);
     state.session = accountToSession(account);
