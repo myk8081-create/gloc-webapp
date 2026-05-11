@@ -1,0 +1,9 @@
+{
+  "name": "Film Stock 재고관리",
+  "short_name": "Film Stock",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f6faf8",
+  "theme_color": "#0f7a64",
+  "icons": []
+}

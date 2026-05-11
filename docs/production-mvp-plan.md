@@ -1,0 +1,34 @@
+# Film Stock 납품형 MVP 구조
+
+## 운영 흐름
+
+1. 관리자가 Google Sheets를 만들고 Apps Script API를 배포합니다.
+2. Vercel에 프론트엔드를 배포하고 `APPS_SCRIPT_API_URL`, `APP_PUBLIC_URL` 환경변수를 등록합니다.
+3. 관리자는 관리자 계정으로 로그인합니다.
+4. 관리자는 대리점 계정을 생성하고 초기 ID/PW를 발급합니다.
+5. 관리자는 대리점별 `/login?dealer=D001` 링크와 QR코드, 카카오톡 안내문을 전달합니다.
+6. 대리점은 최초 로그인 후 비밀번호를 변경합니다.
+7. 대리점은 본인 재고만 조회하고 발주를 등록합니다.
+8. 관리자는 전체 재고와 전체 발주를 조회하고 발주 상태를 변경합니다.
+
+## 권한
+
+- `admin`: 전체 재고 조회, 전체 발주 조회, 발주 상태 변경, 대리점 계정 생성/초기화/중지, QR/안내문 생성
+- `dealer`: 본인 `dealer_code` 재고 조회, 본인 발주 등록/조회, 최초 로그인 비밀번호 변경
+
+## 데이터 저장소
+
+Google Sheets를 데이터베이스처럼 사용합니다.
+
+- `accounts`: 계정 정보와 권한
+- `inventory`: 대리점별 SKU 재고
+- `orders`: 발주 내역
+- `products`: 제품 마스터
+- `settings`: 앱 설정과 비밀번호 해시용 salt
+
+## 납품 후 소유권 이전
+
+개발 중에는 제작자 Google 계정의 Sheets/Apps Script로 테스트합니다.
+납품 시 고객 Google 계정으로 파일 소유권을 이전하거나, 고객 계정에서 새 Sheet와 Apps Script를 만든 뒤 `apps-script/Code.js`를 붙여 넣어 재배포합니다.
+
+프론트엔드는 Apps Script URL만 알면 되므로 고객의 원본 Sheet URL은 브라우저에 노출되지 않습니다.

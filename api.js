@@ -1,0 +1,134 @@
+(function () {
+  const config = window.FILM_STOCK_CONFIG || {};
+  const storageKey = "film_stock_apps_script_session";
+
+  function apiUrl() {
+    return String(config.appsScriptUrl || "").trim();
+  }
+
+  function isEnabled() {
+    const url = apiUrl();
+    return Boolean(config.dataMode === "appsScript" && url && !url.includes("YOUR_APPS_SCRIPT"));
+  }
+
+  function getSession() {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function setSession(session) {
+    if (!session) {
+      localStorage.removeItem(storageKey);
+      return;
+    }
+    localStorage.setItem(storageKey, JSON.stringify(session));
+  }
+
+  async function request(action, payload = {}, options = {}) {
+    if (!isEnabled()) return null;
+
+    const session = options.session === undefined ? getSession() : options.session;
+    const response = await fetch(apiUrl(), {
+      method: "POST",
+      redirect: "follow",
+      // Apps Script와 브라우저 CORS 충돌을 줄이기 위해 단순 요청 형식으로 보냅니다.
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action,
+        token: session?.token || "",
+        payload
+      })
+    });
+
+    const text = await response.text();
+    let result = null;
+    try {
+      result = text ? JSON.parse(text) : null;
+    } catch {
+      throw new Error("Apps Script 응답을 JSON으로 읽을 수 없습니다.");
+    }
+
+    if (!response.ok || result?.ok === false) {
+      throw new Error(result?.error || response.statusText || "API 요청에 실패했습니다.");
+    }
+    return result?.data ?? result;
+  }
+
+  async function login({ loginId, password, dealerCode }) {
+    const data = await request(
+      "login",
+      { login_id: loginId, password, dealer_code: dealerCode },
+      { session: null }
+    );
+    if (data?.session) setSession(data.session);
+    return data;
+  }
+
+  async function changePassword({ currentPassword, newPassword }) {
+    const data = await request("changePassword", {
+      current_password: currentPassword,
+      new_password: newPassword
+    });
+    if (data?.session) setSession(data.session);
+    return data;
+  }
+
+  async function getInventory(filters = {}) {
+    return request("getInventory", filters);
+  }
+
+  async function createOrder(order) {
+    return request("createOrder", order);
+  }
+
+  async function getOrders(filters = {}) {
+    return request("getOrders", filters);
+  }
+
+  async function updateOrderStatus({ orderId, status }) {
+    return request("updateOrderStatus", { order_id: orderId, status });
+  }
+
+  async function createDealerAccount(account) {
+    return request("createDealerAccount", account);
+  }
+
+  async function resetDealerPassword({ loginId, temporaryPassword }) {
+    return request("resetDealerPassword", {
+      login_id: loginId,
+      temporary_password: temporaryPassword
+    });
+  }
+
+  async function deactivateDealerAccount({ loginId }) {
+    return request("deactivateDealerAccount", { login_id: loginId });
+  }
+
+  async function getDealerLinks({ baseUrl }) {
+    return request("getDealerLinks", { base_url: baseUrl });
+  }
+
+  function signOut() {
+    setSession(null);
+  }
+
+  window.FilmStockApi = {
+    isEnabled,
+    getSession,
+    login,
+    changePassword,
+    getInventory,
+    createOrder,
+    getOrders,
+    updateOrderStatus,
+    createDealerAccount,
+    resetDealerPassword,
+    deactivateDealerAccount,
+    getDealerLinks,
+    signOut
+  };
+})();
