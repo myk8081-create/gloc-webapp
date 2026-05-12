@@ -177,6 +177,8 @@ const state = {
   lastKakaoText: ""
 };
 
+let searchRenderTimer = null;
+
 function initFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const dealerCode = params.get("dealer") || params.get("code");
@@ -1021,15 +1023,8 @@ function bindEvents() {
     state.forms.productIsActive = event.target.checked;
   });
 
-  document.querySelector("#inventoryQuery")?.addEventListener("input", (event) => {
-    state.filters.inventoryQuery = event.target.value;
-    render();
-  });
-
-  document.querySelector("#orderQuery")?.addEventListener("input", (event) => {
-    state.filters.orderQuery = event.target.value;
-    render();
-  });
+  bindSearchInput("inventoryQuery", (value) => (state.filters.inventoryQuery = value));
+  bindSearchInput("orderQuery", (value) => (state.filters.orderQuery = value));
 
   document.querySelector("#orderStatus")?.addEventListener("change", (event) => {
     state.filters.orderStatus = event.target.value;
@@ -1105,6 +1100,47 @@ function bindEvents() {
 
 function bindInput(id, update) {
   document.querySelector(`#${id}`)?.addEventListener("input", (event) => update(event.target.value));
+}
+
+function bindSearchInput(id, update) {
+  document.querySelectorAll(`#${id}`).forEach((input) => {
+    let composing = false;
+    input.addEventListener("compositionstart", () => {
+      composing = true;
+    });
+    input.addEventListener("compositionend", (event) => {
+      composing = false;
+      update(event.target.value);
+      scheduleSearchRender(id);
+    });
+    input.addEventListener("input", (event) => {
+      update(event.target.value);
+      if (composing || event.isComposing) return;
+      scheduleSearchRender(id);
+    });
+  });
+}
+
+function scheduleSearchRender(inputId) {
+  window.clearTimeout(searchRenderTimer);
+  searchRenderTimer = window.setTimeout(() => {
+    render();
+    focusActiveInput(inputId);
+  }, 120);
+}
+
+function focusActiveInput(inputId) {
+  window.requestAnimationFrame(() => {
+    const input = document.querySelector(`.screen.active #${inputId}`) || document.querySelector(`#${inputId}`);
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    try {
+      const cursor = input.value.length;
+      input.setSelectionRange(cursor, cursor);
+    } catch {
+      // Some input types may not support selection ranges.
+    }
+  });
 }
 
 async function handleAction(action, button) {
