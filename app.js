@@ -807,17 +807,20 @@ function renderProductRow(product) {
 
 function renderProductManageRow(product) {
   return `
-    <button type="button" class="product-row ${state.forms.productSku === product.sku ? "active" : ""}" data-edit-product="${escapeAttr(product.sku)}">
-      <span class="color-dot" style="background:${colorHex(product.color || product.product_name)}"></span>
-      <span>
-        <span class="product-name">${escapeHtml(product.product_name)}</span>
-        <span class="product-meta">${escapeHtml(product.sku)} · ${escapeHtml(product.category || "")} · ${toBool(product.is_active) ? "판매중" : "중지"}</span>
-      </span>
-      <span class="stock-mini">
-        <strong>${escapeHtml(product.unit || "롤")}</strong>
-        <span>단위</span>
-      </span>
-    </button>
+    <article class="product-manage-row">
+      <button type="button" class="product-row ${state.forms.productSku === product.sku ? "active" : ""}" data-edit-product="${escapeAttr(product.sku)}">
+        <span class="color-dot" style="background:${colorHex(product.color || product.product_name)}"></span>
+        <span>
+          <span class="product-name">${escapeHtml(product.product_name)}</span>
+          <span class="product-meta">${escapeHtml(product.sku)} · ${escapeHtml(product.category || "")} · ${toBool(product.is_active) ? "판매중" : "중지"}</span>
+        </span>
+        <span class="stock-mini">
+          <strong>${escapeHtml(product.unit || "롤")}</strong>
+          <span>단위</span>
+        </span>
+      </button>
+      <button type="button" class="secondary-button small-button danger-button" data-action="deleteProduct" data-sku="${escapeAttr(product.sku)}">삭제</button>
+    </article>
   `;
 }
 
@@ -869,6 +872,7 @@ function renderAccountRow(account) {
       <div class="account-actions">
         <button type="button" class="secondary-button small-button" data-action="resetPassword" data-login-id="${escapeAttr(account.login_id)}">PW 초기화</button>
         <button type="button" class="secondary-button small-button danger-button" data-action="deactivateAccount" data-login-id="${escapeAttr(account.login_id)}">사용중지</button>
+        <button type="button" class="secondary-button small-button danger-button" data-action="deleteAccount" data-login-id="${escapeAttr(account.login_id)}">계정삭제</button>
       </div>
     </article>
   `;
@@ -1096,6 +1100,8 @@ async function handleAction(action, button) {
   if (action === "createAccount") return createDealerAccount();
   if (action === "resetPassword") return resetDealerPassword(button.dataset.loginId);
   if (action === "deactivateAccount") return deactivateDealerAccount(button.dataset.loginId);
+  if (action === "deleteAccount") return deleteDealerAccount(button.dataset.loginId);
+  if (action === "deleteProduct") return deleteProduct(button.dataset.sku);
 }
 
 async function login() {
@@ -1401,6 +1407,41 @@ async function deactivateDealerAccount(loginId) {
   showToast("계정을 사용중지했습니다.");
 }
 
+async function deleteDealerAccount(loginId) {
+  const account = state.accounts.find((item) => item.login_id === loginId);
+  const dealerName = account?.dealer_name || loginId;
+  const confirmed = confirm(`${dealerName} 계정을 완전히 삭제할까요?\n해당 대리점의 재고 행도 함께 삭제됩니다. 발주 이력은 보존됩니다.`);
+  if (!confirmed) return;
+
+  if (window.FilmStockApi?.isEnabled()) {
+    await window.FilmStockApi.deleteDealerAccount({ loginId });
+    removeDealerAccount(loginId);
+    await refreshData(false);
+  } else {
+    removeDealerAccount(loginId);
+  }
+  render();
+  showToast("대리점 계정을 삭제했습니다.");
+}
+
+async function deleteProduct(sku) {
+  const product = state.products.find((item) => item.sku === sku);
+  const productName = product?.product_name || sku;
+  const confirmed = confirm(`${productName} 제품을 완전히 삭제할까요?\n해당 SKU의 대리점별 재고 행도 함께 삭제됩니다. 발주 이력은 보존됩니다.`);
+  if (!confirmed) return;
+
+  if (window.FilmStockApi?.isEnabled()) {
+    await window.FilmStockApi.deleteProduct({ sku });
+    removeProduct(sku);
+    await refreshData(false);
+  } else {
+    removeProduct(sku);
+  }
+  ensureProductForm();
+  render();
+  showToast("제품을 삭제했습니다.");
+}
+
 function logout() {
   window.FilmStockApi?.signOut?.();
   state.session = null;
@@ -1590,6 +1631,35 @@ function upsertProduct(product) {
   const index = state.products.findIndex((item) => item.sku === normalized.sku);
   if (index >= 0) state.products[index] = { ...state.products[index], ...normalized };
   else state.products.push(normalized);
+}
+
+function removeDealerAccount(loginId) {
+  const account = state.accounts.find((item) => item.login_id === loginId);
+  state.accounts = state.accounts.filter((item) => item.login_id !== loginId);
+  if (account) {
+    state.inventory = state.inventory.filter((row) => row.dealer_code !== account.dealer_code);
+    if (state.filters.dealerCode === account.dealer_code) state.filters.dealerCode = "전체";
+  }
+  delete state.tempPasswords[loginId];
+}
+
+function removeProduct(sku) {
+  state.products = state.products.filter((product) => product.sku !== sku);
+  state.inventory = state.inventory.filter((row) => row.sku !== sku);
+  if (state.selectedSku === sku) {
+    state.selectedSku = activeProducts()[0]?.sku || state.products[0]?.sku || "";
+  }
+  if (state.forms.inventorySku === sku) {
+    state.forms.inventorySku = state.selectedSku;
+    syncInventoryForm();
+  }
+  if (state.forms.productSku === sku) {
+    state.forms.productSku = "";
+    state.forms.productName = "";
+    state.forms.productCategory = "PPF";
+    state.forms.productUnit = "롤";
+    state.forms.productIsActive = true;
+  }
 }
 
 function dealerNameByCode(dealerCode) {

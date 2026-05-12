@@ -116,6 +116,14 @@
     return request("deactivateDealerAccount", { login_id: loginId });
   }
 
+  async function deleteDealerAccount({ loginId }) {
+    return request("deleteDealerAccount", { login_id: loginId });
+  }
+
+  async function deleteProduct({ sku }) {
+    return request("deleteProduct", { sku });
+  }
+
   async function getDealerLinks({ baseUrl }) {
     return request("getDealerLinks", { base_url: baseUrl });
   }
@@ -138,6 +146,8 @@
     createDealerAccount,
     resetDealerPassword,
     deactivateDealerAccount,
+    deleteDealerAccount,
+    deleteProduct,
     getDealerLinks,
     signOut
   };

@@ -38,6 +38,8 @@ function doPost(e) {
     if (action === "createDealerAccount") return ok_(handleCreateDealerAccount_(payload, user));
     if (action === "resetDealerPassword") return ok_(handleResetDealerPassword_(payload, user));
     if (action === "deactivateDealerAccount") return ok_(handleDeactivateDealerAccount_(payload, user));
+    if (action === "deleteDealerAccount") return ok_(handleDeleteDealerAccount_(payload, user));
+    if (action === "deleteProduct") return ok_(handleDeleteProduct_(payload, user));
     if (action === "getDealerLinks") return ok_(handleGetDealerLinks_(payload, user));
 
     throw new Error("지원하지 않는 action입니다: " + action);
@@ -290,6 +292,20 @@ function handleSaveProduct_(payload, user) {
   return { product: publicProduct_(saved) };
 }
 
+function handleDeleteProduct_(payload, user) {
+  requireAdmin_(user);
+  const sku = required_(payload.sku, "sku");
+  const product = readRows_(SHEETS.products).find((row) => String(row.sku) === String(sku));
+  if (!product) throw new Error("삭제할 제품을 찾을 수 없습니다.");
+
+  deleteRowsByKey_(SHEETS.products, "sku", sku);
+  const deletedInventoryRows = deleteRowsByKey_(SHEETS.inventory, "sku", sku);
+  return {
+    product: publicProduct_(product),
+    deleted_inventory_rows: deletedInventoryRows
+  };
+}
+
 function handleCreateDealerAccount_(payload, user) {
   requireAdmin_(user);
   const loginId = required_(payload.login_id, "login_id");
@@ -340,6 +356,20 @@ function handleDeactivateDealerAccount_(payload, user) {
     updated_at: isoNow_()
   });
   return { account: publicAccount_(updated) };
+}
+
+function handleDeleteDealerAccount_(payload, user) {
+  requireAdmin_(user);
+  const loginId = required_(payload.login_id, "login_id");
+  const account = findAccountByLoginId_(loginId);
+  if (!account || account.role !== "dealer") throw new Error("삭제할 대리점 계정을 찾을 수 없습니다.");
+
+  deleteRowsByKey_(SHEETS.accounts, "login_id", loginId);
+  const deletedInventoryRows = deleteRowsByKey_(SHEETS.inventory, "dealer_code", account.dealer_code);
+  return {
+    account: publicAccount_(account),
+    deleted_inventory_rows: deletedInventoryRows
+  };
 }
 
 function handleGetDealerLinks_(payload, user) {
@@ -427,6 +457,24 @@ function updateRowByKey_(sheetName, key, value, updates) {
     }
   }
   throw new Error("수정할 행을 찾을 수 없습니다.");
+}
+
+function deleteRowsByKey_(sheetName, key, value) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return 0;
+  const headers = values[0].map(String);
+  const keyIndex = headers.indexOf(key);
+  if (keyIndex === -1) throw new Error("키 컬럼이 없습니다: " + key);
+
+  let deleted = 0;
+  for (let rowIndex = values.length - 1; rowIndex >= 1; rowIndex -= 1) {
+    if (String(values[rowIndex][keyIndex]) === String(value)) {
+      sheet.deleteRow(rowIndex + 1);
+      deleted += 1;
+    }
+  }
+  return deleted;
 }
 
 function upsertInventoryRow_(dealerCode, sku, object) {

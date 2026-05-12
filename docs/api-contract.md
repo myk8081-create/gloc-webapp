@@ -110,6 +110,17 @@
 }
 ```
 
+### deleteProduct
+
+관리자 전용입니다. `제품등록` 시트의 제품 행과 `재고현황` 시트의 같은 SKU 재고 행을 삭제합니다.
+기존 발주 이력은 보존됩니다.
+
+```json
+{
+  "sku": "PPF-CL-150"
+}
+```
+
 ### createDealerAccount
 
 관리자 전용입니다.
@@ -137,6 +148,17 @@
 ### deactivateDealerAccount
 
 관리자 전용입니다.
+
+```json
+{
+  "login_id": "dealer13"
+}
+```
+
+### deleteDealerAccount
+
+관리자 전용입니다. `대리점관리` 시트의 대리점 계정 행과 `재고현황` 시트의 해당 대리점 재고 행을 삭제합니다.
+기존 발주 이력은 보존됩니다.
 
 ```json
 {
