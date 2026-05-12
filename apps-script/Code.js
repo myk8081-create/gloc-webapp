@@ -16,6 +16,8 @@ const HEADERS = {
 
 const ORDER_STATUSES = ["접수", "승인", "출고", "완료", "반려"];
 const SESSION_SECONDS = 21600;
+const HEAD_OFFICE_CODE = "ADMIN";
+const HEAD_OFFICE_NAME = "본사";
 
 function doPost(e) {
   try {
@@ -62,6 +64,7 @@ function setupInitialData() {
   seedAdminIfEmpty_();
   seedDemoDealerIfEmpty_();
   seedInventoryIfEmpty_();
+  ensureInventoryForOwner_(HEAD_OFFICE_CODE, HEAD_OFFICE_NAME);
 }
 
 function resetAdminPassword() {
@@ -171,6 +174,7 @@ function handleChangePassword_(payload, user, token) {
 }
 
 function handleGetInventory_(payload, user) {
+  ensureInventoryForOwner_(HEAD_OFFICE_CODE, HEAD_OFFICE_NAME);
   const products = readRows_(SHEETS.products);
   const productMap = mapBy_(products, "sku");
   const accountMap = dealerNameMap_();
@@ -252,7 +256,7 @@ function handleUpdateOrderStatus_(payload, user) {
 
 function handleSaveInventory_(payload, user) {
   const dealerCode = user.role === "admin"
-    ? required_(payload.dealer_code, "dealer_code").toUpperCase()
+    ? HEAD_OFFICE_CODE
     : user.dealer_code;
   const sku = required_(payload.sku, "sku");
   const stockQty = Number(required_(payload.stock_qty, "stock_qty"));
@@ -683,6 +687,25 @@ function seedInventoryIfEmpty_() {
   seedInventoryForDealer_("D001", "서울 총판");
 }
 
+function ensureInventoryForOwner_(dealerCode, dealerName) {
+  const products = readRows_(SHEETS.products).filter((row) => toBool_(row.is_active));
+  const inventory = readRows_(SHEETS.inventory);
+  products.forEach((product) => {
+    const exists = inventory.some((row) => row.dealer_code === dealerCode && row.sku === product.sku);
+    if (!exists) {
+      appendObject_(SHEETS.inventory, {
+        dealer_code: dealerCode,
+        product_name: product.product_name,
+        sku: product.sku,
+        stock_qty: 0,
+        safety_stock: 0,
+        location: dealerName + " 창고",
+        updated_at: isoNow_()
+      });
+    }
+  });
+}
+
 function seedInventoryForDealer_(dealerCode, dealerName) {
   const existing = readRows_(SHEETS.inventory).some((row) => row.dealer_code === dealerCode);
   if (existing) return;
@@ -701,7 +724,10 @@ function seedInventoryForDealer_(dealerCode, dealerName) {
 }
 
 function seedInventoryForProduct_(product) {
-  const accounts = readRows_(SHEETS.accounts).filter((account) => account.role === "dealer" && toBool_(account.is_active));
+  const accounts = [
+    { dealer_code: HEAD_OFFICE_CODE, dealer_name: HEAD_OFFICE_NAME },
+    ...readRows_(SHEETS.accounts).filter((account) => account.role === "dealer" && toBool_(account.is_active))
+  ];
   const inventory = readRows_(SHEETS.inventory);
   accounts.forEach((account) => {
     const exists = inventory.some((row) => row.dealer_code === account.dealer_code && row.sku === product.sku);
@@ -720,12 +746,14 @@ function seedInventoryForProduct_(product) {
 }
 
 function dealerNameMap_() {
-  const map = {};
+  const map = {
+    [HEAD_OFFICE_CODE]: HEAD_OFFICE_NAME
+  };
   readRows_(SHEETS.accounts)
-    .filter((account) => account.role === "dealer")
     .forEach((account) => {
       map[account.dealer_code] = account.dealer_name;
     });
+  map[HEAD_OFFICE_CODE] = HEAD_OFFICE_NAME;
   return map;
 }
 

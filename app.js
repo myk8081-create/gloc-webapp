@@ -2,6 +2,8 @@ const app = document.querySelector("#app");
 const config = window.FILM_STOCK_CONFIG || {};
 
 const orderStatuses = ["접수", "승인", "출고", "완료", "반려"];
+const headOfficeCode = "ADMIN";
+const headOfficeName = "본사";
 
 const colorOptions = [
   { name: "전체", value: "전체", hex: "#0f7a64" },
@@ -26,6 +28,11 @@ const baseProducts = [
 
 const mockDealers = [
   { dealer_code: "D001", dealer_name: "서울 총판", region: "서울" }
+];
+
+const mockInventoryOwners = [
+  { dealer_code: headOfficeCode, dealer_name: headOfficeName, region: headOfficeName },
+  ...mockDealers
 ];
 
 function createMockProducts() {
@@ -80,9 +87,12 @@ function createMockAccounts() {
 
 function createMockInventory(products) {
   const rows = [];
-  mockDealers.forEach((dealer, dealerIndex) => {
+  mockInventoryOwners.forEach((dealer, dealerIndex) => {
     products.forEach((product, productIndex) => {
-      const stock = 38 + ((productIndex * 17 + dealerIndex * 29) % 420);
+      const isHeadOffice = dealer.dealer_code === headOfficeCode;
+      const stock = isHeadOffice
+        ? 260 + ((productIndex * 23) % 680)
+        : 38 + ((productIndex * 17 + dealerIndex * 29) % 420);
       const safety = 70 + (productIndex % 5) * 10;
       rows.push({
         dealer_code: dealer.dealer_code,
@@ -91,7 +101,7 @@ function createMockInventory(products) {
         sku: product.sku,
         category: product.category,
         color: product.color,
-        stock_qty: productIndex === 0 && dealerIndex === 0 ? 420 : stock,
+        stock_qty: productIndex === 0 && isHeadOffice ? 980 : stock,
         safety_stock: safety,
         location: `${dealer.region} 창고`,
         updated_at: nowText()
@@ -294,7 +304,7 @@ function renderAdminDashboard() {
       <section class="page-head">
         <p class="eyebrow">관리자 대시보드</p>
         <h1>전체 재고와 발주 현황</h1>
-        <p class="lead">모든 대리점의 재고, 안전재고 미달 제품, 발주 상태, 대리점 계정을 한곳에서 관리합니다.</p>
+        <p class="lead">본사 재고, 전체 대리점/샵 재고, 안전재고 미달 제품, 발주 상태를 한곳에서 확인합니다.</p>
         <div class="page-actions">
           <button class="primary-button" type="button" data-nav="inventoryManage">재고 수정</button>
           <button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>
@@ -312,7 +322,7 @@ function renderAdminDashboard() {
         <div class="metric blue">
           <div class="metric-label">총 재고</div>
           <div class="metric-value">${roll(stats.totalStock)}</div>
-          <div class="metric-note">전체 대리점 합산</div>
+          <div class="metric-note">본사와 대리점/샵 합산</div>
         </div>
         <div class="metric danger">
           <div class="metric-label">안전재고 이하</div>
@@ -336,7 +346,7 @@ function renderAdminDashboard() {
             </button>
             <button class="quick-card" type="button" data-nav="inventoryManage">
               <strong>재고수정</strong>
-              <span>대리점별 재고, 안전재고, 위치 수정</span>
+              <span>본사 재고, 안전재고, 위치 수정</span>
             </button>
             <button class="quick-card" type="button" data-nav="productManage">
               <strong>제품등록</strong>
@@ -415,14 +425,13 @@ function renderDealerManagement() {
 function renderInventory() {
   const rows = visibleInventory();
   const stats = inventoryStats(rows);
-  const dealerScope = state.session?.role === "dealer" ? state.filters.inventoryScope : "all";
-  const inventoryTitle = dealerScope === "others" ? "타대리점 제품 재고" : dealerScope === "mine" ? "내 대리점 제품 재고" : "대리점별 제품 재고";
+  const scope = currentInventoryScope();
   return `
     <main class="screen ${state.screen === "inventory" ? "active" : ""}" data-screen="inventory">
       <section class="page-head">
         <p class="eyebrow">${escapeHtml(currentDealerName())}</p>
         <h1>재고조회</h1>
-        <p class="lead">${state.session?.role === "admin" ? "전체 대리점 재고를 조회합니다." : "내 대리점 재고와 타대리점 재고를 분리해서 조회합니다."}</p>
+        <p class="lead">${state.session?.role === "admin" ? "본사 재고와 전체 대리점/샵 재고를 분리해서 조회합니다." : "내 대리점/샵 재고, 본사 재고, 전체 대리점/샵 재고를 분리해서 조회합니다."}</p>
         <div class="page-actions">
           <button class="primary-button" type="button" data-nav="inventoryManage">재고 수정</button>
           ${state.session?.role === "admin" ? `<button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>` : ""}
@@ -431,12 +440,7 @@ function renderInventory() {
         </div>
       </section>
 
-      ${state.session?.role === "dealer" ? `
-        <section class="scope-switch" aria-label="재고 조회 범위">
-          <button type="button" class="${state.filters.inventoryScope === "mine" ? "active" : ""}" data-inventory-scope="mine">내 대리점 재고</button>
-          <button type="button" class="${state.filters.inventoryScope === "others" ? "active" : ""}" data-inventory-scope="others">타대리점 재고</button>
-        </section>
-      ` : ""}
+      ${renderInventoryScopeSwitch(scope)}
 
       <section class="stats-grid">
         <div class="metric">
@@ -472,12 +476,12 @@ function renderInventory() {
       </section>
 
       <section class="panel list-panel">
-        <h3>${inventoryTitle}</h3>
+        <h3>${inventoryScopeTitle(scope)}</h3>
         <div class="table-scroll">
           <table class="data-table">
             <thead>
               <tr>
-                <th>대리점</th>
+                <th>구분</th>
                 <th>제품</th>
                 <th>SKU</th>
                 <th>재고</th>
@@ -499,12 +503,15 @@ function renderInventoryManage() {
   ensureInventoryForm();
   const rows = editableInventoryRows();
   const selectedProductName = state.products.find((product) => product.sku === state.forms.inventorySku)?.product_name || "";
+  const ownerLabel = state.session?.role === "admin"
+    ? `${headOfficeCode} · ${headOfficeName} 재고`
+    : `${state.session?.dealer_code || ""} · ${state.session?.dealer_name || ""}`;
   return `
     <main class="screen ${state.screen === "inventoryManage" ? "active" : ""}" data-screen="inventoryManage">
       <section class="page-head">
         <p class="eyebrow">${escapeHtml(currentDealerName())}</p>
         <h1>재고수정</h1>
-        <p class="lead">${state.session?.role === "admin" ? "관리자는 모든 대리점의 재고를 웹에서 수정할 수 있습니다." : "대리점은 본인 대리점 재고만 수정할 수 있습니다."}</p>
+        <p class="lead">${state.session?.role === "admin" ? "관리자는 본사 재고만 수정합니다." : "대리점/샵은 본인 재고만 수정합니다."}</p>
         <div class="page-actions">
           <button class="secondary-button" type="button" data-nav="inventory">재고조회</button>
           ${state.session?.role === "admin" ? `<button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>` : ""}
@@ -514,7 +521,7 @@ function renderInventoryManage() {
       <section class="work-layout">
         <div class="panel list-panel">
           <h3>수정할 재고 선택</h3>
-          <input class="search-input" id="inventoryQuery" type="search" placeholder="대리점, 제품명, SKU 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
+          <input class="search-input" id="inventoryQuery" type="search" placeholder="구분, 제품명, SKU 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
           <div class="product-list">
             ${rows.slice(0, 16).map(renderInventoryEditRow).join("") || `<div class="empty">수정할 재고가 없습니다.</div>`}
           </div>
@@ -524,8 +531,8 @@ function renderInventoryManage() {
           <h3>재고 입력</h3>
           <div class="form-grid">
             <label class="field">
-              <span>대리점</span>
-              ${state.session?.role === "admin" ? renderInventoryDealerSelect() : `<input type="text" value="${escapeAttr(`${state.session?.dealer_code || ""} · ${state.session?.dealer_name || ""}`)}" disabled />`}
+              <span>${state.session?.role === "admin" ? "관리 구분" : "대리점/샵"}</span>
+              <input type="text" value="${escapeAttr(ownerLabel)}" disabled />
             </label>
             <label class="field">
               <span>제품 SKU</span>
@@ -730,33 +737,45 @@ function renderDealerLinks() {
 }
 
 function renderDealerFilter() {
-  if (state.session?.role !== "admin") return "";
-  const dealers = dealerAccounts();
+  return "";
+}
+
+function renderInventoryScopeSwitch(scope) {
+  const options = state.session?.role === "admin"
+    ? [
+        ["headOffice", "본사 재고"],
+        ["dealerAll", "전체 대리점/샵 재고"]
+      ]
+    : [
+        ["mine", "내 대리점/샵 재고"],
+        ["headOffice", "본사 재고"],
+        ["dealerAll", "전체 대리점/샵 재고"]
+      ];
   return `
-    <select class="search-input compact-select" id="dealerFilter">
-      <option value="전체" ${state.filters.dealerCode === "전체" ? "selected" : ""}>전체 대리점</option>
-      ${dealers.map((dealer) => `<option value="${escapeAttr(dealer.dealer_code)}" ${state.filters.dealerCode === dealer.dealer_code ? "selected" : ""}>${escapeHtml(dealer.dealer_name)}</option>`).join("")}
-    </select>
+    <section class="scope-switch" aria-label="재고 조회 범위">
+      ${options.map(([value, label]) => `<button type="button" class="${scope === value ? "active" : ""}" data-inventory-scope="${value}">${label}</button>`).join("")}
+    </section>
   `;
 }
 
-function renderInventoryDealerSelect() {
-  const dealers = dealerAccounts().filter((dealer) => toBool(dealer.is_active));
-  return `
-    <select id="inventoryDealerCode">
-      ${dealers.map((dealer) => `<option value="${escapeAttr(dealer.dealer_code)}" ${state.forms.inventoryDealerCode === dealer.dealer_code ? "selected" : ""}>${escapeHtml(dealer.dealer_code)} · ${escapeHtml(dealer.dealer_name)}</option>`).join("")}
-    </select>
-  `;
+function renderInventoryOwnerName(row) {
+  if (row.dealer_code === headOfficeCode) return headOfficeName;
+  return row.dealer_name || row.dealer_code;
+}
+
+function renderInventoryOwnerMeta(row) {
+  if (row.dealer_code === headOfficeCode) return `${headOfficeCode} · 본사 재고`;
+  const isMine = state.session?.role === "dealer" && row.dealer_code === state.session.dealer_code;
+  return `${row.dealer_code}${isMine ? " · 내 대리점/샵" : ""}`;
 }
 
 function renderInventoryRow(row) {
   const isLow = Number(row.stock_qty || 0) <= Number(row.safety_stock || 0);
-  const isMine = state.session?.role === "dealer" && row.dealer_code === state.session.dealer_code;
   return `
     <tr class="${isLow ? "is-low" : ""}">
       <td>
-        <strong>${escapeHtml(row.dealer_name || row.dealer_code)}</strong>
-        <div class="product-meta">${escapeHtml(row.dealer_code)}${isMine ? " · 내 대리점" : ""}</div>
+        <strong>${escapeHtml(renderInventoryOwnerName(row))}</strong>
+        <div class="product-meta">${escapeHtml(renderInventoryOwnerMeta(row))}</div>
       </td>
       <td>
         <strong>${escapeHtml(row.product_name)}</strong>
@@ -1255,7 +1274,7 @@ async function updateOrderStatus(orderId, status) {
 
 async function saveInventory() {
   ensureInventoryForm();
-  const dealerCode = state.session?.role === "admin" ? state.forms.inventoryDealerCode : state.session?.dealer_code;
+  const dealerCode = editableInventoryOwnerCode();
   const payload = {
     dealer_code: dealerCode,
     sku: state.forms.inventorySku,
@@ -1309,7 +1328,7 @@ async function saveProduct() {
     if (data?.product) upsertProduct(data.product);
   } else {
     upsertProduct({ ...payload, color: colorNameFromText(payload.product_name) });
-    dealerAccounts().filter((account) => toBool(account.is_active)).forEach((account) => {
+    inventoryOwnerAccounts().forEach((account) => {
       const exists = state.inventory.some((row) => row.dealer_code === account.dealer_code && row.sku === payload.sku);
       if (!exists) {
         upsertInventory({
@@ -1471,12 +1490,7 @@ function navigate(screen) {
 
 function ensureInventoryForm() {
   if (!state.session) return;
-  if (state.session.role === "dealer") {
-    state.forms.inventoryDealerCode = state.session.dealer_code;
-  }
-  if (!state.forms.inventoryDealerCode) {
-    state.forms.inventoryDealerCode = dealerAccounts().find((account) => toBool(account.is_active))?.dealer_code || state.session.dealer_code || "";
-  }
+  state.forms.inventoryDealerCode = editableInventoryOwnerCode();
   if (!state.forms.inventorySku) {
     state.forms.inventorySku = state.selectedSku || state.products[0]?.sku || "";
   }
@@ -1523,8 +1537,7 @@ function editableInventoryRows() {
   const query = normalize(state.filters.inventoryQuery);
   return state.inventory
     .filter((row) => {
-      if (state.session?.role === "dealer" && row.dealer_code !== state.session.dealer_code) return false;
-      if (state.session?.role === "admin" && state.filters.dealerCode !== "전체" && row.dealer_code !== state.filters.dealerCode) return false;
+      if (row.dealer_code !== editableInventoryOwnerCode()) return false;
       if (!query) return true;
       return [row.product_name, row.sku, row.dealer_name, row.dealer_code, row.stock_qty, row.location]
         .some((value) => normalize(value).includes(query));
@@ -1534,11 +1547,12 @@ function editableInventoryRows() {
 
 function visibleInventory() {
   const query = normalize(state.filters.inventoryQuery);
+  const scope = currentInventoryScope();
   return state.inventory
     .filter((row) => {
-      if (state.session?.role === "dealer" && state.filters.inventoryScope === "mine" && row.dealer_code !== state.session.dealer_code) return false;
-      if (state.session?.role === "dealer" && state.filters.inventoryScope === "others" && row.dealer_code === state.session.dealer_code) return false;
-      if (state.session?.role === "admin" && state.filters.dealerCode !== "전체" && row.dealer_code !== state.filters.dealerCode) return false;
+      if (scope === "mine" && row.dealer_code !== state.session?.dealer_code) return false;
+      if (scope === "headOffice" && row.dealer_code !== headOfficeCode) return false;
+      if (scope === "dealerAll" && row.dealer_code === headOfficeCode) return false;
       if (state.selectedColor !== "전체" && row.color !== state.selectedColor && !normalize(row.product_name).includes(normalize(state.selectedColor))) return false;
       if (!query) return true;
       return [row.product_name, row.sku, row.dealer_name, row.dealer_code, row.stock_qty, row.category, row.color]
@@ -1593,12 +1607,39 @@ function selectedProduct() {
   return products.find((product) => product.sku === state.selectedSku) || products[0];
 }
 
+function currentInventoryScope() {
+  const requested = state.filters.inventoryScope === "others" ? "dealerAll" : state.filters.inventoryScope;
+  if (state.session?.role === "admin") {
+    return requested === "dealerAll" ? "dealerAll" : "headOffice";
+  }
+  if (requested === "headOffice" || requested === "dealerAll") return requested;
+  return "mine";
+}
+
+function inventoryScopeTitle(scope) {
+  if (scope === "headOffice") return "본사 제품 재고";
+  if (scope === "dealerAll") return "전체 대리점/샵 제품 재고";
+  return "내 대리점/샵 제품 재고";
+}
+
+function editableInventoryOwnerCode() {
+  if (!state.session) return "";
+  return state.session.role === "admin" ? headOfficeCode : state.session.dealer_code;
+}
+
 function activeProducts() {
   return state.products.filter((product) => toBool(product.is_active));
 }
 
 function dealerAccounts() {
   return state.accounts.filter((account) => account.role === "dealer");
+}
+
+function inventoryOwnerAccounts() {
+  return [
+    { dealer_code: headOfficeCode, dealer_name: headOfficeName, is_active: true },
+    ...dealerAccounts().filter((account) => toBool(account.is_active))
+  ];
 }
 
 function accountToSession(account) {
