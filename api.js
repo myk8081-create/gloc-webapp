@@ -93,6 +93,14 @@
     return request("updateOrderStatus", { order_id: orderId, status });
   }
 
+  async function saveInventory(row) {
+    return request("saveInventory", row);
+  }
+
+  async function saveProduct(product) {
+    return request("saveProduct", product);
+  }
+
   async function createDealerAccount(account) {
     return request("createDealerAccount", account);
   }
@@ -125,6 +133,8 @@
     createOrder,
     getOrders,
     updateOrderStatus,
+    saveInventory,
+    saveProduct,
     createDealerAccount,
     resetDealerPassword,
     deactivateDealerAccount,

@@ -62,7 +62,7 @@ button:disabled {
 
 .app-shell {
   min-height: 100vh;
-  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  padding-bottom: calc(128px + env(safe-area-inset-bottom));
 }
 
 .topbar {
@@ -434,6 +434,13 @@ h3 {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
 }
 
 .page-head {
@@ -929,7 +936,7 @@ h3 {
 }
 
 .bottom-nav.admin-nav {
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
 }
 
 .bottom-nav button {

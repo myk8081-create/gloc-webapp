@@ -33,6 +33,8 @@ function doPost(e) {
     if (action === "createOrder") return ok_(handleCreateOrder_(payload, user));
     if (action === "getOrders") return ok_(handleGetOrders_(payload, user));
     if (action === "updateOrderStatus") return ok_(handleUpdateOrderStatus_(payload, user));
+    if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
+    if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
     if (action === "createDealerAccount") return ok_(handleCreateDealerAccount_(payload, user));
     if (action === "resetDealerPassword") return ok_(handleResetDealerPassword_(payload, user));
     if (action === "deactivateDealerAccount") return ok_(handleDeactivateDealerAccount_(payload, user));
@@ -167,18 +169,19 @@ function handleChangePassword_(payload, user, token) {
 }
 
 function handleGetInventory_(payload, user) {
-  const products = readRows_(SHEETS.products).filter((row) => toBool_(row.is_active));
+  const products = readRows_(SHEETS.products);
   const productMap = mapBy_(products, "sku");
   const accountMap = dealerNameMap_();
   let inventory = readRows_(SHEETS.inventory).map((row) => {
     const product = productMap[row.sku] || {};
+    const productName = product.product_name || row.product_name;
     return {
       dealer_code: row.dealer_code,
       dealer_name: accountMap[row.dealer_code] || row.dealer_code,
-      product_name: row.product_name,
+      product_name: productName,
       sku: row.sku,
       category: product.category || "",
-      color: inferColor_(row.product_name),
+      color: inferColor_(productName),
       stock_qty: Number(row.stock_qty || 0),
       safety_stock: Number(row.safety_stock || 0),
       location: row.location || "",
@@ -243,6 +246,48 @@ function handleUpdateOrderStatus_(payload, user) {
     updated_at: isoNow_()
   });
   return { order: order };
+}
+
+function handleSaveInventory_(payload, user) {
+  const dealerCode = user.role === "admin"
+    ? required_(payload.dealer_code, "dealer_code").toUpperCase()
+    : user.dealer_code;
+  const sku = required_(payload.sku, "sku");
+  const stockQty = Number(required_(payload.stock_qty, "stock_qty"));
+  const safetyStock = Number(payload.safety_stock || 0);
+  const location = payload.location || "";
+  if (stockQty < 0 || safetyStock < 0) throw new Error("재고와 안전재고는 0 이상이어야 합니다.");
+
+  const products = readRows_(SHEETS.products);
+  const product = products.find((row) => row.sku === sku);
+  if (!product) throw new Error("제품등록 시트에서 SKU를 찾을 수 없습니다.");
+
+  const row = upsertInventoryRow_(dealerCode, sku, {
+    dealer_code: dealerCode,
+    product_name: product.product_name,
+    sku: sku,
+    stock_qty: stockQty,
+    safety_stock: safetyStock,
+    location: location,
+    updated_at: isoNow_()
+  });
+  return { inventory: publicInventoryRow_(row, mapBy_(products, "sku"), dealerNameMap_()) };
+}
+
+function handleSaveProduct_(payload, user) {
+  requireAdmin_(user);
+  const sku = required_(payload.sku, "sku");
+  const product = {
+    sku: sku,
+    product_name: required_(payload.product_name, "product_name"),
+    category: required_(payload.category, "category"),
+    unit: payload.unit || "롤",
+    is_active: payload.is_active === undefined ? true : toBool_(payload.is_active)
+  };
+
+  const saved = upsertProductRow_(sku, product);
+  seedInventoryForProduct_(saved);
+  return { product: publicProduct_(saved) };
 }
 
 function handleCreateDealerAccount_(payload, user) {
@@ -355,8 +400,14 @@ function readRows_(sheetName) {
 
 function appendObject_(sheetName, object) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  const headers = HEADERS[sheetName];
+  const headers = headersForSheet_(sheetName);
   sheet.appendRow(headers.map((header) => object[header] === undefined ? "" : object[header]));
+}
+
+function headersForSheet_(sheetName) {
+  const sheetKey = Object.keys(SHEETS).find((key) => SHEETS[key] === sheetName || key === sheetName);
+  if (!sheetKey || !HEADERS[sheetKey]) throw new Error("시트 헤더를 찾을 수 없습니다: " + sheetName);
+  return HEADERS[sheetKey];
 }
 
 function updateRowByKey_(sheetName, key, value, updates) {
@@ -376,6 +427,36 @@ function updateRowByKey_(sheetName, key, value, updates) {
     }
   }
   throw new Error("수정할 행을 찾을 수 없습니다.");
+}
+
+function upsertInventoryRow_(dealerCode, sku, object) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.inventory);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const dealerIndex = headers.indexOf("dealer_code");
+  const skuIndex = headers.indexOf("sku");
+  if (dealerIndex === -1 || skuIndex === -1) throw new Error("재고현황 시트에 dealer_code 또는 sku 컬럼이 없습니다.");
+
+  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    if (String(values[rowIndex][dealerIndex]).toUpperCase() === String(dealerCode).toUpperCase() && String(values[rowIndex][skuIndex]) === String(sku)) {
+      headers.forEach((header, index) => {
+        if (object[header] !== undefined) sheet.getRange(rowIndex + 1, index + 1).setValue(object[header]);
+      });
+      return readRows_(SHEETS.inventory).find((row) => String(row.dealer_code).toUpperCase() === String(dealerCode).toUpperCase() && String(row.sku) === String(sku));
+    }
+  }
+
+  appendObject_(SHEETS.inventory, object);
+  return object;
+}
+
+function upsertProductRow_(sku, object) {
+  const existing = readRows_(SHEETS.products).find((row) => String(row.sku) === String(sku));
+  if (existing) {
+    return updateRowByKey_(SHEETS.products, "sku", sku, object);
+  }
+  appendObject_(SHEETS.products, object);
+  return object;
 }
 
 function findAccountByLoginId_(loginId) {
@@ -410,6 +491,23 @@ function publicProduct_(product) {
     color: inferColor_(product.product_name),
     unit: product.unit,
     is_active: toBool_(product.is_active)
+  };
+}
+
+function publicInventoryRow_(row, productMap, accountMap) {
+  const product = productMap[row.sku] || {};
+  const productName = product.product_name || row.product_name;
+  return {
+    dealer_code: row.dealer_code,
+    dealer_name: accountMap[row.dealer_code] || row.dealer_code,
+    product_name: productName,
+    sku: row.sku,
+    category: product.category || "",
+    color: inferColor_(productName),
+    stock_qty: Number(row.stock_qty || 0),
+    safety_stock: Number(row.safety_stock || 0),
+    location: row.location || "",
+    updated_at: row.updated_at || ""
   };
 }
 
@@ -551,6 +649,25 @@ function seedInventoryForDealer_(dealerCode, dealerName) {
       location: dealerName + " 창고",
       updated_at: isoNow_()
     });
+  });
+}
+
+function seedInventoryForProduct_(product) {
+  const accounts = readRows_(SHEETS.accounts).filter((account) => account.role === "dealer" && toBool_(account.is_active));
+  const inventory = readRows_(SHEETS.inventory);
+  accounts.forEach((account) => {
+    const exists = inventory.some((row) => row.dealer_code === account.dealer_code && row.sku === product.sku);
+    if (!exists) {
+      appendObject_(SHEETS.inventory, {
+        dealer_code: account.dealer_code,
+        product_name: product.product_name,
+        sku: product.sku,
+        stock_qty: 0,
+        safety_stock: 0,
+        location: account.dealer_name + " 창고",
+        updated_at: isoNow_()
+      });
+    }
   });
 }
 

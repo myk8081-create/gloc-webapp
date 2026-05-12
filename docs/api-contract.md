@@ -80,6 +80,36 @@
 
 상태값: `접수`, `승인`, `출고`, `완료`, `반려`
 
+### saveInventory
+
+관리자는 모든 대리점 재고를 저장할 수 있고, 대리점은 본인 `dealer_code` 재고만 저장할 수 있습니다.
+같은 `dealer_code` + `sku` 행이 있으면 수정하고, 없으면 새 행을 만듭니다.
+
+```json
+{
+  "dealer_code": "D001",
+  "sku": "PPF-CL-150",
+  "stock_qty": 120,
+  "safety_stock": 30,
+  "location": "서울 창고 A-1"
+}
+```
+
+### saveProduct
+
+관리자 전용입니다. 같은 `sku`가 있으면 제품 정보를 수정하고, 없으면 새 제품을 등록합니다.
+새 판매중 제품을 등록하면 활성 대리점별 재고 행이 0개로 자동 생성됩니다.
+
+```json
+{
+  "sku": "PPF-CL-150",
+  "product_name": "프리미엄 PPF 클리어 150",
+  "category": "PPF",
+  "unit": "롤",
+  "is_active": true
+}
+```
+
 ### createDealerAccount
 
 관리자 전용입니다.

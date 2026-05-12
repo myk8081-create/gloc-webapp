@@ -149,8 +149,18 @@ const state = {
     accountDealerCode: "",
     accountDealerName: "",
     accountTemporaryPassword: "",
+    inventoryDealerCode: "",
+    inventorySku: "",
+    inventoryStockQty: 0,
+    inventorySafetyStock: 0,
+    inventoryLocation: "",
     orderQty: 10,
     orderMemo: "",
+    productSku: "",
+    productName: "",
+    productCategory: "PPF",
+    productUnit: "롤",
+    productIsActive: true,
     resetPassword: ""
   },
   tempPasswords: {},
@@ -177,6 +187,8 @@ function render() {
       ${renderAdminDashboard()}
       ${renderDealerManagement()}
       ${renderInventory()}
+      ${renderInventoryManage()}
+      ${renderProductManage()}
       ${renderOrders()}
       ${renderOrderCreate()}
       ${renderDealerLinks()}
@@ -282,6 +294,8 @@ function renderAdminDashboard() {
         <h1>전체 재고와 발주 현황</h1>
         <p class="lead">모든 대리점의 재고, 안전재고 미달 제품, 발주 상태, 대리점 계정을 한곳에서 관리합니다.</p>
         <div class="page-actions">
+          <button class="primary-button" type="button" data-nav="inventoryManage">재고 수정</button>
+          <button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>
           <button class="primary-button" type="button" data-nav="dealers">대리점 계정 관리</button>
           <button class="secondary-button" type="button" data-nav="links">QR/카카오톡 안내문</button>
         </div>
@@ -317,6 +331,14 @@ function renderAdminDashboard() {
             <button class="quick-card" type="button" data-nav="inventory">
               <strong>재고조회</strong>
               <span>제품명, SKU, 대리점명, 수량 검색</span>
+            </button>
+            <button class="quick-card" type="button" data-nav="inventoryManage">
+              <strong>재고수정</strong>
+              <span>대리점별 재고, 안전재고, 위치 수정</span>
+            </button>
+            <button class="quick-card" type="button" data-nav="productManage">
+              <strong>제품등록</strong>
+              <span>PPF/틴팅 SKU 생성 및 수정</span>
             </button>
             <button class="quick-card" type="button" data-nav="orders">
               <strong>발주관리</strong>
@@ -400,6 +422,8 @@ function renderInventory() {
         <h1>재고조회</h1>
         <p class="lead">${state.session?.role === "admin" ? "전체 대리점 재고를 조회합니다." : "내 대리점 재고와 타대리점 재고를 분리해서 조회합니다."}</p>
         <div class="page-actions">
+          <button class="primary-button" type="button" data-nav="inventoryManage">재고 수정</button>
+          ${state.session?.role === "admin" ? `<button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>` : ""}
           ${state.session?.role === "dealer" ? `<button class="primary-button" type="button" data-nav="orderCreate">발주 신청</button>` : `<button class="primary-button" type="button" data-nav="orders">발주관리</button>`}
           <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
         </div>
@@ -430,8 +454,8 @@ function renderInventory() {
         </div>
         <div class="metric warn">
           <div class="metric-label">제품 종류</div>
-          <div class="metric-value">${state.products.length}개</div>
-          <div class="metric-note">PPF/틴팅 SKU</div>
+          <div class="metric-value">${activeProducts().length}개</div>
+          <div class="metric-note">판매중 PPF/틴팅 SKU</div>
         </div>
       </section>
 
@@ -463,6 +487,123 @@ function renderInventory() {
               ${rows.slice(0, 80).map(renderInventoryRow).join("") || `<tr><td colspan="6" class="empty-cell">조회 결과가 없습니다.</td></tr>`}
             </tbody>
           </table>
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderInventoryManage() {
+  ensureInventoryForm();
+  const rows = editableInventoryRows();
+  const selectedProductName = state.products.find((product) => product.sku === state.forms.inventorySku)?.product_name || "";
+  return `
+    <main class="screen ${state.screen === "inventoryManage" ? "active" : ""}" data-screen="inventoryManage">
+      <section class="page-head">
+        <p class="eyebrow">${escapeHtml(currentDealerName())}</p>
+        <h1>재고수정</h1>
+        <p class="lead">${state.session?.role === "admin" ? "관리자는 모든 대리점의 재고를 웹에서 수정할 수 있습니다." : "대리점은 본인 대리점 재고만 수정할 수 있습니다."}</p>
+        <div class="page-actions">
+          <button class="secondary-button" type="button" data-nav="inventory">재고조회</button>
+          ${state.session?.role === "admin" ? `<button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>` : ""}
+        </div>
+      </section>
+
+      <section class="work-layout">
+        <div class="panel list-panel">
+          <h3>수정할 재고 선택</h3>
+          <input class="search-input" id="inventoryQuery" type="search" placeholder="대리점, 제품명, SKU 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
+          <div class="product-list">
+            ${rows.slice(0, 16).map(renderInventoryEditRow).join("") || `<div class="empty">수정할 재고가 없습니다.</div>`}
+          </div>
+        </div>
+
+        <div class="panel form-panel">
+          <h3>재고 입력</h3>
+          <div class="form-grid">
+            <label class="field">
+              <span>대리점</span>
+              ${state.session?.role === "admin" ? renderInventoryDealerSelect() : `<input type="text" value="${escapeAttr(`${state.session?.dealer_code || ""} · ${state.session?.dealer_name || ""}`)}" disabled />`}
+            </label>
+            <label class="field">
+              <span>제품 SKU</span>
+              <select id="inventorySku">
+                ${state.products.map((product) => `<option value="${escapeAttr(product.sku)}" ${state.forms.inventorySku === product.sku ? "selected" : ""}>${escapeHtml(product.sku)} · ${escapeHtml(product.product_name)}</option>`).join("")}
+              </select>
+            </label>
+            <label class="field">
+              <span>제품명</span>
+              <input type="text" value="${escapeAttr(selectedProductName)}" disabled />
+            </label>
+            <label class="field">
+              <span>현재 재고</span>
+              <input id="inventoryStockQty" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.inventoryStockQty)}" />
+            </label>
+            <label class="field">
+              <span>안전재고</span>
+              <input id="inventorySafetyStock" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.inventorySafetyStock)}" />
+            </label>
+            <label class="field">
+              <span>보관 위치</span>
+              <input id="inventoryLocation" type="text" value="${escapeAttr(state.forms.inventoryLocation)}" placeholder="예: 서울 창고 A-1" />
+            </label>
+            <button type="button" class="primary-button" data-action="saveInventory">재고 저장</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderProductManage() {
+  if (state.session?.role !== "admin") return "";
+  return `
+    <main class="screen ${state.screen === "productManage" ? "active" : ""}" data-screen="productManage">
+      <section class="page-head">
+        <p class="eyebrow">제품 관리</p>
+        <h1>제품등록 및 수정</h1>
+        <p class="lead">PPF/틴팅 제품 SKU를 웹에서 등록하고 수정합니다. 새 제품은 각 활성 대리점 재고에 0개로 자동 생성됩니다.</p>
+        <div class="page-actions">
+          <button class="secondary-button" type="button" data-nav="inventoryManage">재고 수정</button>
+          <button class="secondary-button" type="button" data-nav="inventory">재고조회</button>
+        </div>
+      </section>
+
+      <section class="work-layout">
+        <div class="panel form-panel">
+          <h3>제품 정보</h3>
+          <div class="form-grid">
+            <label class="field">
+              <span>SKU</span>
+              <input id="productSku" type="text" value="${escapeAttr(state.forms.productSku)}" placeholder="예: PPF-CL-150" />
+            </label>
+            <label class="field">
+              <span>제품명</span>
+              <input id="productName" type="text" value="${escapeAttr(state.forms.productName)}" placeholder="예: 프리미엄 PPF 클리어 150" />
+            </label>
+            <label class="field">
+              <span>카테고리</span>
+              <select id="productCategory">
+                ${["PPF", "틴팅"].map((category) => `<option value="${category}" ${state.forms.productCategory === category ? "selected" : ""}>${category}</option>`).join("")}
+              </select>
+            </label>
+            <label class="field">
+              <span>단위</span>
+              <input id="productUnit" type="text" value="${escapeAttr(state.forms.productUnit)}" placeholder="예: 롤" />
+            </label>
+            <label class="checkbox-row inline-check">
+              <input id="productIsActive" type="checkbox" ${state.forms.productIsActive ? "checked" : ""} />
+              <span>판매중</span>
+            </label>
+            <button type="button" class="primary-button" data-action="saveProduct">제품 저장</button>
+          </div>
+        </div>
+
+        <div class="panel list-panel">
+          <h3>제품 목록</h3>
+          <div class="product-list">
+            ${state.products.slice(0, 40).map(renderProductManageRow).join("") || `<div class="empty">등록된 제품이 없습니다.</div>`}
+          </div>
         </div>
       </section>
     </main>
@@ -502,7 +643,7 @@ function renderOrders() {
 
 function renderOrderCreate() {
   const product = selectedProduct();
-  const dealerInventory = state.inventory.find((row) => row.sku === state.selectedSku && row.dealer_code === state.session?.dealer_code);
+  const dealerInventory = state.inventory.find((row) => row.sku === product?.sku && row.dealer_code === state.session?.dealer_code);
   return `
     <main class="screen ${state.screen === "orderCreate" ? "active" : ""}" data-screen="orderCreate">
       <section class="page-head">
@@ -516,7 +657,7 @@ function renderOrderCreate() {
           <h3>제품 선택</h3>
           <input class="search-input" id="inventoryQuery" type="search" placeholder="제품명, SKU, 컬러 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
           <div class="product-list">
-            ${filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">제품이 없습니다.</div>`}
+            ${filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`}
           </div>
         </div>
 
@@ -597,6 +738,15 @@ function renderDealerFilter() {
   `;
 }
 
+function renderInventoryDealerSelect() {
+  const dealers = dealerAccounts().filter((dealer) => toBool(dealer.is_active));
+  return `
+    <select id="inventoryDealerCode">
+      ${dealers.map((dealer) => `<option value="${escapeAttr(dealer.dealer_code)}" ${state.forms.inventoryDealerCode === dealer.dealer_code ? "selected" : ""}>${escapeHtml(dealer.dealer_code)} · ${escapeHtml(dealer.dealer_name)}</option>`).join("")}
+    </select>
+  `;
+}
+
 function renderInventoryRow(row) {
   const isLow = Number(row.stock_qty || 0) <= Number(row.safety_stock || 0);
   const isMine = state.session?.role === "dealer" && row.dealer_code === state.session.dealer_code;
@@ -618,6 +768,23 @@ function renderInventoryRow(row) {
   `;
 }
 
+function renderInventoryEditRow(row) {
+  const isLow = Number(row.stock_qty || 0) <= Number(row.safety_stock || 0);
+  return `
+    <button type="button" class="product-row ${state.forms.inventoryDealerCode === row.dealer_code && state.forms.inventorySku === row.sku ? "active" : ""}" data-edit-inventory-dealer="${escapeAttr(row.dealer_code)}" data-edit-inventory-sku="${escapeAttr(row.sku)}">
+      <span class="color-dot" style="background:${colorHex(row.color || row.product_name)}"></span>
+      <span>
+        <span class="product-name">${escapeHtml(row.product_name)}</span>
+        <span class="product-meta">${escapeHtml(row.dealer_name || row.dealer_code)} · ${escapeHtml(row.sku)}${isLow ? " · 안전재고 이하" : ""}</span>
+      </span>
+      <span class="stock-mini">
+        <strong>${roll(Number(row.stock_qty || 0))}</strong>
+        <span>현재</span>
+      </span>
+    </button>
+  `;
+}
+
 function renderProductRow(product) {
   const active = product.sku === state.selectedSku;
   const inventory = state.inventory.find((row) => row.sku === product.sku && row.dealer_code === state.session?.dealer_code);
@@ -631,6 +798,22 @@ function renderProductRow(product) {
       <span class="stock-mini">
         <strong>${roll(Number(inventory?.stock_qty || 0))}</strong>
         <span>현재</span>
+      </span>
+    </button>
+  `;
+}
+
+function renderProductManageRow(product) {
+  return `
+    <button type="button" class="product-row ${state.forms.productSku === product.sku ? "active" : ""}" data-edit-product="${escapeAttr(product.sku)}">
+      <span class="color-dot" style="background:${colorHex(product.color || product.product_name)}"></span>
+      <span>
+        <span class="product-name">${escapeHtml(product.product_name)}</span>
+        <span class="product-meta">${escapeHtml(product.sku)} · ${escapeHtml(product.category || "")} · ${toBool(product.is_active) ? "판매중" : "중지"}</span>
+      </span>
+      <span class="stock-mini">
+        <strong>${escapeHtml(product.unit || "롤")}</strong>
+        <span>단위</span>
       </span>
     </button>
   `;
@@ -739,12 +922,15 @@ function renderBottomNav() {
     ? [
         ["admin", "대시보드"],
         ["inventory", "재고"],
+        ["inventoryManage", "수정"],
+        ["productManage", "제품"],
         ["orders", "발주"],
         ["dealers", "대리점"],
         ["links", "QR"]
       ]
     : [
         ["inventory", "재고"],
+        ["inventoryManage", "재고수정"],
         ["orderCreate", "발주신청"],
         ["orders", "내 발주"]
       ];
@@ -781,8 +967,34 @@ function bindEvents() {
   bindInput("accountDealerName", (value) => (state.forms.accountDealerName = value));
   bindInput("accountLoginId", (value) => (state.forms.accountLoginId = value));
   bindInput("accountTemporaryPassword", (value) => (state.forms.accountTemporaryPassword = value));
+  bindInput("inventoryStockQty", (value) => (state.forms.inventoryStockQty = Number(value || 0)));
+  bindInput("inventorySafetyStock", (value) => (state.forms.inventorySafetyStock = Number(value || 0)));
+  bindInput("inventoryLocation", (value) => (state.forms.inventoryLocation = value));
   bindInput("orderQty", (value) => (state.forms.orderQty = Number(value || 0)));
   bindInput("orderMemo", (value) => (state.forms.orderMemo = value));
+  bindInput("productSku", (value) => (state.forms.productSku = value.trim()));
+  bindInput("productName", (value) => (state.forms.productName = value));
+  bindInput("productUnit", (value) => (state.forms.productUnit = value));
+
+  document.querySelector("#inventoryDealerCode")?.addEventListener("change", (event) => {
+    state.forms.inventoryDealerCode = event.target.value;
+    syncInventoryForm();
+    render();
+  });
+
+  document.querySelector("#inventorySku")?.addEventListener("change", (event) => {
+    state.forms.inventorySku = event.target.value;
+    syncInventoryForm();
+    render();
+  });
+
+  document.querySelector("#productCategory")?.addEventListener("change", (event) => {
+    state.forms.productCategory = event.target.value;
+  });
+
+  document.querySelector("#productIsActive")?.addEventListener("change", (event) => {
+    state.forms.productIsActive = event.target.checked;
+  });
 
   document.querySelector("#inventoryQuery")?.addEventListener("input", (event) => {
     state.filters.inventoryQuery = event.target.value;
@@ -827,6 +1039,20 @@ function bindEvents() {
     });
   });
 
+  document.querySelectorAll("[data-edit-inventory-sku]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectInventoryRow(button.dataset.editInventoryDealer, button.dataset.editInventorySku);
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-edit-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectProductForEdit(button.dataset.editProduct);
+      render();
+    });
+  });
+
   document.querySelectorAll("[data-nav]").forEach((button) => {
     button.addEventListener("click", () => navigate(button.dataset.nav));
   });
@@ -863,6 +1089,8 @@ async function handleAction(action, button) {
   if (action === "refresh") return refreshData();
   if (action === "refreshLinks") return refreshLinks();
   if (action === "createOrder") return createOrder();
+  if (action === "saveInventory") return saveInventory();
+  if (action === "saveProduct") return saveProduct();
   if (action === "createAccount") return createDealerAccount();
   if (action === "resetPassword") return resetDealerPassword(button.dataset.loginId);
   if (action === "deactivateAccount") return deactivateDealerAccount(button.dataset.loginId);
@@ -1017,6 +1245,86 @@ async function updateOrderStatus(orderId, status) {
   showToast(`발주 상태를 ${status}(으)로 변경했습니다.`);
 }
 
+async function saveInventory() {
+  ensureInventoryForm();
+  const dealerCode = state.session?.role === "admin" ? state.forms.inventoryDealerCode : state.session?.dealer_code;
+  const payload = {
+    dealer_code: dealerCode,
+    sku: state.forms.inventorySku,
+    stock_qty: Number(state.forms.inventoryStockQty || 0),
+    safety_stock: Number(state.forms.inventorySafetyStock || 0),
+    location: state.forms.inventoryLocation
+  };
+  if (!payload.dealer_code || !payload.sku) throw new Error("대리점과 제품을 선택해 주세요.");
+  if (payload.stock_qty < 0 || payload.safety_stock < 0) throw new Error("재고와 안전재고는 0 이상이어야 합니다.");
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.saveInventory(payload);
+    if (data?.inventory) upsertInventory(data.inventory);
+  } else {
+    const product = state.products.find((item) => item.sku === payload.sku);
+    upsertInventory({
+      dealer_code: payload.dealer_code,
+      dealer_name: dealerNameByCode(payload.dealer_code),
+      product_name: product?.product_name || payload.sku,
+      sku: payload.sku,
+      category: product?.category || "",
+      color: product?.color || colorNameFromText(product?.product_name || ""),
+      stock_qty: payload.stock_qty,
+      safety_stock: payload.safety_stock,
+      location: payload.location,
+      updated_at: nowText()
+    });
+  }
+  await refreshData(false);
+  state.screen = "inventory";
+  render();
+  scrollTop();
+  showToast("재고가 저장되었습니다.");
+}
+
+async function saveProduct() {
+  if (state.session?.role !== "admin") throw new Error("관리자만 제품을 등록할 수 있습니다.");
+  const payload = {
+    sku: state.forms.productSku.trim(),
+    product_name: state.forms.productName.trim(),
+    category: state.forms.productCategory,
+    unit: state.forms.productUnit.trim() || "롤",
+    is_active: state.forms.productIsActive
+  };
+  if (!payload.sku || !payload.product_name || !payload.category) {
+    throw new Error("SKU, 제품명, 카테고리를 입력해 주세요.");
+  }
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.saveProduct(payload);
+    if (data?.product) upsertProduct(data.product);
+  } else {
+    upsertProduct({ ...payload, color: colorNameFromText(payload.product_name) });
+    dealerAccounts().filter((account) => toBool(account.is_active)).forEach((account) => {
+      const exists = state.inventory.some((row) => row.dealer_code === account.dealer_code && row.sku === payload.sku);
+      if (!exists) {
+        upsertInventory({
+          dealer_code: account.dealer_code,
+          dealer_name: account.dealer_name,
+          product_name: payload.product_name,
+          sku: payload.sku,
+          category: payload.category,
+          color: colorNameFromText(payload.product_name),
+          stock_qty: 0,
+          safety_stock: 0,
+          location: `${account.dealer_name} 창고`,
+          updated_at: nowText()
+        });
+      }
+    });
+  }
+  await refreshData(false);
+  selectProductForEdit(payload.sku);
+  render();
+  showToast("제품이 저장되었습니다.");
+}
+
 async function createDealerAccount() {
   const account = {
     login_id: state.forms.accountLoginId.trim(),
@@ -1101,15 +1409,84 @@ function logout() {
 }
 
 function navigate(screen) {
-  if (screen === "dealers" || screen === "links" || screen === "admin") {
+  if (screen === "dealers" || screen === "links" || screen === "admin" || screen === "productManage") {
     if (state.session?.role !== "admin") {
       showToast("관리자만 접근할 수 있습니다.");
       return;
     }
   }
+  if (screen === "inventoryManage") {
+    ensureInventoryForm();
+  }
+  if (screen === "productManage") {
+    ensureProductForm();
+  }
   state.screen = screen;
   render();
   scrollTop();
+}
+
+function ensureInventoryForm() {
+  if (!state.session) return;
+  if (state.session.role === "dealer") {
+    state.forms.inventoryDealerCode = state.session.dealer_code;
+  }
+  if (!state.forms.inventoryDealerCode) {
+    state.forms.inventoryDealerCode = dealerAccounts().find((account) => toBool(account.is_active))?.dealer_code || state.session.dealer_code || "";
+  }
+  if (!state.forms.inventorySku) {
+    state.forms.inventorySku = state.selectedSku || state.products[0]?.sku || "";
+  }
+  syncInventoryForm();
+}
+
+function syncInventoryForm() {
+  const row = state.inventory.find((item) => item.dealer_code === state.forms.inventoryDealerCode && item.sku === state.forms.inventorySku);
+  if (row) {
+    state.forms.inventoryStockQty = Number(row.stock_qty || 0);
+    state.forms.inventorySafetyStock = Number(row.safety_stock || 0);
+    state.forms.inventoryLocation = row.location || "";
+    return;
+  }
+  state.forms.inventoryStockQty = 0;
+  state.forms.inventorySafetyStock = 0;
+  state.forms.inventoryLocation = `${dealerNameByCode(state.forms.inventoryDealerCode)} 창고`;
+}
+
+function selectInventoryRow(dealerCode, sku) {
+  state.forms.inventoryDealerCode = dealerCode;
+  state.forms.inventorySku = sku;
+  state.selectedSku = sku;
+  syncInventoryForm();
+}
+
+function ensureProductForm() {
+  if (!state.forms.productSku && state.products[0]) {
+    selectProductForEdit(state.products[0].sku);
+  }
+}
+
+function selectProductForEdit(sku) {
+  const product = state.products.find((item) => item.sku === sku);
+  if (!product) return;
+  state.forms.productSku = product.sku;
+  state.forms.productName = product.product_name;
+  state.forms.productCategory = product.category || "PPF";
+  state.forms.productUnit = product.unit || "롤";
+  state.forms.productIsActive = toBool(product.is_active);
+}
+
+function editableInventoryRows() {
+  const query = normalize(state.filters.inventoryQuery);
+  return state.inventory
+    .filter((row) => {
+      if (state.session?.role === "dealer" && row.dealer_code !== state.session.dealer_code) return false;
+      if (state.session?.role === "admin" && state.filters.dealerCode !== "전체" && row.dealer_code !== state.filters.dealerCode) return false;
+      if (!query) return true;
+      return [row.product_name, row.sku, row.dealer_name, row.dealer_code, row.stock_qty, row.location]
+        .some((value) => normalize(value).includes(query));
+    })
+    .sort((a, b) => String(a.dealer_code).localeCompare(String(b.dealer_code)) || String(a.product_name).localeCompare(String(b.product_name), "ko"));
 }
 
 function visibleInventory() {
@@ -1129,7 +1506,7 @@ function visibleInventory() {
 
 function filteredProducts() {
   const query = normalize(state.filters.inventoryQuery);
-  return state.products.filter((product) => {
+  return activeProducts().filter((product) => {
     if (state.selectedColor !== "전체" && product.color !== state.selectedColor && !normalize(product.product_name).includes(normalize(state.selectedColor))) return false;
     if (!query) return true;
     return [product.product_name, product.sku, product.category, product.color].some((value) => normalize(value).includes(query));
@@ -1169,7 +1546,12 @@ function dashboardStats() {
 }
 
 function selectedProduct() {
-  return state.products.find((product) => product.sku === state.selectedSku) || state.products[0];
+  const products = activeProducts();
+  return products.find((product) => product.sku === state.selectedSku) || products[0];
+}
+
+function activeProducts() {
+  return state.products.filter((product) => toBool(product.is_active));
 }
 
 function dealerAccounts() {
@@ -1190,6 +1572,26 @@ function upsertAccount(account) {
   const index = state.accounts.findIndex((item) => item.login_id === account.login_id);
   if (index >= 0) state.accounts[index] = account;
   else state.accounts.push(account);
+}
+
+function upsertInventory(row) {
+  const index = state.inventory.findIndex((item) => item.dealer_code === row.dealer_code && item.sku === row.sku);
+  if (index >= 0) state.inventory[index] = { ...state.inventory[index], ...row };
+  else state.inventory.push(row);
+}
+
+function upsertProduct(product) {
+  const normalized = {
+    ...product,
+    color: product.color || colorNameFromText(product.product_name)
+  };
+  const index = state.products.findIndex((item) => item.sku === normalized.sku);
+  if (index >= 0) state.products[index] = { ...state.products[index], ...normalized };
+  else state.products.push(normalized);
+}
+
+function dealerNameByCode(dealerCode) {
+  return state.accounts.find((account) => account.dealer_code === dealerCode)?.dealer_name || dealerCode;
 }
 
 function seedInventoryForDealer(account) {
@@ -1235,6 +1637,11 @@ function statusTone(status) {
 function colorHex(value) {
   const found = colorOptions.find((option) => option.value !== "전체" && normalize(value).includes(normalize(option.value)));
   return found?.hex || "#0f7a64";
+}
+
+function colorNameFromText(value) {
+  const found = colorOptions.find((option) => option.value !== "전체" && normalize(value).includes(normalize(option.value)));
+  return found?.value || "";
 }
 
 function roll(value) {
