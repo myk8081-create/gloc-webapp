@@ -60,6 +60,62 @@ function setupInitialData() {
   seedInventoryIfEmpty_();
 }
 
+function resetAdminPassword() {
+  ensureSheets_();
+  const account = findAccountByLoginId_("admin");
+  if (!account) {
+    appendObject_(SHEETS.accounts, {
+      login_id: "admin",
+      password_hash: hashPassword_("admin1234!"),
+      dealer_code: "ADMIN",
+      dealer_name: "본사 관리자",
+      role: "admin",
+      is_first_login: true,
+      is_active: true,
+      updated_at: isoNow_()
+    });
+    return "admin 계정을 생성했습니다. 초기 비밀번호는 admin1234! 입니다.";
+  }
+
+  updateAccount_("admin", {
+    password_hash: hashPassword_("admin1234!"),
+    dealer_code: "ADMIN",
+    dealer_name: account.dealer_name || "본사 관리자",
+    role: "admin",
+    is_first_login: true,
+    is_active: true,
+    updated_at: isoNow_()
+  });
+  return "admin 비밀번호를 admin1234! 로 초기화했습니다.";
+}
+
+function resetDealer01Password() {
+  ensureSheets_();
+  const account = findAccountByLoginId_("dealer01");
+  if (!account) {
+    appendObject_(SHEETS.accounts, {
+      login_id: "dealer01",
+      password_hash: hashPassword_("stock2026!"),
+      dealer_code: "D001",
+      dealer_name: "서울 총판",
+      role: "dealer",
+      is_first_login: true,
+      is_active: true,
+      updated_at: isoNow_()
+    });
+    seedInventoryForDealer_("D001", "서울 총판");
+    return "dealer01 계정을 생성했습니다. 초기 비밀번호는 stock2026! 입니다.";
+  }
+
+  updateAccount_("dealer01", {
+    password_hash: hashPassword_("stock2026!"),
+    is_first_login: true,
+    is_active: true,
+    updated_at: isoNow_()
+  });
+  return "dealer01 비밀번호를 stock2026! 로 초기화했습니다.";
+}
+
 function handleLogin_(payload) {
   const loginId = required_(payload.login_id, "login_id");
   const password = required_(payload.password, "password");
