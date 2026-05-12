@@ -123,3 +123,5 @@
   "base_url": "https://stock.example.com"
 }
 ```
+
+응답의 `common_link`와 각 `links[].link`는 모두 같은 공통 로그인 링크입니다. 대리점 구분은 URL이 아니라 로그인 시 입력하는 `login_id`, `password`, `dealer_code`로 처리합니다.

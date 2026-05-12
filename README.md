@@ -148,9 +148,11 @@ APP_PUBLIC_URL=https://stock.example.com
 ## QR코드와 카카오톡 링크
 
 1. 관리자 화면에서 `QR` 메뉴로 이동합니다.
-2. 대리점별 전용 링크가 자동 생성됩니다. 예: `https://stock.example.com/login?dealer=D001`
-3. QR 다운로드 버튼으로 QR 이미지를 저장합니다.
-4. 안내문 복사 버튼을 눌러 카카오톡으로 전달합니다.
+2. 모든 대리점이 함께 쓰는 공통 접속 링크가 생성됩니다. 예: `https://stock.example.com/login`
+3. 공통 QR 다운로드 버튼으로 QR 이미지를 저장합니다.
+4. 대리점별 안내문 복사 버튼을 눌러 카카오톡으로 전달합니다.
+
+QR과 접속 링크는 모든 대리점이 동일하게 사용합니다. 대리점 구분은 로그인 화면에서 `초기 ID`, `초기 PW`, `대리점 코드`로 처리합니다.
 
 카카오톡 안내문 예시:
 
@@ -158,7 +160,7 @@ APP_PUBLIC_URL=https://stock.example.com
 안녕하세요.
 재고조회 및 발주는 아래 링크에서 진행해 주세요.
 
-접속 링크: https://stock.example.com/login?dealer=D001
+접속 링크: https://stock.example.com/login
 초기 ID: dealer01
 초기 PW: 초기 발급/초기화한 비밀번호
 대리점 코드: D001

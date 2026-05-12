@@ -246,17 +246,23 @@ function handleDeactivateDealerAccount_(payload, user) {
 function handleGetDealerLinks_(payload, user) {
   requireAdmin_(user);
   const baseUrl = String(payload.base_url || getSetting_("app_public_url") || "").replace(/\/$/, "");
+  const commonLink = commonLoginUrl_(baseUrl);
   const accounts = listPublicAccounts_().filter((account) => account.role === "dealer" && toBool_(account.is_active));
   const links = accounts.map((account) => {
-    const link = baseUrl ? baseUrl + "/login?dealer=" + encodeURIComponent(account.dealer_code) : "";
     return {
       login_id: account.login_id,
       dealer_code: account.dealer_code,
       dealer_name: account.dealer_name,
-      link: link
+      link: commonLink
     };
   });
-  return { accounts: accounts, links: links };
+  return { common_link: commonLink, accounts: accounts, links: links };
+}
+
+function commonLoginUrl_(baseUrl) {
+  if (!baseUrl) return "";
+  if (baseUrl.slice(-11) === "/index.html" || baseUrl.slice(-6) === "/login") return baseUrl;
+  return baseUrl + "/login";
 }
 
 function ensureSheets_() {

@@ -138,9 +138,9 @@ const state = {
   },
   forms: {
     loginRole: "dealer",
-    loginId: "dealer01",
+    loginId: "",
     password: "",
-    dealerCode: "D001",
+    dealerCode: "",
     currentPassword: "",
     newPassword: "",
     newPasswordConfirm: "",
@@ -327,7 +327,7 @@ function renderAdminDashboard() {
             </button>
             <button class="quick-card" type="button" data-nav="links">
               <strong>QR/안내문</strong>
-              <span>대리점별 전용 링크 자동 생성</span>
+              <span>공통 QR과 대리점별 안내문 생성</span>
             </button>
           </div>
         </article>
@@ -549,19 +549,28 @@ function renderOrderCreate() {
 
 function renderDealerLinks() {
   const dealerAccounts = state.accounts.filter((account) => account.role === "dealer" && toBool(account.is_active));
+  const commonUrl = commonLoginUrl();
   return `
     <main class="screen ${state.screen === "links" ? "active" : ""}" data-screen="links">
       <section class="page-head">
         <p class="eyebrow">QR / 카카오톡 안내문</p>
-        <h1>대리점별 접속 링크 생성</h1>
-        <p class="lead">각 대리점에 전달할 전용 URL, QR코드, 카카오톡 안내문을 자동으로 생성합니다.</p>
+        <h1>공통 접속 링크와 QR</h1>
+        <p class="lead">모든 대리점은 동일한 링크와 QR로 접속하고, 로그인할 때 대리점별 아이디와 대리점 코드를 입력합니다.</p>
         <div class="page-actions">
           <button class="secondary-button" type="button" data-action="refreshLinks">링크 새로고침</button>
         </div>
       </section>
 
       <section class="link-grid">
-        ${dealerAccounts.map(renderDealerLinkCard).join("") || `<div class="panel empty">활성 대리점 계정이 없습니다.</div>`}
+        ${renderCommonLinkCard(commonUrl)}
+      </section>
+
+      <section class="panel list-panel message-panel">
+        <h3>대리점별 카카오톡 안내문</h3>
+        <p class="product-meta">접속 링크는 모두 같고, 로그인 정보만 대리점별로 다르게 안내합니다.</p>
+        <div class="account-list">
+          ${dealerAccounts.map(renderDealerLinkCard).join("") || `<div class="empty">활성 대리점 계정이 없습니다.</div>`}
+        </div>
       </section>
     </main>
   `;
@@ -669,31 +678,44 @@ function renderAccountRow(account) {
   `;
 }
 
+function renderCommonLinkCard(url) {
+  return `
+    <article class="panel link-card common-link-card">
+      <div class="link-card-head">
+        <div>
+          <h3>공통 접속 QR</h3>
+          <p class="product-meta">모든 대리점 공용 로그인 링크</p>
+        </div>
+        <img class="qr-image" src="${escapeAttr(qrUrl(url))}" alt="공통 접속 QR" />
+      </div>
+      <label class="field">
+        <span>공통 접속 링크</span>
+        <input type="text" value="${escapeAttr(url)}" readonly />
+      </label>
+      <div class="page-actions">
+        <button type="button" class="secondary-button" data-copy="${escapeAttr(url)}">링크 복사</button>
+        <button type="button" class="primary-button" data-qr-download="${escapeAttr(url)}" data-file-name="film-stock-common-qr.png">QR 다운로드</button>
+      </div>
+    </article>
+  `;
+}
+
 function renderDealerLinkCard(account) {
-  const url = dealerUrl(account.dealer_code);
+  const url = commonLoginUrl();
   const tempPassword = state.tempPasswords[account.login_id] || "초기 발급/초기화한 비밀번호";
   const message = kakaoMessage(account, url, tempPassword);
   return `
     <article class="panel link-card">
-      <div class="link-card-head">
-        <div>
-          <h3>${escapeHtml(account.dealer_name)}</h3>
-          <p class="product-meta">${escapeHtml(account.dealer_code)} · ${escapeHtml(account.login_id)}</p>
-        </div>
-        <img class="qr-image" src="${escapeAttr(qrUrl(url))}" alt="${escapeAttr(account.dealer_name)} QR" />
+      <div>
+        <h3>${escapeHtml(account.dealer_name)}</h3>
+        <p class="product-meta">${escapeHtml(account.dealer_code)} · ${escapeHtml(account.login_id)}</p>
       </div>
-      <label class="field">
-        <span>접속 링크</span>
-        <input type="text" value="${escapeAttr(url)}" readonly />
-      </label>
       <label class="field">
         <span>카카오톡 안내문</span>
         <textarea readonly>${escapeHtml(message)}</textarea>
       </label>
       <div class="page-actions">
-        <button type="button" class="secondary-button" data-copy="${escapeAttr(url)}">링크 복사</button>
         <button type="button" class="secondary-button" data-copy="${escapeAttr(message)}">안내문 복사</button>
-        <button type="button" class="primary-button" data-qr-download="${escapeAttr(url)}" data-file-name="${escapeAttr(account.dealer_code)}-qr.png">QR 다운로드</button>
       </div>
     </article>
   `;
@@ -731,8 +753,8 @@ function bindEvents() {
         state.forms.loginId = "admin";
         state.forms.dealerCode = "ADMIN";
       } else if (state.forms.loginId === "admin") {
-        state.forms.loginId = "dealer01";
-        state.forms.dealerCode = "D001";
+        state.forms.loginId = "";
+        state.forms.dealerCode = "";
       }
       render();
     });
@@ -1211,11 +1233,10 @@ function nowText() {
   }).format(new Date());
 }
 
-function dealerUrl(dealerCode) {
+function commonLoginUrl() {
   const base = appPublicBase();
-  const encoded = encodeURIComponent(dealerCode);
-  if (base.endsWith("index.html") || base.endsWith("/login")) return `${base}?dealer=${encoded}`;
-  return `${base.replace(/\/$/, "")}/login?dealer=${encoded}`;
+  if (base.endsWith("index.html") || base.endsWith("/login")) return base;
+  return `${base.replace(/\/$/, "")}/login`;
 }
 
 function appPublicBase() {
