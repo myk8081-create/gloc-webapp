@@ -206,9 +206,11 @@ function renderTopbar() {
   return `
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark"></div>
+        <div class="brand-mark">
+          <img src="gloc-logo.png" alt="GLOC" />
+        </div>
         <div>
-          <div class="brand-title">Film Stock</div>
+          <div class="brand-title">GLOC</div>
           <div class="brand-subtitle">${escapeHtml(subtitle)}</div>
         </div>
       </div>

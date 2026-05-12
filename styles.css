@@ -88,11 +88,22 @@ button:disabled {
 }
 
 .brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 34px;
   height: 34px;
   flex: 0 0 auto;
   border-radius: 8px;
   background: var(--primary);
+  overflow: hidden;
+}
+
+.brand-mark img {
+  width: 28px;
+  height: 28px;
+  display: block;
+  object-fit: contain;
 }
 
 .brand-title {

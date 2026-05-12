@@ -9,6 +9,7 @@ const files = [
   "styles.css",
   "api.js",
   "app.js",
+  "gloc-logo.png",
   "manifest.webmanifest",
   "mobile-test-qr.png"
 ];
