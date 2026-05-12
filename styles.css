@@ -1005,7 +1005,7 @@ h3 {
 
 @media (min-width: 760px) {
   .app-shell {
-    padding-bottom: 0;
+    padding-bottom: calc(112px + env(safe-area-inset-bottom));
   }
 
   .topbar {
@@ -1104,9 +1104,14 @@ h3 {
     right: 50%;
     left: 50%;
     width: min(720px, calc(100vw - 32px));
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     transform: translateX(-50%);
     border: 1px solid var(--line);
     border-radius: 16px 16px 0 0;
+  }
+
+  .bottom-nav.admin-nav {
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   }
 }
 
