@@ -8,7 +8,7 @@ PPF/틴팅 제품을 판매하는 본사와 대리점용 재고조회 및 발주
 - Frontend: HTML, CSS, JavaScript 정적 웹앱
 - Backend/DB: Google Sheets + Google Apps Script Web App API
 - Deploy: Vercel 정적 배포
-- 주요 화면: 로그인, 최초 비밀번호 변경, 관리자 대시보드, 대리점 관리, 재고조회, 발주관리, 발주신청, QR/카카오톡 안내문 생성
+- 주요 화면: 로그인, 최초 비밀번호 변경, 관리자 대시보드, 대리점 관리, 내/타대리점 재고조회, 발주관리, 발주신청, QR/카카오톡 안내문 생성
 
 ## Google Sheets 만들기
 
@@ -188,5 +188,5 @@ QR과 접속 링크는 모든 대리점이 동일하게 사용합니다. 대리�
 - Google Sheets 원본 URL은 프론트엔드에 넣지 않습니다.
 - 프론트엔드는 Apps Script Web App URL만 호출합니다.
 - 로그인 검증과 비밀번호 변경은 Apps Script 내부에서 처리합니다.
-- 대리점 계정은 자기 `dealer_code` 데이터만 받을 수 있습니다.
+- 대리점 계정은 내 재고와 타대리점 재고를 분리 조회할 수 있고, 발주 등록은 자기 `dealer_code`로만 처리됩니다.
 - 비활성 계정은 로그인할 수 없습니다.

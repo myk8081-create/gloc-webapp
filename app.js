@@ -132,6 +132,7 @@ const state = {
   selectedSku: mockProducts[0].sku,
   filters: {
     inventoryQuery: "",
+    inventoryScope: "mine",
     orderQuery: "",
     orderStatus: "전체",
     dealerCode: "전체"
@@ -390,17 +391,26 @@ function renderDealerManagement() {
 function renderInventory() {
   const rows = visibleInventory();
   const stats = inventoryStats(rows);
+  const dealerScope = state.session?.role === "dealer" ? state.filters.inventoryScope : "all";
+  const inventoryTitle = dealerScope === "others" ? "타대리점 제품 재고" : dealerScope === "mine" ? "내 대리점 제품 재고" : "대리점별 제품 재고";
   return `
     <main class="screen ${state.screen === "inventory" ? "active" : ""}" data-screen="inventory">
       <section class="page-head">
         <p class="eyebrow">${escapeHtml(currentDealerName())}</p>
         <h1>재고조회</h1>
-        <p class="lead">${state.session?.role === "admin" ? "전체 대리점 재고를 조회합니다." : "본인 대리점 재고만 조회됩니다."}</p>
+        <p class="lead">${state.session?.role === "admin" ? "전체 대리점 재고를 조회합니다." : "내 대리점 재고와 타대리점 재고를 분리해서 조회합니다."}</p>
         <div class="page-actions">
           ${state.session?.role === "dealer" ? `<button class="primary-button" type="button" data-nav="orderCreate">발주 신청</button>` : `<button class="primary-button" type="button" data-nav="orders">발주관리</button>`}
           <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
         </div>
       </section>
+
+      ${state.session?.role === "dealer" ? `
+        <section class="scope-switch" aria-label="재고 조회 범위">
+          <button type="button" class="${state.filters.inventoryScope === "mine" ? "active" : ""}" data-inventory-scope="mine">내 대리점 재고</button>
+          <button type="button" class="${state.filters.inventoryScope === "others" ? "active" : ""}" data-inventory-scope="others">타대리점 재고</button>
+        </section>
+      ` : ""}
 
       <section class="stats-grid">
         <div class="metric">
@@ -436,7 +446,7 @@ function renderInventory() {
       </section>
 
       <section class="panel list-panel">
-        <h3>대리점별 제품 재고</h3>
+        <h3>${inventoryTitle}</h3>
         <div class="table-scroll">
           <table class="data-table">
             <thead>
@@ -589,11 +599,12 @@ function renderDealerFilter() {
 
 function renderInventoryRow(row) {
   const isLow = Number(row.stock_qty || 0) <= Number(row.safety_stock || 0);
+  const isMine = state.session?.role === "dealer" && row.dealer_code === state.session.dealer_code;
   return `
     <tr class="${isLow ? "is-low" : ""}">
       <td>
         <strong>${escapeHtml(row.dealer_name || row.dealer_code)}</strong>
-        <div class="product-meta">${escapeHtml(row.dealer_code)}</div>
+        <div class="product-meta">${escapeHtml(row.dealer_code)}${isMine ? " · 내 대리점" : ""}</div>
       </td>
       <td>
         <strong>${escapeHtml(row.product_name)}</strong>
@@ -791,6 +802,13 @@ function bindEvents() {
   document.querySelector("#dealerFilter")?.addEventListener("change", (event) => {
     state.filters.dealerCode = event.target.value;
     render();
+  });
+
+  document.querySelectorAll("[data-inventory-scope]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.inventoryScope = button.dataset.inventoryScope;
+      render();
+    });
   });
 
   document.querySelectorAll("[data-color]").forEach((button) => {
@@ -1098,7 +1116,8 @@ function visibleInventory() {
   const query = normalize(state.filters.inventoryQuery);
   return state.inventory
     .filter((row) => {
-      if (state.session?.role === "dealer" && row.dealer_code !== state.session.dealer_code) return false;
+      if (state.session?.role === "dealer" && state.filters.inventoryScope === "mine" && row.dealer_code !== state.session.dealer_code) return false;
+      if (state.session?.role === "dealer" && state.filters.inventoryScope === "others" && row.dealer_code === state.session.dealer_code) return false;
       if (state.session?.role === "admin" && state.filters.dealerCode !== "전체" && row.dealer_code !== state.filters.dealerCode) return false;
       if (state.selectedColor !== "전체" && row.color !== state.selectedColor && !normalize(row.product_name).includes(normalize(state.selectedColor))) return false;
       if (!query) return true;

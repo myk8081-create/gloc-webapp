@@ -462,6 +462,30 @@ h3 {
   margin-bottom: 14px;
 }
 
+.scope-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+}
+
+.scope-switch button {
+  min-height: 38px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.scope-switch button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
 .chip-row {
   display: flex;
   gap: 8px;

@@ -186,9 +186,7 @@ function handleGetInventory_(payload, user) {
     };
   });
 
-  if (user.role === "dealer") {
-    inventory = inventory.filter((row) => row.dealer_code === user.dealer_code);
-  } else if (payload.dealer_code) {
+  if (payload.dealer_code && (user.role === "admin" || String(payload.dealer_code).toUpperCase() === String(user.dealer_code).toUpperCase())) {
     inventory = inventory.filter((row) => row.dealer_code === payload.dealer_code);
   }
 
