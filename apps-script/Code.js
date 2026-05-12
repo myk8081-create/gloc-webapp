@@ -1,8 +1,8 @@
 const SHEETS = {
-  accounts: "accounts",
-  inventory: "inventory",
-  orders: "orders",
-  products: "products",
+  accounts: "대리점관리",
+  inventory: "재고현황",
+  orders: "발주현황",
+  products: "제품등록",
   settings: "settings"
 };
 
