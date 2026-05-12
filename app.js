@@ -25,18 +25,7 @@ const baseProducts = [
 ];
 
 const mockDealers = [
-  { dealer_code: "D001", dealer_name: "서울 총판", region: "서울" },
-  { dealer_code: "D002", dealer_name: "경기 대리점", region: "경기" },
-  { dealer_code: "D003", dealer_name: "부산 총판", region: "부산" },
-  { dealer_code: "D004", dealer_name: "대구 대리점", region: "대구" },
-  { dealer_code: "D005", dealer_name: "광주 대리점", region: "광주" },
-  { dealer_code: "D006", dealer_name: "대전 대리점", region: "대전" },
-  { dealer_code: "D007", dealer_name: "인천 대리점", region: "인천" },
-  { dealer_code: "D008", dealer_name: "제주 대리점", region: "제주" },
-  { dealer_code: "D009", dealer_name: "온라인몰", region: "온라인" },
-  { dealer_code: "D010", dealer_name: "울산 대리점", region: "울산" },
-  { dealer_code: "D011", dealer_name: "수원 대리점", region: "수원" },
-  { dealer_code: "D012", dealer_name: "창원 대리점", region: "창원" }
+  { dealer_code: "D001", dealer_name: "서울 총판", region: "서울" }
 ];
 
 function createMockProducts() {
@@ -123,30 +112,6 @@ function createMockOrders(products) {
       qty: 40,
       status: "접수",
       memo: "이번 주 내 출고 요청",
-      created_at: nowText(),
-      updated_at: nowText()
-    },
-    {
-      order_id: "ORD-260511-002",
-      dealer_code: "D003",
-      dealer_name: "부산 총판",
-      product_name: products[1].product_name,
-      sku: products[1].sku,
-      qty: 24,
-      status: "승인",
-      memo: "매장 재고 보충",
-      created_at: nowText(),
-      updated_at: nowText()
-    },
-    {
-      order_id: "ORD-260511-003",
-      dealer_code: "D002",
-      dealer_name: "경기 대리점",
-      product_name: products[3].product_name,
-      sku: products[3].sku,
-      qty: 18,
-      status: "출고",
-      memo: "긴급 시공분",
       created_at: nowText(),
       updated_at: nowText()
     }
