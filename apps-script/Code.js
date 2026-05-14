@@ -52,7 +52,7 @@ function doPost(e) {
 
 function doGet() {
   return ok_({
-    app: "Film Stock Apps Script API",
+    app: "GLOC Apps Script API",
     status: "ready",
     updated_at: isoNow_()
   });

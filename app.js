@@ -915,7 +915,7 @@ function renderCommonLinkCard(url) {
       </label>
       <div class="page-actions">
         <button type="button" class="secondary-button" data-copy="${escapeAttr(url)}">링크 복사</button>
-        <button type="button" class="primary-button" data-qr-download="${escapeAttr(url)}" data-file-name="film-stock-common-qr.png">QR 다운로드</button>
+        <button type="button" class="primary-button" data-qr-download="${escapeAttr(url)}" data-file-name="gloc-common-qr.png">QR 다운로드</button>
       </div>
     </article>
   `;

@@ -1,4 +1,4 @@
-# Film Stock 납품형 MVP 구조
+# GLOC 납품형 MVP 구조
 
 ## 운영 흐름
 

@@ -1,0 +1,1290 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GLOC 재고관리 웹앱 사용 매뉴얼</title>
+    <style>
+      :root {
+        --green: #117a63;
+        --green-dark: #0c4f41;
+        --mint: #eaf5f1;
+        --line: #cfe2dc;
+        --ink: #1c2b28;
+        --muted: #62736e;
+        --paper: #ffffff;
+        --bg: #f5faf8;
+        --warn: #fff6df;
+        --danger: #fff1f1;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        line-height: 1.65;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 300px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        padding: 28px 20px;
+        overflow: auto;
+        color: #ffffff;
+        background: var(--green-dark);
+      }
+
+      .brand {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 28px;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        font-weight: 900;
+      }
+
+      .brand strong {
+        display: block;
+        font-size: 20px;
+      }
+
+      .brand span {
+        display: block;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 13px;
+      }
+
+      .nav-group {
+        margin: 20px 0 8px;
+        color: rgba(255, 255, 255, 0.58);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+      }
+
+      .nav-button {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        gap: 10px;
+        margin: 6px 0;
+        padding: 11px 12px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        color: rgba(255, 255, 255, 0.86);
+        background: transparent;
+        cursor: pointer;
+        font: inherit;
+        font-size: 14px;
+        text-align: left;
+      }
+
+      .nav-button:hover,
+      .nav-button.active {
+        border-color: rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.11);
+        color: #ffffff;
+      }
+
+      .content {
+        padding: 48px min(6vw, 72px);
+      }
+
+      .chapter {
+        display: none;
+        max-width: 1040px;
+      }
+
+      .chapter.active {
+        display: block;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--green);
+        font-weight: 900;
+      }
+
+      h1 {
+        margin: 0 0 14px;
+        font-size: clamp(34px, 5vw, 58px);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin: 40px 0 14px;
+        font-size: 26px;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      .lead {
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .panel,
+      .step,
+      .callout {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+      }
+
+      .panel {
+        margin: 22px 0;
+        padding: 24px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        color: var(--green-dark);
+        background: var(--mint);
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .steps {
+        display: grid;
+        gap: 12px;
+        margin: 18px 0 0;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr);
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .num {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        place-items: center;
+        border-radius: 50%;
+        color: #ffffff;
+        background: var(--green);
+        font-weight: 900;
+      }
+
+      .click-path {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: var(--green-dark);
+        background: var(--mint);
+        font-weight: 900;
+      }
+
+      .callout {
+        margin: 18px 0;
+        padding: 18px;
+        background: #ffffff;
+      }
+
+      .callout.warn {
+        border-color: #eed9a5;
+        background: var(--warn);
+      }
+
+      .callout.danger {
+        border-color: #f0c7c7;
+        background: var(--danger);
+      }
+
+      .table-wrap {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      table {
+        width: 100%;
+        min-width: 680px;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        background: #f7fbfa;
+        font-size: 13px;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: var(--mint);
+      }
+
+      .pager {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        margin: 34px 0 0;
+      }
+
+      .pager button,
+      .print-button {
+        min-height: 44px;
+        padding: 0 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        background: #ffffff;
+        cursor: pointer;
+        font-weight: 900;
+      }
+
+      .pager button.primary,
+      .print-button {
+        border-color: var(--green);
+        color: #ffffff;
+        background: var(--green);
+      }
+
+      .mobile-top {
+        display: none;
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      select {
+        width: 100%;
+        min-height: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        background: #ffffff;
+        font: inherit;
+      }
+
+      @media (max-width: 860px) {
+        .layout {
+          display: block;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .mobile-top {
+          display: block;
+          position: sticky;
+          top: 0;
+          z-index: 2;
+        }
+
+        .content {
+          padding: 28px 18px 44px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .step {
+          grid-template-columns: 34px minmax(0, 1fr);
+        }
+      }
+
+      @media print {
+        .sidebar,
+        .mobile-top,
+        .pager,
+        .print-button {
+          display: none;
+        }
+
+        .layout {
+          display: block;
+        }
+
+        .content {
+          padding: 0;
+        }
+
+        .chapter {
+          display: block;
+          break-after: page;
+        }
+
+        body {
+          background: #ffffff;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mobile-top">
+      <select id="chapterSelect" aria-label="매뉴얼 목차"></select>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">G</div>
+          <div>
+            <strong>GLOC</strong>
+            <span>재고관리 사용 매뉴얼</span>
+          </div>
+        </div>
+        <div id="sideNav"></div>
+      </aside>
+
+      <main class="content">
+        <section class="chapter active" data-title="처음 보는 분을 위한 요약" id="overview">
+          <p class="eyebrow">START</p>
+          <h1>처음 사용하는 분은 여기부터 보세요</h1>
+          <p class="lead">이 매뉴얼은 개발 지식 없이 GLOC 재고관리 웹앱을 운영하는 사람을 위한 클릭형 안내서입니다. 왼쪽 목차 또는 아래 다음 버튼을 눌러 단계별로 진행하면 됩니다.</p>
+
+          <div class="panel">
+            <h2>웹앱에서 할 수 있는 일</h2>
+            <div class="grid">
+              <div class="card">
+                <span class="badge">관리자</span>
+                <h3>본사 운영</h3>
+                <p>대리점 계정 생성, 제품 등록, 본사 재고 수정, 전체 재고 조회, 발주 상태 변경, QR/안내문 생성을 할 수 있습니다.</p>
+              </div>
+              <div class="card">
+                <span class="badge">대리점/샵</span>
+                <h3>현장 운영</h3>
+                <p>내 재고 조회/수정, 본사 재고 조회, 전체 대리점/샵 재고 조회, 발주 신청, 내 발주 내역 확인을 할 수 있습니다.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <h3>중요</h3>
+            <p>관리자는 모든 정보를 볼 수 있습니다. 대리점/샵은 발주와 재고 수정은 본인 계정 기준으로만 할 수 있습니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="로그인하기" id="login">
+          <p class="eyebrow">LOGIN</p>
+          <h1>로그인하기</h1>
+          <p class="lead">QR 또는 카카오톡 링크로 접속하면 로그인 화면이 나옵니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>웹앱 주소 또는 QR로 접속</h3>
+                <p>휴대폰 카메라로 QR을 스캔하거나, 카카오톡으로 받은 링크를 누릅니다.</p>
+                <span class="click-path">QR 스캔 또는 링크 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>로그인 유형 선택</h3>
+                <p>본사 담당자는 <strong>관리자</strong>, 대리점/샵은 <strong>대리점</strong>을 선택합니다.</p>
+                <span class="click-path">대리점 또는 관리자 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>아이디, 비밀번호, 대리점 코드 입력</h3>
+                <p>관리자는 대리점 코드에 <code>ADMIN</code>을 입력합니다. 대리점/샵은 안내받은 대리점 코드를 입력합니다.</p>
+                <span class="click-path">아이디 입력 → 비밀번호 입력 → 대리점 코드 입력</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>로그인 후 이동</h3>
+                <p>입력이 끝나면 <strong>로그인 후 이동</strong> 버튼을 누릅니다.</p>
+                <span class="click-path">로그인 후 이동 클릭</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <h3>최초 로그인 화면이 나오면</h3>
+            <p>초기 비밀번호로 처음 로그인한 계정은 새 비밀번호 변경 화면으로 이동합니다. 새 비밀번호는 8자 이상으로 입력하세요.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="관리자 첫 세팅" id="admin-start">
+          <p class="eyebrow">ADMIN SETUP</p>
+          <h1>관리자가 처음 해야 할 일</h1>
+          <p class="lead">처음에는 관리자 비밀번호 변경, 제품 등록, 대리점 계정 생성, 공통 QR 전달 순서로 진행하면 됩니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>관리자 비밀번호 변경</h3>
+                <p>초기 비밀번호로 로그인하면 비밀번호 변경 화면이 나옵니다. 회사에서 사용할 새 비밀번호로 바꿉니다.</p>
+                <span class="click-path">현재 비밀번호 입력 → 새 비밀번호 입력 → 비밀번호 변경 후 시작 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>제품 등록</h3>
+                <p>판매할 PPF/틴팅 제품을 먼저 등록합니다. 제품이 등록되어야 재고와 발주에서 선택할 수 있습니다.</p>
+                <span class="click-path">제품 메뉴 클릭 → SKU/제품명/카테고리 입력 → 제품 저장 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>대리점 계정 생성</h3>
+                <p>각 대리점/샵이 로그인할 계정을 만듭니다.</p>
+                <span class="click-path">대리점 메뉴 클릭 → 대리점 코드/대리점명/아이디/초기 비밀번호 입력 → 대리점 계정 생성 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>QR과 카카오톡 안내문 전달</h3>
+                <p>모든 대리점은 같은 QR과 같은 링크를 사용합니다. 로그인 정보만 대리점별로 다르게 전달합니다.</p>
+                <span class="click-path">QR 메뉴 클릭 → QR 다운로드 또는 안내문 복사 클릭</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="대리점 계정 관리" id="dealer-account">
+          <p class="eyebrow">ACCOUNT</p>
+          <h1>대리점 계정 만들기와 관리</h1>
+          <p class="lead">대리점/샵이 앱을 사용하려면 관리자 화면에서 계정을 먼저 만들어야 합니다.</p>
+
+          <h2>새 계정 만들기</h2>
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>대리점 메뉴로 이동</h3>
+                <p>관리자 로그인 후 하단 또는 화면의 <strong>대리점</strong> 메뉴를 누릅니다.</p>
+                <span class="click-path">대리점 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>계정 정보 입력</h3>
+                <p>대리점 코드, 대리점명, 아이디, 초기 비밀번호를 입력합니다.</p>
+                <span class="click-path">D001 → 서울 총판 → dealer01 → 임시 비밀번호 입력</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>계정 생성</h3>
+                <p><strong>대리점 계정 생성</strong> 버튼을 누르면 계정이 만들어집니다.</p>
+                <span class="click-path">대리점 계정 생성 클릭</span>
+              </div>
+            </div>
+          </div>
+
+          <h2>비밀번호 초기화</h2>
+          <p>대리점이 비밀번호를 잊었을 때 사용합니다. 기존 비밀번호는 확인할 수 없고, 새 임시 비밀번호를 발급해야 합니다.</p>
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>계정 목록에서 찾기</h3>
+                <p>초기화할 대리점 계정 오른쪽의 <strong>PW 초기화</strong>를 누릅니다.</p>
+                <span class="click-path">대리점 메뉴 → PW 초기화 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>새 임시 비밀번호 입력</h3>
+                <p>입력한 임시 비밀번호를 대리점에 전달합니다. 대리점은 다음 로그인 시 새 비밀번호로 변경합니다.</p>
+                <span class="click-path">임시 비밀번호 입력 → 확인</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout danger">
+            <h3>계정삭제 주의</h3>
+            <p><strong>계정삭제</strong>를 누르면 해당 대리점 계정과 해당 대리점의 재고 행이 삭제됩니다. 기존 발주 이력은 남습니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="제품 등록/수정/삭제" id="product">
+          <p class="eyebrow">PRODUCT</p>
+          <h1>제품 등록, 수정, 삭제</h1>
+          <p class="lead">제품은 관리자만 등록/수정/삭제할 수 있습니다. 제품을 먼저 등록해야 재고와 발주에서 사용할 수 있습니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>제품 메뉴 열기</h3>
+                <p>관리자 로그인 후 <strong>제품</strong> 메뉴를 누릅니다.</p>
+                <span class="click-path">제품 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>제품 정보 입력</h3>
+                <p>SKU, 제품명, 카테고리, 단위, 판매 여부를 입력합니다.</p>
+                <span class="click-path">SKU 입력 → 제품명 입력 → 카테고리 선택 → 제품 저장 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>기존 제품 수정</h3>
+                <p>제품 목록에서 수정할 제품을 선택한 뒤 내용을 바꾸고 <strong>제품 저장</strong>을 누릅니다.</p>
+                <span class="click-path">제품 목록에서 제품 클릭 → 내용 수정 → 제품 저장 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>제품 삭제</h3>
+                <p>제품 목록에서 <strong>삭제</strong>를 누르면 해당 SKU 제품과 재고 행이 삭제됩니다.</p>
+                <span class="click-path">삭제 클릭 → 확인</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <h3>SKU는 제품의 고유번호입니다</h3>
+            <p>같은 SKU를 다시 저장하면 새 제품이 생기는 것이 아니라 기존 제품 정보가 수정됩니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="재고 조회하기" id="inventory-view">
+          <p class="eyebrow">INVENTORY</p>
+          <h1>재고 조회하기</h1>
+          <p class="lead">재고 화면에서는 본사 재고, 내 대리점/샵 재고, 전체 대리점/샵 재고를 나누어 볼 수 있습니다.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>로그인 유형</th>
+                  <th>보이는 탭</th>
+                  <th>의미</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>관리자</td>
+                  <td>본사 재고, 전체 대리점/샵 재고</td>
+                  <td>관리자는 본사 재고와 모든 대리점/샵 재고를 조회할 수 있습니다.</td>
+                </tr>
+                <tr>
+                  <td>대리점/샵</td>
+                  <td>내 대리점/샵 재고, 본사 재고, 전체 대리점/샵 재고</td>
+                  <td>대리점은 전체를 볼 수 있지만 수정과 발주는 본인 계정 기준으로 처리됩니다.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>재고 메뉴 열기</h3>
+                <p>로그인 후 하단 메뉴의 <strong>재고</strong>를 누릅니다.</p>
+                <span class="click-path">재고 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>조회 범위 선택</h3>
+                <p>상단의 탭에서 보고 싶은 범위를 선택합니다.</p>
+                <span class="click-path">본사 재고 또는 전체 대리점/샵 재고 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>검색어 입력</h3>
+                <p>제품명, SKU, 대리점명, 재고수량으로 검색할 수 있습니다.</p>
+                <span class="click-path">검색창 클릭 → 검색어 입력</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <h3>안전재고 이하 표시</h3>
+            <p>현재 재고가 안전재고보다 적거나 같으면 강조 표시됩니다. 발주 또는 재고 보충이 필요한 제품입니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="재고 수정하기" id="inventory-edit">
+          <p class="eyebrow">EDIT STOCK</p>
+          <h1>재고 수정하기</h1>
+          <p class="lead">관리자는 본사 재고를 수정하고, 대리점/샵은 본인 재고만 수정합니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>재고수정 화면 열기</h3>
+                <p>관리자는 대시보드의 <strong>재고 수정</strong> 버튼 또는 메뉴를 누릅니다. 대리점/샵은 하단의 <strong>재고수정</strong>을 누릅니다.</p>
+                <span class="click-path">재고수정 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>수정할 제품 선택</h3>
+                <p>왼쪽 목록에서 제품을 누릅니다. 검색창에 제품명이나 SKU를 입력해 찾을 수 있습니다.</p>
+                <span class="click-path">제품 검색 → 제품 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>수량과 위치 입력</h3>
+                <p>현재 재고, 안전재고, 보관 위치를 입력합니다.</p>
+                <span class="click-path">현재 재고 입력 → 안전재고 입력 → 위치 입력</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>저장</h3>
+                <p><strong>재고 저장</strong> 버튼을 누르면 변경 내용이 저장됩니다.</p>
+                <span class="click-path">재고 저장 클릭</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <h3>재고 수정 권한</h3>
+            <p>대리점/샵은 다른 대리점 재고를 볼 수는 있어도 수정할 수 없습니다. 수정은 본인 대리점/샵 재고만 가능합니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="발주 신청하기" id="order-create">
+          <p class="eyebrow">ORDER</p>
+          <h1>대리점/샵에서 발주 신청하기</h1>
+          <p class="lead">발주신청은 대리점/샵 계정에서 사용합니다. 등록된 발주는 기본 상태가 <strong>접수</strong>입니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>발주신청 열기</h3>
+                <p>하단 메뉴의 <strong>발주신청</strong>을 누릅니다.</p>
+                <span class="click-path">발주신청 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>제품 선택</h3>
+                <p>제품 목록에서 발주할 제품을 선택합니다. 제품명, SKU, 컬러로 검색할 수 있습니다.</p>
+                <span class="click-path">제품 검색 → 제품 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>수량과 메모 입력</h3>
+                <p>발주 수량을 1개 이상 입력합니다. 배송 요청사항이 있으면 메모에 적습니다.</p>
+                <span class="click-path">발주 수량 입력 → 메모 입력</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>발주 등록</h3>
+                <p><strong>발주 등록</strong>을 누르면 본사 관리자에게 접수됩니다.</p>
+                <span class="click-path">발주 등록 클릭</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="발주 관리하기" id="order-manage">
+          <p class="eyebrow">ORDER STATUS</p>
+          <h1>발주 확인과 상태 변경</h1>
+          <p class="lead">관리자는 전체 발주 상태를 변경할 수 있고, 대리점/샵은 본인 발주 내역만 확인합니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>발주 화면 열기</h3>
+                <p>관리자는 <strong>발주</strong> 메뉴를 누릅니다. 대리점/샵은 <strong>내 발주</strong> 메뉴를 누릅니다.</p>
+                <span class="click-path">발주 또는 내 발주 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>발주 검색</h3>
+                <p>주문번호, 제품명, SKU, 대리점명으로 발주 내역을 찾습니다.</p>
+                <span class="click-path">검색창 클릭 → 검색어 입력</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>상태 변경</h3>
+                <p>관리자는 발주 카드의 상태를 <strong>접수, 승인, 출고, 완료, 반려</strong> 중 하나로 변경할 수 있습니다.</p>
+                <span class="click-path">상태 선택 → 변경 확인</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>상태</th>
+                  <th>의미</th>
+                  <th>사용 예시</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>접수</td>
+                  <td>대리점이 발주를 넣은 상태</td>
+                  <td>관리자가 아직 확인 전</td>
+                </tr>
+                <tr>
+                  <td>승인</td>
+                  <td>본사에서 발주를 확인하고 승인한 상태</td>
+                  <td>출고 준비 시작</td>
+                </tr>
+                <tr>
+                  <td>출고</td>
+                  <td>제품이 출고된 상태</td>
+                  <td>배송 또는 전달 중</td>
+                </tr>
+                <tr>
+                  <td>완료</td>
+                  <td>발주 처리가 끝난 상태</td>
+                  <td>대리점 수령 완료</td>
+                </tr>
+                <tr>
+                  <td>반려</td>
+                  <td>발주를 처리하지 않는 상태</td>
+                  <td>재고 부족, 정보 오류 등</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="QR/카카오톡 안내문" id="qr">
+          <p class="eyebrow">QR</p>
+          <h1>QR과 카카오톡 안내문 보내기</h1>
+          <p class="lead">현재 구조는 대리점별 QR이 아니라 모든 대리점이 같은 QR과 같은 링크를 사용합니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>QR 메뉴 열기</h3>
+                <p>관리자 로그인 후 <strong>QR</strong> 메뉴를 누릅니다.</p>
+                <span class="click-path">QR 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>공통 QR 다운로드</h3>
+                <p><strong>QR 다운로드</strong> 버튼을 눌러 공통 접속 QR 이미지를 저장합니다.</p>
+                <span class="click-path">QR 다운로드 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>안내문 복사</h3>
+                <p>대리점별 안내문에서 <strong>안내문 복사</strong>를 누른 뒤 카카오톡에 붙여넣습니다.</p>
+                <span class="click-path">안내문 복사 클릭 → 카카오톡 붙여넣기</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <h3>안내문에 들어가는 정보</h3>
+            <p>접속 링크, 초기 ID, 초기 PW, 대리점 코드가 포함됩니다. 초기 PW가 기억나지 않으면 먼저 대리점 메뉴에서 PW 초기화를 해야 합니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="모바일 사용법" id="mobile">
+          <p class="eyebrow">MOBILE</p>
+          <h1>휴대폰에서 사용하는 방법</h1>
+          <p class="lead">대리점/샵은 대부분 휴대폰에서 QR 또는 카카오톡 링크로 접속하게 됩니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>QR 스캔</h3>
+                <p>휴대폰 카메라를 열고 QR을 비춥니다. 화면에 뜨는 링크를 누릅니다.</p>
+                <span class="click-path">카메라 실행 → QR 스캔 → 링크 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>로그인 정보 입력</h3>
+                <p>카카오톡 안내문에 있는 아이디, 비밀번호, 대리점 코드를 입력합니다.</p>
+                <span class="click-path">아이디 → 비밀번호 → 대리점 코드 → 로그인 후 이동</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>하단 메뉴 사용</h3>
+                <p>휴대폰에서는 화면 아래쪽 메뉴를 눌러 재고, 재고수정, 발주신청, 내 발주로 이동합니다.</p>
+                <span class="click-path">하단 메뉴 클릭</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <h3>화면 아래가 가려질 때</h3>
+            <p>휴대폰 브라우저에서 주소창이나 하단바가 겹치면 화면을 살짝 위로 스크롤한 뒤 버튼을 누릅니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="자주 생기는 문제" id="troubleshooting">
+          <p class="eyebrow">HELP</p>
+          <h1>자주 생기는 문제 해결</h1>
+          <p class="lead">현장에서 가장 자주 나오는 질문만 모았습니다.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>문제</th>
+                  <th>확인할 것</th>
+                  <th>처리 방법</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>비밀번호가 일치하지 않는다고 나옴</td>
+                  <td>아이디, 비밀번호, 대리점 코드가 모두 맞는지 확인</td>
+                  <td>계속 안 되면 관리자가 PW 초기화를 진행</td>
+                </tr>
+                <tr>
+                  <td>대리점 코드 오류</td>
+                  <td>관리자는 `ADMIN`, 대리점은 안내받은 코드인지 확인</td>
+                  <td>대소문자와 숫자를 다시 확인</td>
+                </tr>
+                <tr>
+                  <td>제품이 발주 화면에 없음</td>
+                  <td>제품이 등록되어 있고 판매중인지 확인</td>
+                  <td>관리자 → 제품 메뉴에서 제품 저장</td>
+                </tr>
+                <tr>
+                  <td>재고 수정이 안 됨</td>
+                  <td>수정 권한이 있는 재고인지 확인</td>
+                  <td>관리자는 본사 재고, 대리점은 본인 재고만 수정 가능</td>
+                </tr>
+                <tr>
+                  <td>안내문에 초기 PW가 안 보임</td>
+                  <td>기존 비밀번호는 해시로 저장되어 확인 불가</td>
+                  <td>대리점 메뉴에서 PW 초기화 후 새 비밀번호 전달</td>
+                </tr>
+                <tr>
+                  <td>사이트가 샘플 모드로 보임</td>
+                  <td>운영 환경변수가 실제 Apps Script URL로 설정되어 있는지 확인</td>
+                  <td>관리 담당자에게 Vercel 환경변수 확인 요청</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="일상 운영 체크리스트" id="daily">
+          <p class="eyebrow">CHECKLIST</p>
+          <h1>일상 운영 체크리스트</h1>
+          <p class="lead">매일 또는 필요할 때 이 순서대로 확인하면 됩니다.</p>
+
+          <div class="panel">
+            <h2>관리자</h2>
+            <div class="steps">
+              <div class="step">
+                <div class="num">1</div>
+                <div>
+                  <h3>접수 발주 확인</h3>
+                  <p>관리자 대시보드 또는 발주 메뉴에서 접수 상태 발주가 있는지 확인합니다.</p>
+                  <span class="click-path">발주 클릭 → 접수 상태 확인</span>
+                </div>
+              </div>
+              <div class="step">
+                <div class="num">2</div>
+                <div>
+                  <h3>안전재고 이하 제품 확인</h3>
+                  <p>재고 메뉴에서 안전재고 이하 제품을 확인하고 보충이 필요한지 판단합니다.</p>
+                  <span class="click-path">재고 클릭 → 안전재고 이하 확인</span>
+                </div>
+              </div>
+              <div class="step">
+                <div class="num">3</div>
+                <div>
+                  <h3>본사 재고 수정</h3>
+                  <p>입고나 출고가 있으면 본사 재고를 수정합니다.</p>
+                  <span class="click-path">재고수정 클릭 → 제품 선택 → 재고 저장</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>대리점/샵</h2>
+            <div class="steps">
+              <div class="step">
+                <div class="num">1</div>
+                <div>
+                  <h3>내 재고 확인</h3>
+                  <p>재고 메뉴에서 내 대리점/샵 재고를 확인합니다.</p>
+                  <span class="click-path">재고 클릭 → 내 대리점/샵 재고 클릭</span>
+                </div>
+              </div>
+              <div class="step">
+                <div class="num">2</div>
+                <div>
+                  <h3>필요 시 발주 신청</h3>
+                  <p>부족한 제품을 선택해 발주를 등록합니다.</p>
+                  <span class="click-path">발주신청 클릭 → 제품 선택 → 발주 등록</span>
+                </div>
+              </div>
+              <div class="step">
+                <div class="num">3</div>
+                <div>
+                  <h3>내 발주 상태 확인</h3>
+                  <p>내 발주 메뉴에서 접수, 승인, 출고, 완료 상태를 확인합니다.</p>
+                  <span class="click-path">내 발주 클릭</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="사이트 문제 대응" id="incident">
+          <p class="eyebrow">SITE TROUBLE</p>
+          <h1>사이트에 문제가 생겼을 때</h1>
+          <p class="lead">비개발자는 원인을 고치기보다, 먼저 문제가 개인 기기 문제인지 전체 장애인지 구분하고 필요한 정보를 정확히 모으는 것이 중요합니다.</p>
+
+          <div class="callout warn">
+            <h3>가장 중요한 원칙</h3>
+            <p>저장이 안 되거나 화면이 이상할 때 같은 작업을 여러 번 반복하지 마세요. 같은 발주가 중복 등록되거나 재고가 잘못 저장될 수 있습니다.</p>
+          </div>
+
+          <h2>5분 안에 먼저 확인할 것</h2>
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>새로고침</h3>
+                <p>화면이 멈췄거나 버튼 반응이 없으면 브라우저 새로고침을 한 번만 합니다.</p>
+                <span class="click-path">새로고침 → 다시 로그인 또는 같은 화면 확인</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>다른 인터넷으로 접속</h3>
+                <p>회사 와이파이에서 안 되면 휴대폰 데이터로, 휴대폰 데이터에서 안 되면 와이파이로 접속해 봅니다.</p>
+                <span class="click-path">와이파이 끄기/켜기 → 사이트 다시 접속</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>다른 기기에서 확인</h3>
+                <p>본인 휴대폰에서만 안 되는지, 다른 직원 휴대폰이나 PC에서도 안 되는지 확인합니다.</p>
+                <span class="click-path">다른 휴대폰 또는 PC에서 같은 주소 접속</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>문제 범위 구분</h3>
+                <p>한 사람만 안 되면 계정/기기 문제일 가능성이 높고, 모두 안 되면 사이트 또는 데이터 연결 문제일 가능성이 높습니다.</p>
+                <span class="click-path">나만 문제인지 / 전체 문제인지 확인</span>
+              </div>
+            </div>
+          </div>
+
+          <h2>증상별 조치</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>증상</th>
+                  <th>비개발자가 할 일</th>
+                  <th>다음 조치</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>사이트가 아예 안 열림</td>
+                  <td>다른 인터넷, 다른 기기, 다른 브라우저에서 접속 확인</td>
+                  <td>모두 안 되면 관리자에게 운영 사이트 장애로 전달</td>
+                </tr>
+                <tr>
+                  <td>로그인만 안 됨</td>
+                  <td>아이디, 비밀번호, 대리점 코드를 다시 확인</td>
+                  <td>계속 실패하면 관리자에게 PW 초기화 요청</td>
+                </tr>
+                <tr>
+                  <td>저장 버튼을 눌러도 반응 없음</td>
+                  <td>한 번만 새로고침 후 다시 시도. 계속 안 되면 반복 저장 금지</td>
+                  <td>입력한 내용과 화면 캡처를 관리자에게 전달</td>
+                </tr>
+                <tr>
+                  <td>재고 숫자가 이상함</td>
+                  <td>언제, 어떤 제품, 기존 수량, 입력 수량을 적어둠</td>
+                  <td>관리자가 재고수정 화면 또는 원본 데이터 확인</td>
+                </tr>
+                <tr>
+                  <td>발주가 중복됨</td>
+                  <td>중복 주문번호와 제품명을 관리자에게 전달</td>
+                  <td>관리자가 발주 상태를 반려 또는 별도 처리</td>
+                </tr>
+                <tr>
+                  <td>샘플 모드라고 보임</td>
+                  <td>사용자는 추가 작업을 멈추고 관리자에게 화면 캡처 전달</td>
+                  <td>기술 담당자가 운영 환경변수와 Apps Script URL 확인</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>관리자에게 전달할 정보</h2>
+          <div class="panel">
+            <p>문제를 보고할 때 아래 내용을 같이 보내면 해결 시간이 크게 줄어듭니다.</p>
+            <div class="steps">
+              <div class="step">
+                <div class="num">1</div>
+                <div>
+                  <h3>문제가 생긴 시간</h3>
+                  <p>예: 2026년 5월 14일 오후 3시 20분</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="num">2</div>
+                <div>
+                  <h3>사용 계정과 대리점 코드</h3>
+                  <p>예: dealer01 / D001</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="num">3</div>
+                <div>
+                  <h3>어떤 메뉴에서 생겼는지</h3>
+                  <p>예: 재고수정, 발주신청, 제품등록, 로그인</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="num">4</div>
+                <div>
+                  <h3>화면 캡처</h3>
+                  <p>오류 문구가 보이도록 전체 화면을 캡처합니다.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <h2>보고 메시지 예시</h2>
+          <div class="callout">
+            <p>
+              사이트 오류 확인 부탁드립니다.<br />
+              시간: 2026년 5월 14일 오후 3시 20분<br />
+              계정/대리점 코드: dealer01 / D001<br />
+              메뉴: 재고수정<br />
+              증상: 세라믹 틴팅 70% 재고를 10롤로 저장했는데 저장 완료 메시지가 안 나옵니다.<br />
+              확인한 것: 새로고침 1회, 휴대폰 데이터 접속도 동일합니다.<br />
+              화면 캡처: 첨부했습니다.
+            </p>
+          </div>
+
+          <div class="callout danger">
+            <h3>즉시 기술 담당자에게 넘길 상황</h3>
+            <p>전체 직원이 접속 불가, 전체 대리점이 로그인 불가, 샘플 모드 표시, 데이터가 대량으로 사라짐, 같은 발주가 계속 중복 생성되는 경우는 바로 기술 담당자에게 전달하세요.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="인쇄/공유 방법" id="share">
+          <p class="eyebrow">SHARE</p>
+          <h1>매뉴얼 공유하기</h1>
+          <p class="lead">이 파일은 브라우저에서 열어서 클릭형으로 볼 수 있고, 필요하면 PDF로 저장할 수 있습니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>브라우저로 열기</h3>
+                <p><code>docs/manual-book.html</code> 파일을 더블클릭하면 브라우저에서 열립니다.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>PDF로 저장</h3>
+                <p>브라우저에서 인쇄를 열고 대상을 PDF 저장으로 선택합니다.</p>
+                <span class="click-path">인쇄 → PDF로 저장</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>직원에게 전달</h3>
+                <p>PDF 또는 HTML 파일을 사내 메신저, 이메일, 공유 폴더로 전달합니다.</p>
+              </div>
+            </div>
+          </div>
+
+          <button class="print-button" type="button" onclick="window.print()">PDF 저장용 인쇄 열기</button>
+        </section>
+
+        <div class="pager">
+          <button type="button" id="prevButton">이전</button>
+          <button type="button" class="primary" id="nextButton">다음</button>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const chapters = Array.from(document.querySelectorAll(".chapter"));
+      const sideNav = document.getElementById("sideNav");
+      const chapterSelect = document.getElementById("chapterSelect");
+      const prevButton = document.getElementById("prevButton");
+      const nextButton = document.getElementById("nextButton");
+
+      const groups = [
+        { title: "기본", ids: ["overview", "login", "mobile"] },
+        { title: "관리자", ids: ["admin-start", "dealer-account", "product", "inventory-view", "inventory-edit", "order-manage", "qr"] },
+        { title: "대리점/샵", ids: ["inventory-view", "inventory-edit", "order-create", "order-manage"] },
+        { title: "운영", ids: ["troubleshooting", "daily", "incident", "share"] }
+      ];
+
+      function makeButton(chapter) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "nav-button";
+        button.dataset.target = chapter.id;
+        button.textContent = chapter.dataset.title;
+        button.addEventListener("click", () => showChapter(chapter.id));
+        return button;
+      }
+
+      groups.forEach((group) => {
+        const label = document.createElement("div");
+        label.className = "nav-group";
+        label.textContent = group.title;
+        sideNav.appendChild(label);
+
+        group.ids.forEach((id) => {
+          const chapter = chapters.find((item) => item.id === id);
+          if (chapter) sideNav.appendChild(makeButton(chapter));
+        });
+      });
+
+      chapters.forEach((chapter) => {
+        const option = document.createElement("option");
+        option.value = chapter.id;
+        option.textContent = chapter.dataset.title;
+        chapterSelect.appendChild(option);
+      });
+
+      chapterSelect.addEventListener("change", () => showChapter(chapterSelect.value));
+
+      function showChapter(id) {
+        const targetIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === id));
+        const target = chapters[targetIndex];
+
+        chapters.forEach((chapter) => chapter.classList.toggle("active", chapter === target));
+        document.querySelectorAll(".nav-button").forEach((button) => {
+          button.classList.toggle("active", button.dataset.target === target.id);
+        });
+        chapterSelect.value = target.id;
+        prevButton.disabled = targetIndex === 0;
+        nextButton.textContent = targetIndex === chapters.length - 1 ? "처음으로" : "다음";
+        history.replaceState(null, "", `#${target.id}`);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      prevButton.addEventListener("click", () => {
+        const index = chapters.findIndex((chapter) => chapter.classList.contains("active"));
+        showChapter(chapters[Math.max(0, index - 1)].id);
+      });
+
+      nextButton.addEventListener("click", () => {
+        const index = chapters.findIndex((chapter) => chapter.classList.contains("active"));
+        showChapter(chapters[index === chapters.length - 1 ? 0 : index + 1].id);
+      });
+
+      const initial = window.location.hash.replace("#", "");
+      showChapter(chapters.some((chapter) => chapter.id === initial) ? initial : "overview");
+    </script>
+  </body>
+</html>

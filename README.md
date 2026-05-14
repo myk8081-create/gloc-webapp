@@ -1,4 +1,4 @@
-# Film Stock 재고관리/발주 웹앱
+# GLOC 재고관리/발주 웹앱
 
 PPF/틴팅 제품을 판매하는 본사와 대리점용 재고조회 및 발주관리 웹앱입니다.
 모바일 QR 접속, 카카오톡 링크 전달, 대리점별 권한 분리, Google Sheets 기반 납품 구조를 기준으로 제작되어 있습니다.
@@ -9,6 +9,17 @@ PPF/틴팅 제품을 판매하는 본사와 대리점용 재고조회 및 발주
 - Backend/DB: Google Sheets + Google Apps Script Web App API
 - Deploy: Vercel 정적 배포
 - 주요 화면: 로그인, 최초 비밀번호 변경, 관리자 대시보드, 대리점 관리, 본사/내 재고/전체 대리점·샵 재고조회, 재고수정, 제품등록/수정, 발주관리, 발주신청, QR/카카오톡 안내문 생성
+
+## 최종 인수인계
+
+고객에게 넘기기 전에는 [docs/handover-guide.md](docs/handover-guide.md)의 체크리스트를 따라 진행하세요.
+소스코드, Google Sheets/Apps Script, Vercel 배포, Figma 디자인, 관리자 계정 정보를 각각 확인하면 납품 후 운영자가 직접 관리할 수 있습니다.
+
+비개발자 운영자는 [docs/manual-book.html](docs/manual-book.html)을 브라우저에서 열어 단계별 클릭형 사용 매뉴얼로 볼 수 있습니다.
+매뉴얼 문구를 직접 수정할 때는 [docs/manual-edit-guide.md](docs/manual-edit-guide.md)를 참고하세요.
+
+역할별로 따로 전달할 때는 [docs/manual-admin.html](docs/manual-admin.html)을 본사용으로, [docs/manual-dealer.html](docs/manual-dealer.html)을 대리점/샵용으로 사용하세요.
+휴대폰에서 보려면 배포된 사이트의 `/manual.html` 주소를 사용하세요. 예: `https://운영도메인/manual.html`
 
 ## Google Sheets 만들기
 

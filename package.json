@@ -1,8 +1,8 @@
 {
-  "name": "film-stock-delivery-webapp",
+  "name": "gloc-stock-delivery-webapp",
   "version": "1.0.0",
   "private": true,
-  "description": "PPF/틴팅 대리점 재고조회 및 발주관리 납품형 웹앱",
+  "description": "GLOC PPF/틴팅 대리점 재고조회 및 발주관리 납품형 웹앱",
   "scripts": {
     "build": "node scripts/build.js",
     "dev": "python3 -m http.server 4173",

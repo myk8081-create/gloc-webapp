@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GLOC 대리점/샵 매뉴얼</title>
+    <style>
+      :root {
+        --green: #117a63;
+        --green-dark: #0c4f41;
+        --mint: #eaf5f1;
+        --line: #cfe2dc;
+        --ink: #1c2b28;
+        --muted: #62736e;
+        --paper: #ffffff;
+        --bg: #f5faf8;
+        --warn: #fff6df;
+        --danger: #fff1f1;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        line-height: 1.65;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 300px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        padding: 28px 20px;
+        overflow: auto;
+        color: #ffffff;
+        background: var(--green-dark);
+      }
+
+      .brand {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 28px;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        font-weight: 900;
+      }
+
+      .brand strong {
+        display: block;
+        font-size: 20px;
+      }
+
+      .brand span {
+        display: block;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 13px;
+      }
+
+      .nav-button {
+        display: flex;
+        width: 100%;
+        margin: 6px 0;
+        padding: 11px 12px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        color: rgba(255, 255, 255, 0.86);
+        background: transparent;
+        cursor: pointer;
+        font: inherit;
+        font-size: 14px;
+        text-align: left;
+      }
+
+      .nav-button:hover,
+      .nav-button.active {
+        border-color: rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.11);
+        color: #ffffff;
+      }
+
+      .content {
+        padding: 48px min(6vw, 72px);
+      }
+
+      .chapter {
+        display: none;
+        max-width: 1040px;
+      }
+
+      .chapter.active {
+        display: block;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--green);
+        font-weight: 900;
+      }
+
+      h1 {
+        margin: 0 0 14px;
+        font-size: clamp(34px, 5vw, 58px);
+        line-height: 1.08;
+      }
+
+      h2 {
+        margin: 40px 0 14px;
+        font-size: 26px;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      .lead {
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .panel,
+      .step,
+      .callout {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+      }
+
+      .panel {
+        margin: 22px 0;
+        padding: 24px;
+      }
+
+      .steps {
+        display: grid;
+        gap: 12px;
+        margin: 18px 0 0;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr);
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .num {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        place-items: center;
+        border-radius: 50%;
+        color: #ffffff;
+        background: var(--green);
+        font-weight: 900;
+      }
+
+      .click-path {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: var(--green-dark);
+        background: var(--mint);
+        font-weight: 900;
+      }
+
+      .callout {
+        margin: 18px 0;
+        padding: 18px;
+      }
+
+      .callout.warn {
+        border-color: #eed9a5;
+        background: var(--warn);
+      }
+
+      .callout.danger {
+        border-color: #f0c7c7;
+        background: var(--danger);
+      }
+
+      .table-wrap {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      table {
+        width: 100%;
+        min-width: 680px;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        background: #f7fbfa;
+        font-size: 13px;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: var(--mint);
+      }
+
+      .pager {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        margin: 34px 0 0;
+      }
+
+      .pager button,
+      .print-button {
+        min-height: 44px;
+        padding: 0 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        background: #ffffff;
+        cursor: pointer;
+        font-weight: 900;
+      }
+
+      .pager button.primary,
+      .print-button {
+        border-color: var(--green);
+        color: #ffffff;
+        background: var(--green);
+      }
+
+      .mobile-top {
+        display: none;
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      select {
+        width: 100%;
+        min-height: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font: inherit;
+      }
+
+      @media (max-width: 860px) {
+        .layout {
+          display: block;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .mobile-top {
+          display: block;
+          position: sticky;
+          top: 0;
+          z-index: 2;
+        }
+
+        .content {
+          padding: 28px 18px 44px;
+        }
+      }
+
+      @media print {
+        .sidebar,
+        .mobile-top,
+        .pager,
+        .print-button {
+          display: none;
+        }
+
+        .layout {
+          display: block;
+        }
+
+        .content {
+          padding: 0;
+        }
+
+        .chapter {
+          display: block;
+          break-after: page;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mobile-top">
+      <select id="chapterSelect" aria-label="대리점 매뉴얼 목차"></select>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">G</div>
+          <div>
+            <strong>GLOC</strong>
+            <span>대리점/샵 매뉴얼</span>
+          </div>
+        </div>
+        <div id="sideNav"></div>
+      </aside>
+
+      <main class="content">
+        <section class="chapter active" data-title="대리점 매뉴얼 요약" id="overview">
+          <p class="eyebrow">DEALER</p>
+          <h1>대리점/샵 사용 매뉴얼</h1>
+          <p class="lead">대리점과 시공샵이 휴대폰 또는 PC에서 재고를 확인하고, 내 재고를 수정하고, 본사로 발주를 신청하는 방법을 안내합니다.</p>
+
+          <div class="panel">
+            <h2>대리점/샵에서 할 수 있는 일</h2>
+            <p>내 재고 조회/수정, 본사 재고 조회, 전체 대리점/샵 재고 조회, 발주 신청, 내 발주 상태 확인을 할 수 있습니다.</p>
+          </div>
+
+          <div class="callout warn">
+            <h3>중요</h3>
+            <p>대리점/샵은 다른 지점 재고를 볼 수 있지만, 재고 수정과 발주 등록은 본인 계정 기준으로만 처리됩니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="접속과 로그인" id="login">
+          <p class="eyebrow">LOGIN</p>
+          <h1>QR 또는 링크로 로그인</h1>
+          <p class="lead">대리점/샵은 공통 QR 또는 카카오톡 링크로 접속한 뒤 안내받은 로그인 정보를 입력합니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>QR 스캔 또는 링크 클릭</h3>
+                <p>휴대폰 카메라로 QR을 스캔하거나 카카오톡으로 받은 링크를 누릅니다.</p>
+                <span class="click-path">QR 스캔 또는 링크 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>대리점 선택</h3>
+                <p>로그인 화면에서 <strong>대리점</strong>을 선택합니다.</p>
+                <span class="click-path">대리점 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>로그인 정보 입력</h3>
+                <p>안내받은 아이디, 비밀번호, 대리점 코드를 입력합니다.</p>
+                <span class="click-path">아이디 → 비밀번호 → 대리점 코드 입력</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>로그인</h3>
+                <p><strong>로그인 후 이동</strong> 버튼을 누릅니다.</p>
+                <span class="click-path">로그인 후 이동 클릭</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="비밀번호 변경" id="password">
+          <p class="eyebrow">PASSWORD</p>
+          <h1>최초 로그인 비밀번호 변경</h1>
+          <p class="lead">초기 비밀번호로 처음 로그인하면 새 비밀번호로 변경해야 합니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>현재 비밀번호 입력</h3>
+                <p>카카오톡 안내문으로 받은 초기 비밀번호를 입력합니다.</p>
+                <span class="click-path">현재 비밀번호 입력</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>새 비밀번호 입력</h3>
+                <p>앞으로 사용할 새 비밀번호를 8자 이상으로 입력합니다.</p>
+                <span class="click-path">새 비밀번호 → 새 비밀번호 확인</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>변경 완료</h3>
+                <p><strong>비밀번호 변경 후 시작</strong>을 누릅니다.</p>
+                <span class="click-path">비밀번호 변경 후 시작 클릭</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <h3>비밀번호를 잊었을 때</h3>
+            <p>본사 관리자에게 비밀번호 초기화를 요청하세요. 기존 비밀번호는 확인할 수 없고 새 임시 비밀번호를 발급받아야 합니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="재고 조회" id="stock-view">
+          <p class="eyebrow">STOCK VIEW</p>
+          <h1>재고 조회하기</h1>
+          <p class="lead">대리점/샵은 내 재고, 본사 재고, 전체 대리점/샵 재고를 나누어 볼 수 있습니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>재고 메뉴 열기</h3>
+                <p>하단 메뉴에서 <strong>재고</strong>를 누릅니다.</p>
+                <span class="click-path">재고 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>조회 범위 선택</h3>
+                <p>내 대리점/샵 재고, 본사 재고, 전체 대리점/샵 재고 중 하나를 선택합니다.</p>
+                <span class="click-path">내 재고 / 본사 재고 / 전체 재고 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>검색</h3>
+                <p>제품명, SKU, 대리점명, 재고수량으로 검색합니다.</p>
+                <span class="click-path">검색창 클릭 → 검색어 입력</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>탭</th>
+                  <th>의미</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>내 대리점/샵 재고</td>
+                  <td>본인 지점의 재고입니다. 수정할 수 있습니다.</td>
+                </tr>
+                <tr>
+                  <td>본사 재고</td>
+                  <td>본사에서 보유 중인 재고입니다. 조회만 가능합니다.</td>
+                </tr>
+                <tr>
+                  <td>전체 대리점/샵 재고</td>
+                  <td>다른 지점 재고까지 한눈에 볼 수 있습니다. 조회만 가능합니다.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="내 재고 수정" id="stock-edit">
+          <p class="eyebrow">STOCK EDIT</p>
+          <h1>내 대리점/샵 재고 수정</h1>
+          <p class="lead">대리점/샵은 본인 지점 재고만 직접 수정할 수 있습니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>재고수정 열기</h3>
+                <p>하단 메뉴에서 <strong>재고수정</strong>을 누릅니다.</p>
+                <span class="click-path">재고수정 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>제품 선택</h3>
+                <p>수정할 제품을 검색하고 선택합니다.</p>
+                <span class="click-path">제품 검색 → 제품 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>재고 입력</h3>
+                <p>현재 재고, 안전재고, 보관 위치를 입력합니다.</p>
+                <span class="click-path">현재 재고 → 안전재고 → 위치 입력</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>저장</h3>
+                <p><strong>재고 저장</strong> 버튼을 누릅니다.</p>
+                <span class="click-path">재고 저장 클릭</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <h3>주의</h3>
+            <p>다른 대리점 재고나 본사 재고는 조회만 가능하고 수정할 수 없습니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="발주 신청" id="order-create">
+          <p class="eyebrow">ORDER</p>
+          <h1>발주 신청하기</h1>
+          <p class="lead">필요한 제품과 수량을 입력하면 본사로 발주가 접수됩니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>발주신청 열기</h3>
+                <p>하단 메뉴에서 <strong>발주신청</strong>을 누릅니다.</p>
+                <span class="click-path">발주신청 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>제품 선택</h3>
+                <p>발주할 제품을 검색하고 선택합니다.</p>
+                <span class="click-path">제품 검색 → 제품 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>수량과 메모 입력</h3>
+                <p>발주 수량을 입력하고 필요하면 배송 요청사항을 메모에 적습니다.</p>
+                <span class="click-path">발주 수량 입력 → 메모 입력</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>발주 등록</h3>
+                <p><strong>발주 등록</strong>을 누릅니다. 기본 상태는 접수입니다.</p>
+                <span class="click-path">발주 등록 클릭</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <h3>중복 발주 주의</h3>
+            <p>버튼 반응이 늦어도 여러 번 누르지 마세요. 같은 발주가 중복 등록될 수 있습니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="내 발주 확인" id="order-view">
+          <p class="eyebrow">MY ORDERS</p>
+          <h1>내 발주 상태 확인</h1>
+          <p class="lead">본인이 등록한 발주 내역과 처리 상태를 확인합니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>내 발주 열기</h3>
+                <p>하단 메뉴에서 <strong>내 발주</strong>를 누릅니다.</p>
+                <span class="click-path">내 발주 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>발주 검색</h3>
+                <p>주문번호, 제품명, SKU로 발주를 찾습니다.</p>
+                <span class="click-path">검색창 클릭 → 검색어 입력</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>상태</th>
+                  <th>의미</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>접수</td>
+                  <td>대리점이 발주를 넣었고 본사 확인 전입니다.</td>
+                </tr>
+                <tr>
+                  <td>승인</td>
+                  <td>본사에서 발주를 확인했습니다.</td>
+                </tr>
+                <tr>
+                  <td>출고</td>
+                  <td>제품이 출고되었습니다.</td>
+                </tr>
+                <tr>
+                  <td>완료</td>
+                  <td>발주 처리가 끝났습니다.</td>
+                </tr>
+                <tr>
+                  <td>반려</td>
+                  <td>발주가 처리되지 않았습니다. 본사에 사유를 문의하세요.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="휴대폰 사용 팁" id="mobile">
+          <p class="eyebrow">MOBILE</p>
+          <h1>휴대폰에서 사용할 때</h1>
+          <p class="lead">대리점/샵은 휴대폰으로 사용하는 경우가 많으므로 아래 내용을 참고하세요.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>QR은 카메라로 스캔</h3>
+                <p>카메라 앱으로 QR을 비추고 화면에 뜨는 링크를 누릅니다.</p>
+                <span class="click-path">카메라 실행 → QR 스캔 → 링크 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>하단 메뉴 사용</h3>
+                <p>휴대폰 화면 아래의 재고, 재고수정, 발주신청, 내 발주 메뉴를 사용합니다.</p>
+                <span class="click-path">하단 메뉴 클릭</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>버튼이 가려질 때</h3>
+                <p>브라우저 주소창이나 하단바가 겹치면 화면을 살짝 위로 스크롤합니다.</p>
+                <span class="click-path">화면 위로 스크롤</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="문제 해결" id="trouble">
+          <p class="eyebrow">HELP</p>
+          <h1>문제가 생겼을 때</h1>
+          <p class="lead">대부분의 문제는 로그인 정보 확인, 새로고침, 본사 문의로 해결할 수 있습니다.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>문제</th>
+                  <th>먼저 확인할 것</th>
+                  <th>해결 방법</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>로그인이 안 됨</td>
+                  <td>아이디, 비밀번호, 대리점 코드 확인</td>
+                  <td>계속 안 되면 본사에 PW 초기화 요청</td>
+                </tr>
+                <tr>
+                  <td>재고 저장이 안 됨</td>
+                  <td>한 번만 새로고침 후 다시 시도</td>
+                  <td>계속 안 되면 화면 캡처 후 본사 전달</td>
+                </tr>
+                <tr>
+                  <td>발주 버튼 반응이 없음</td>
+                  <td>반복 클릭 금지</td>
+                  <td>내 발주에 등록됐는지 확인 후 본사 문의</td>
+                </tr>
+                <tr>
+                  <td>제품이 없음</td>
+                  <td>검색어가 정확한지 확인</td>
+                  <td>제품 등록 여부를 본사에 문의</td>
+                </tr>
+                <tr>
+                  <td>재고 숫자가 이상함</td>
+                  <td>어떤 제품인지, 어떤 수량인지 기록</td>
+                  <td>제품명/SKU/수량을 본사에 전달</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="본사에 문의할 때" id="report">
+          <p class="eyebrow">REPORT</p>
+          <h1>본사에 문의할 때 보내야 할 정보</h1>
+          <p class="lead">문제가 생겼을 때 아래 정보를 같이 보내면 빠르게 확인할 수 있습니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>문제 발생 시간</h3>
+                <p>예: 2026년 5월 14일 오후 3시 20분</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>계정과 대리점 코드</h3>
+                <p>예: dealer01 / D001</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <div>
+                <h3>문제가 생긴 메뉴</h3>
+                <p>예: 재고수정, 발주신청, 내 발주</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">4</div>
+              <div>
+                <h3>화면 캡처</h3>
+                <p>오류 문구가 보이도록 화면을 캡처해서 보냅니다.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <h3>문의 예시</h3>
+            <p>dealer01 / D001 계정입니다. 재고수정에서 TN-CR-094 제품을 10롤로 저장했는데 저장 완료 메시지가 나오지 않습니다. 오후 3시 20분에 발생했고 화면 캡처 첨부합니다.</p>
+          </div>
+        </section>
+
+        <section class="chapter" data-title="인쇄/공유" id="share">
+          <p class="eyebrow">SHARE</p>
+          <h1>대리점 매뉴얼 공유하기</h1>
+          <p class="lead">이 파일은 브라우저에서 열어 볼 수 있고, 필요하면 PDF로 저장할 수 있습니다.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <div>
+                <h3>브라우저로 열기</h3>
+                <p><code>docs/manual-dealer.html</code> 파일을 더블클릭합니다.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <div>
+                <h3>PDF로 저장</h3>
+                <p>인쇄 화면에서 대상을 PDF 저장으로 선택합니다.</p>
+                <span class="click-path">인쇄 → PDF로 저장</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="print-button" type="button" onclick="window.print()">PDF 저장용 인쇄 열기</button>
+        </section>
+
+        <div class="pager">
+          <button type="button" id="prevButton">이전</button>
+          <button type="button" class="primary" id="nextButton">다음</button>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const chapters = Array.from(document.querySelectorAll(".chapter"));
+      const sideNav = document.getElementById("sideNav");
+      const chapterSelect = document.getElementById("chapterSelect");
+      const prevButton = document.getElementById("prevButton");
+      const nextButton = document.getElementById("nextButton");
+
+      chapters.forEach((chapter) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "nav-button";
+        button.dataset.target = chapter.id;
+        button.textContent = chapter.dataset.title;
+        button.addEventListener("click", () => showChapter(chapter.id));
+        sideNav.appendChild(button);
+
+        const option = document.createElement("option");
+        option.value = chapter.id;
+        option.textContent = chapter.dataset.title;
+        chapterSelect.appendChild(option);
+      });
+
+      chapterSelect.addEventListener("change", () => showChapter(chapterSelect.value));
+
+      function showChapter(id) {
+        const index = Math.max(0, chapters.findIndex((chapter) => chapter.id === id));
+        const target = chapters[index];
+        chapters.forEach((chapter) => chapter.classList.toggle("active", chapter === target));
+        document.querySelectorAll(".nav-button").forEach((button) => {
+          button.classList.toggle("active", button.dataset.target === target.id);
+        });
+        chapterSelect.value = target.id;
+        prevButton.disabled = index === 0;
+        nextButton.textContent = index === chapters.length - 1 ? "처음으로" : "다음";
+        history.replaceState(null, "", `#${target.id}`);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      prevButton.addEventListener("click", () => {
+        const index = chapters.findIndex((chapter) => chapter.classList.contains("active"));
+        showChapter(chapters[Math.max(0, index - 1)].id);
+      });
+
+      nextButton.addEventListener("click", () => {
+        const index = chapters.findIndex((chapter) => chapter.classList.contains("active"));
+        showChapter(chapters[index === chapters.length - 1 ? 0 : index + 1].id);
+      });
+
+      const initial = window.location.hash.replace("#", "");
+      showChapter(chapters.some((chapter) => chapter.id === initial) ? initial : "overview");
+    </script>
+  </body>
+</html>

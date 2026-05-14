@@ -6,6 +6,7 @@ const dist = path.join(root, "dist");
 
 const files = [
   "index.html",
+  "manual.html",
   "styles.css",
   "api.js",
   "app.js",
@@ -21,6 +22,19 @@ files.forEach((file) => {
   const from = path.join(root, file);
   if (fs.existsSync(from)) {
     fs.copyFileSync(from, path.join(dist, file));
+  }
+});
+
+const manualFiles = [
+  ["docs/manual-admin.html", "manual-admin.html"],
+  ["docs/manual-dealer.html", "manual-dealer.html"],
+  ["docs/manual-book.html", "manual-book.html"]
+];
+
+manualFiles.forEach(([source, target]) => {
+  const from = path.join(root, source);
+  if (fs.existsSync(from)) {
+    fs.copyFileSync(from, path.join(dist, target));
   }
 });
 
