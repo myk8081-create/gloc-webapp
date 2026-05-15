@@ -3,7 +3,7 @@
   "short_name": "GLOC",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#f6faf8",
-  "theme_color": "#0f7a64",
+  "background_color": "#f8f4ee",
+  "theme_color": "#b11924",
   "icons": []
 }

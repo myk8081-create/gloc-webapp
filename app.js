@@ -6,7 +6,7 @@ const headOfficeCode = "ADMIN";
 const headOfficeName = "본사";
 
 const colorOptions = [
-  { name: "전체", value: "전체", hex: "#0f7a64" },
+  { name: "전체", value: "전체", hex: "#b11924" },
   { name: "차콜", value: "차콜", hex: "#2f3d3d" },
   { name: "클리어", value: "클리어", hex: "#f7fbf9" },
   { name: "매트", value: "매트", hex: "#c9cac2" },
@@ -1785,7 +1785,7 @@ function statusTone(status) {
 
 function colorHex(value) {
   const found = colorOptions.find((option) => option.value !== "전체" && normalize(value).includes(normalize(option.value)));
-  return found?.hex || "#0f7a64";
+  return found?.hex || "#b11924";
 }
 
 function colorNameFromText(value) {
