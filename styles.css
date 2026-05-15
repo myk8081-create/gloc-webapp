@@ -24,12 +24,16 @@
 
 html {
   min-height: 100%;
+  width: 100%;
+  overflow-x: hidden;
   background: var(--bg);
 }
 
 body {
+  width: 100%;
   min-height: 100%;
   margin: 0;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(207, 78, 66, 0.2), transparent 360px),
     linear-gradient(180deg, rgba(214, 173, 85, 0.08), rgba(15, 17, 16, 0) 420px),
@@ -203,6 +207,7 @@ h1 {
   font-size: clamp(32px, 9vw, 52px);
   line-height: 1.08;
   font-weight: 850;
+  overflow-wrap: anywhere;
 }
 
 h2 {
@@ -226,6 +231,7 @@ h3 {
   color: var(--muted);
   font-size: 15px;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .panel {
@@ -468,15 +474,21 @@ h3 {
 
 .page-head {
   display: grid;
+  min-width: 0;
   gap: 10px;
   margin-bottom: 18px;
 }
 
 .page-actions {
   display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   gap: 8px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .stats-grid {
@@ -1131,6 +1143,41 @@ h3 {
 }
 
 @media (max-width: 420px) {
+  .topbar {
+    gap: 8px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .brand {
+    gap: 8px;
+  }
+
+  .brand-title {
+    font-size: 16px;
+  }
+
+  .account-chip {
+    max-width: 34vw;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .screen {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  h1 {
+    font-size: clamp(28px, 8vw, 36px);
+  }
+
+  .page-actions .primary-button,
+  .page-actions .secondary-button {
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
   .summary-grid,
   .stats-grid,
   .stock-grid {
