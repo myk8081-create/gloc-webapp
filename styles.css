@@ -108,10 +108,13 @@ button:disabled {
 }
 
 .login-logo {
-  width: min(310px, 100%);
-  margin: 0 0 18px;
+  display: block;
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto 22px;
   border: 1px solid var(--line);
   border-radius: 8px;
+  object-fit: contain;
   box-shadow: var(--shadow);
 }
 
