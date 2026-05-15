@@ -11,6 +11,7 @@ const files = [
   "api.js",
   "app.js",
   "gloc-logo.png",
+  "gloc-logo-banner.png",
   "manifest.webmanifest",
   "mobile-test-qr.png"
 ];

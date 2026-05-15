@@ -6,7 +6,7 @@ const headOfficeCode = "ADMIN";
 const headOfficeName = "본사";
 
 const colorOptions = [
-  { name: "전체", value: "전체", hex: "#b11924" },
+  { name: "전체", value: "전체", hex: "#cf4e42" },
   { name: "차콜", value: "차콜", hex: "#2f3d3d" },
   { name: "클리어", value: "클리어", hex: "#f7fbf9" },
   { name: "매트", value: "매트", hex: "#c9cac2" },
@@ -236,6 +236,7 @@ function renderLogin() {
     <main class="screen ${state.screen === "login" ? "active" : ""}" data-screen="login">
       <section class="login-direct">
         <section class="panel login-card">
+          <img class="login-logo" src="gloc-logo-banner.png" alt="GLOC" />
           <div class="login-intro">
             <p class="eyebrow">대리점 재고관리</p>
             <h1>로그인</h1>
@@ -1785,7 +1786,7 @@ function statusTone(status) {
 
 function colorHex(value) {
   const found = colorOptions.find((option) => option.value !== "전체" && normalize(value).includes(normalize(option.value)));
-  return found?.hex || "#b11924";
+  return found?.hex || "#cf4e42";
 }
 
 function colorNameFromText(value) {
