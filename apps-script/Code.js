@@ -10,7 +10,7 @@ const SHEETS = {
 const HEADERS = {
   accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "role", "is_first_login", "is_active", "updated_at"],
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
-  orders: ["order_id", "dealer_code", "dealer_name", "product_name", "sku", "qty", "status", "memo", "shipping_company", "tracking_number", "created_at", "updated_at"],
+  orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "status", "memo", "shipping_company", "tracking_number", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "is_active"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
@@ -221,6 +221,7 @@ function handleCreateOrder_(payload, user) {
     order_id: makeOrderId_(),
     dealer_code: user.dealer_code,
     dealer_name: user.dealer_name,
+    created_by_login_id: user.login_id,
     product_name: product.product_name,
     sku: product.sku,
     qty: qty,
@@ -350,7 +351,7 @@ function handleDeleteProduct_(payload, user) {
 }
 
 function handleCreateDealerAccount_(payload, user) {
-  if (!user || (user.role !== "admin" && user.role !== "dealer")) throw new Error("계정 생성 권한이 없습니다.");
+  if (!canManageDealerStaff_(user)) throw new Error("담당자 추가는 본사 관리자 또는 대리점 최상위 관리자만 가능합니다.");
   const loginId = required_(payload.login_id, "login_id");
   const role = user.role === "admin" && payload.role === "admin" ? "admin" : "dealer";
   const dealerCode = user.role === "dealer"
@@ -410,12 +411,19 @@ function handleDeactivateDealerAccount_(payload, user) {
 }
 
 function handleDeleteDealerAccount_(payload, user) {
-  requireAdmin_(user);
   const loginId = required_(payload.login_id, "login_id");
   if (loginId === user.login_id) throw new Error("현재 로그인한 본인 계정은 삭제할 수 없습니다.");
   const account = findAccountByLoginId_(loginId);
   if (!account) throw new Error("삭제할 계정을 찾을 수 없습니다.");
   if (isProtectedRootAdmin_(account)) throw new Error("기본 본사 관리자 계정은 삭제할 수 없습니다.");
+
+  if (user.role !== "admin") {
+    if (!canManageDealerStaff_(user)) throw new Error("담당자 삭제는 본사 관리자 또는 대리점 최상위 관리자만 가능합니다.");
+    if (account.role !== "dealer" || String(account.dealer_code).toUpperCase() !== String(user.dealer_code).toUpperCase()) {
+      throw new Error("본인 대리점 담당자만 삭제할 수 있습니다.");
+    }
+    if (isDealerTopManagerAccount_(account)) throw new Error("최상위 관리자 계정은 삭제할 수 없습니다.");
+  }
 
   deleteRowsByKey_(SHEETS.accounts, "login_id", loginId);
   const hasOtherDealerAccount = account.role === "dealer" && readRows_(SHEETS.accounts)
@@ -528,7 +536,7 @@ function handleSendTestPushNotification_(payload, user) {
 function notifyOrderCreated_(order) {
   return sendPushNotification_({
     title: "GLOC 발주 접수",
-    body: order.dealer_name + " · " + order.product_name + " / " + order.qty + "롤",
+    body: order.dealer_name + " · " + (order.created_by_login_id || "담당자 미기록") + " · " + order.product_name + " / " + order.qty + "롤",
     url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
     tag: "gloc-order-" + order.order_id,
     badgeCount: pendingOrderCount_()
@@ -761,6 +769,22 @@ function listAccessibleAccounts_(user) {
     account.role === "dealer" &&
     String(account.dealer_code).toUpperCase() === String(user.dealer_code).toUpperCase()
   ));
+}
+
+function canManageDealerStaff_(user) {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  if (user.role !== "dealer") return false;
+  return isDealerTopManagerAccount_(user);
+}
+
+function isDealerTopManagerAccount_(account) {
+  if (!account || account.role !== "dealer") return false;
+  const topManager = readRows_(SHEETS.accounts).find((row) => (
+    row.role === "dealer" &&
+    String(row.dealer_code).toUpperCase() === String(account.dealer_code).toUpperCase()
+  ));
+  return Boolean(topManager && String(topManager.login_id).toLowerCase() === String(account.login_id || "").toLowerCase());
 }
 
 function isProtectedRootAdmin_(account) {
