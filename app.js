@@ -2227,6 +2227,11 @@ function commonLoginUrl() {
   return `${base.replace(/\/$/, "")}/login`;
 }
 
+function dealerManualUrl() {
+  const base = appPublicBase().replace(/\/index\.html$/, "").replace(/\/login$/, "");
+  return `${base.replace(/\/$/, "")}/manual-dealer.html`;
+}
+
 function appPublicBase() {
   if (config.appPublicUrl) return String(config.appPublicUrl).replace(/\/$/, "");
   if (window.location.protocol === "file:") return window.location.href.split("?")[0];
@@ -2239,6 +2244,7 @@ function qrUrl(url) {
 }
 
 function kakaoMessage(account, url, temporaryPassword) {
+  const manualUrl = dealerManualUrl();
   return `안녕하세요.
 재고조회 및 발주는 아래 링크에서 진행해 주세요.
 
@@ -2249,12 +2255,8 @@ function kakaoMessage(account, url, temporaryPassword) {
 
 최초 로그인 후 비밀번호를 변경해 주세요.
 
-사용방법:
-1. 링크를 열고 대리점 계정으로 로그인합니다.
-2. 재고 메뉴에서 본사 재고와 대리점/샵 재고를 확인합니다.
-3. 발주 메뉴에서 제품과 수량을 선택해 발주합니다.
-4. 내 발주 메뉴에서 접수/승인/출고/완료 상태와 택배 송장번호를 확인합니다.
-5. 접수 상태의 발주는 승인 전까지 취소할 수 있습니다.`;
+사용방법은 아래 대리점 사용설명서를 확인해 주세요.
+대리점 사용설명서: ${manualUrl}`;
 }
 
 async function copyText(value) {
