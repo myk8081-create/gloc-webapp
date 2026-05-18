@@ -10,13 +10,13 @@ const SHEETS = {
 const HEADERS = {
   accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "role", "is_first_login", "is_active", "updated_at"],
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
-  orders: ["order_id", "dealer_code", "dealer_name", "product_name", "sku", "qty", "status", "memo", "created_at", "updated_at"],
+  orders: ["order_id", "dealer_code", "dealer_name", "product_name", "sku", "qty", "status", "memo", "shipping_company", "tracking_number", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "is_active"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
 };
 
-const ORDER_STATUSES = ["접수", "승인", "출고", "완료", "반려"];
+const ORDER_STATUSES = ["접수", "승인", "출고", "완료", "반려", "취소"];
 const SESSION_SECONDS = 21600;
 const HEAD_OFFICE_CODE = "ADMIN";
 const HEAD_OFFICE_NAME = "본사";
@@ -37,6 +37,7 @@ function doPost(e) {
     if (action === "createOrder") return ok_(handleCreateOrder_(payload, user));
     if (action === "getOrders") return ok_(handleGetOrders_(payload, user));
     if (action === "updateOrderStatus") return ok_(handleUpdateOrderStatus_(payload, user));
+    if (action === "cancelOrder") return ok_(handleCancelOrder_(payload, user));
     if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
     if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
     if (action === "createDealerAccount") return ok_(handleCreateDealerAccount_(payload, user));
@@ -225,6 +226,8 @@ function handleCreateOrder_(payload, user) {
     qty: qty,
     status: "접수",
     memo: payload.memo || "",
+    shipping_company: "",
+    tracking_number: "",
     created_at: isoNow_(),
     updated_at: isoNow_()
   };
@@ -252,11 +255,39 @@ function handleUpdateOrderStatus_(payload, user) {
   const status = required_(payload.status, "status");
   if (ORDER_STATUSES.indexOf(status) === -1) throw new Error("지원하지 않는 발주 상태입니다.");
 
-  const order = updateRowByKey_(SHEETS.orders, "order_id", orderId, {
+  const updates = {
     status: status,
     updated_at: isoNow_()
+  };
+
+  if (status === "출고") {
+    updates.shipping_company = required_(payload.shipping_company, "택배사");
+    updates.tracking_number = required_(payload.tracking_number, "송장번호");
+  }
+
+  const order = updateRowByKey_(SHEETS.orders, "order_id", orderId, updates);
+  return {
+    order: order,
+    notification: notifyDealerOrderUpdated_(order)
+  };
+}
+
+function handleCancelOrder_(payload, user) {
+  if (user.role !== "dealer") throw new Error("대리점 계정만 발주를 취소할 수 있습니다.");
+  const orderId = required_(payload.order_id, "order_id");
+  const order = readRows_(SHEETS.orders).find((row) => row.order_id === orderId);
+  if (!order) throw new Error("발주를 찾을 수 없습니다.");
+  if (String(order.dealer_code).toUpperCase() !== String(user.dealer_code).toUpperCase()) throw new Error("본인 대리점 발주만 취소할 수 있습니다.");
+  if (order.status !== "접수") throw new Error("승인 전 접수 상태에서만 취소할 수 있습니다.");
+
+  const updated = updateRowByKey_(SHEETS.orders, "order_id", orderId, {
+    status: "취소",
+    updated_at: isoNow_()
   });
-  return { order: order };
+  return {
+    order: updated,
+    notification: notifyOrderCanceled_(updated)
+  };
 }
 
 function handleSaveInventory_(payload, user) {
@@ -398,7 +429,6 @@ function handleGetDealerLinks_(payload, user) {
 }
 
 function handleSavePushSubscription_(payload, user) {
-  requireAdmin_(user);
   const subscription = payload.subscription;
   if (!subscription || !subscription.endpoint) throw new Error("푸시 구독 정보가 없습니다.");
 
@@ -453,7 +483,6 @@ function deactivateOtherPushSubscriptions_(loginId, currentSubscriptionId, now) 
 }
 
 function handleDeletePushSubscription_(payload, user) {
-  requireAdmin_(user);
   const endpoint = required_(payload.endpoint, "endpoint");
   const subscriptionId = sha256Text_(endpoint);
   const updated = updateRowByKey_(SHEETS.pushSubscriptions, "subscription_id", subscriptionId, {
@@ -464,15 +493,18 @@ function handleDeletePushSubscription_(payload, user) {
 }
 
 function handleSendTestPushNotification_(payload, user) {
-  requireAdmin_(user);
+  const target = user.role === "admin"
+    ? { role: "admin" }
+    : { role: "dealer", dealer_code: user.dealer_code };
+  const notification = {
+    title: "GLOC 테스트 알림",
+    body: "새 발주 알림 설정이 정상적으로 연결되었습니다.",
+    url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
+    tag: "gloc-test-" + new Date().getTime()
+  };
+  if (user.role === "admin") notification.badgeCount = pendingOrderCount_();
   return {
-    notification: sendPushNotification_({
-      title: "GLOC 테스트 알림",
-      body: "새 발주 알림 설정이 정상적으로 연결되었습니다.",
-      url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
-      tag: "gloc-test-" + new Date().getTime(),
-      badgeCount: pendingOrderCount_()
-    })
+    notification: sendPushNotification_(notification, target)
   };
 }
 
@@ -483,21 +515,44 @@ function notifyOrderCreated_(order) {
     url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
     tag: "gloc-order-" + order.order_id,
     badgeCount: pendingOrderCount_()
-  });
+  }, { role: "admin" });
+}
+
+function notifyOrderCanceled_(order) {
+  return sendPushNotification_({
+    title: "GLOC 발주 취소",
+    body: order.dealer_name + " · " + order.product_name + " 발주가 취소되었습니다.",
+    url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
+    tag: "gloc-order-cancel-" + order.order_id,
+    badgeCount: pendingOrderCount_()
+  }, { role: "admin" });
+}
+
+function notifyDealerOrderUpdated_(order) {
+  let body = order.product_name + " · " + order.status;
+  if (order.status === "출고") {
+    body += " · " + (order.shipping_company || "택배사") + " " + (order.tracking_number || "");
+  }
+  return sendPushNotification_({
+    title: "GLOC 발주 상태 변경",
+    body: body,
+    url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
+    tag: "gloc-order-update-" + order.order_id
+  }, { role: "dealer", dealer_code: order.dealer_code });
 }
 
 function pendingOrderCount_() {
   return readRows_(SHEETS.orders).filter((order) => order.status === "접수").length;
 }
 
-function sendPushNotification_(notification) {
+function sendPushNotification_(notification, target) {
   try {
     const apiUrl = getSetting_("push_api_url");
     const secret = getSetting_("push_api_secret");
     if (!apiUrl || !secret) return { ok: false, skipped: true, reason: "push_api_url 또는 push_api_secret 미설정" };
 
-    const subscriptions = activePushSubscriptions_();
-    if (!subscriptions.length) return { ok: false, skipped: true, reason: "등록된 관리자 푸시 구독 없음" };
+    const subscriptions = activePushSubscriptions_(target);
+    if (!subscriptions.length) return { ok: false, skipped: true, reason: "등록된 푸시 구독 없음" };
 
     const response = UrlFetchApp.fetch(apiUrl, {
       method: "post",
@@ -526,9 +581,15 @@ function sendPushNotification_(notification) {
   }
 }
 
-function activePushSubscriptions_() {
+function activePushSubscriptions_(target) {
   return readRows_(SHEETS.pushSubscriptions)
-    .filter((row) => row.role === "admin" && toBool_(row.is_active))
+    .filter((row) => {
+      if (!toBool_(row.is_active)) return false;
+      if (!target || !target.role) return true;
+      if (row.role !== target.role) return false;
+      if (target.dealer_code && String(row.dealer_code).toUpperCase() !== String(target.dealer_code).toUpperCase()) return false;
+      return true;
+    })
     .map((row) => {
       try {
         return JSON.parse(row.subscription_json);
@@ -554,13 +615,20 @@ function ensureSheet_(name, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(name);
   if (!sheet) sheet = ss.insertSheet(name);
-  const firstRow = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
-  const missingHeader = headers.some((header, index) => firstRow[index] !== header);
-  if (missingHeader) {
-    sheet.clear();
+  const lastColumn = Math.max(sheet.getLastColumn(), headers.length, 1);
+  const firstRow = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(String);
+  const hasHeader = firstRow.some((cell) => cell.trim() !== "");
+
+  if (!hasHeader) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sheet.setFrozenRows(1);
+  } else {
+    headers.forEach((header) => {
+      if (firstRow.indexOf(header) === -1) {
+        sheet.getRange(1, sheet.getLastColumn() + 1).setValue(header);
+      }
+    });
   }
+  sheet.setFrozenRows(1);
 }
 
 function readRows_(sheetName) {
@@ -581,7 +649,7 @@ function readRows_(sheetName) {
 
 function appendObject_(sheetName, object) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  const headers = headersForSheet_(sheetName);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   sheet.appendRow(headers.map((header) => object[header] === undefined ? "" : object[header]));
 }
 

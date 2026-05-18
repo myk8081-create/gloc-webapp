@@ -1,7 +1,7 @@
 const app = document.querySelector("#app");
 const config = window.FILM_STOCK_CONFIG || {};
 
-const orderStatuses = ["접수", "승인", "출고", "완료", "반려"];
+const orderStatuses = ["접수", "승인", "출고", "완료", "반려", "취소"];
 const headOfficeCode = "ADMIN";
 const headOfficeName = "본사";
 
@@ -145,7 +145,10 @@ const state = {
     inventoryScope: "mine",
     orderQuery: "",
     orderStatus: "전체",
-    dealerCode: "전체"
+    dealerCode: "전체",
+    orderPeriod: "전체",
+    orderDate: dateInputValue(),
+    orderMonth: monthInputValue()
   },
   forms: {
     loginRole: "dealer",
@@ -389,15 +392,16 @@ function renderAdminDashboard() {
 }
 
 function renderPushNotificationPanel() {
-  if (state.session?.role !== "admin") return "";
+  if (!state.session) return "";
   const canSubscribe = pushCanSubscribe();
   const buttonText = state.push.subscribed ? "이 기기 알림 다시 등록" : "이 기기에서 발주 알림 받기";
+  const admin = state.session.role === "admin";
   return `
     <article class="panel summary-panel history-panel push-panel">
       <div class="panel-head-row">
         <div>
-          <p class="eyebrow">관리자 알림</p>
-          <h3>새 발주 푸시 알림</h3>
+          <p class="eyebrow">${admin ? "관리자 알림" : "대리점 알림"}</p>
+          <h3>${admin ? "새 발주 푸시 알림" : "발주 처리 푸시 알림"}</h3>
         </div>
         <span class="badge ${state.push.subscribed ? "" : "warn"}">${state.push.subscribed ? "등록됨" : "대기"}</span>
       </div>
@@ -478,6 +482,8 @@ function renderInventory() {
       <section class="stats-grid" id="inventoryStats">
         ${renderInventoryStatsCards(rows)}
       </section>
+
+      ${state.session?.role === "dealer" ? renderPushNotificationPanel() : ""}
 
       <section class="toolbar">
         <input class="search-input" id="inventoryQuery" type="search" placeholder="제품명, SKU, 대리점명, 재고수량 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
@@ -661,23 +667,64 @@ function renderProductManage() {
 
 function renderOrders() {
   const rows = visibleOrders();
+  const stats = orderReportStats(rows);
   return `
     <main class="screen ${state.screen === "orders" ? "active" : ""}" data-screen="orders">
       <section class="page-head">
         <p class="eyebrow">${state.session?.role === "admin" ? "관리자" : currentDealerName()}</p>
         <h1>발주관리</h1>
-        <p class="lead">${state.session?.role === "admin" ? "전체 발주의 상태를 변경하고 검색합니다." : "내 대리점 발주 내역만 조회됩니다."}</p>
+        <p class="lead">${state.session?.role === "admin" ? "전체/대리점별 발주를 일별 또는 월별로 확인하고 상태를 변경합니다." : "내 대리점 발주 내역을 일별 또는 월별로 확인합니다."}</p>
         <div class="page-actions">
           ${state.session?.role === "dealer" ? `<button class="primary-button" type="button" data-nav="orderCreate">발주 신청</button>` : ""}
           <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
         </div>
       </section>
 
+      ${state.session?.role === "dealer" ? renderPushNotificationPanel() : ""}
+
       <section class="toolbar">
         <input class="search-input" id="orderQuery" type="search" placeholder="주문번호, 제품명, SKU, 대리점명 검색" value="${escapeAttr(state.filters.orderQuery)}" />
         <select class="search-input compact-select" id="orderStatus">
           ${["전체", ...orderStatuses].map((status) => `<option value="${status}" ${state.filters.orderStatus === status ? "selected" : ""}>${status}</option>`).join("")}
         </select>
+        ${state.session?.role === "admin" ? `
+          <select class="search-input compact-select" id="dealerFilter">
+            <option value="전체" ${state.filters.dealerCode === "전체" ? "selected" : ""}>통합 발주현황</option>
+            ${state.accounts.filter((account) => account.role === "dealer").map((account) => `<option value="${escapeAttr(account.dealer_code)}" ${state.filters.dealerCode === account.dealer_code ? "selected" : ""}>${escapeHtml(account.dealer_name)}</option>`).join("")}
+          </select>
+        ` : ""}
+        <select class="search-input compact-select" id="orderPeriod">
+          ${[
+            ["전체", "전체 기간"],
+            ["일별", "일별"],
+            ["월별", "월별"]
+          ].map(([value, label]) => `<option value="${value}" ${state.filters.orderPeriod === value ? "selected" : ""}>${label}</option>`).join("")}
+        </select>
+        ${state.filters.orderPeriod === "일별" ? `<input class="search-input compact-select" id="orderDate" type="date" value="${escapeAttr(state.filters.orderDate)}" />` : ""}
+        ${state.filters.orderPeriod === "월별" ? `<input class="search-input compact-select" id="orderMonth" type="month" value="${escapeAttr(state.filters.orderMonth)}" />` : ""}
+      </section>
+
+      <section class="stats-grid order-report-grid">
+        <article class="stat-card">
+          <span>조회 발주</span>
+          <strong>${stats.count}건</strong>
+          <small>${state.session?.role === "admin" && state.filters.dealerCode === "전체" ? "통합 기준" : "선택 기준"}</small>
+        </article>
+        <article class="stat-card">
+          <span>총 수량</span>
+          <strong>${roll(stats.qty)}</strong>
+          <small>조회 결과 합산</small>
+        </article>
+        <article class="stat-card">
+          <span>접수</span>
+          <strong>${stats.received}건</strong>
+          <small>처리 전 발주</small>
+        </article>
+        <article class="stat-card">
+          <span>완료</span>
+          <strong>${stats.done}건</strong>
+          <small>완료 처리</small>
+        </article>
       </section>
 
       <section class="panel list-panel">
@@ -885,6 +932,8 @@ function renderProductManageRow(product) {
 
 function renderOrderCard(order) {
   const canChange = state.session?.role === "admin";
+  const canCancel = state.session?.role === "dealer" && order.dealer_code === state.session.dealer_code && order.status === "접수";
+  const hasShipping = order.shipping_company || order.tracking_number;
   return `
     <article class="order-card">
       <div>
@@ -898,9 +947,20 @@ function renderOrderCard(order) {
         <span>${escapeHtml(order.created_at || "")}</span>
       </div>
       <p class="order-memo">${escapeHtml(order.memo || "메모 없음")}</p>
+      ${hasShipping ? `
+        <div class="shipping-info">
+          <strong>배송정보</strong>
+          <span>${escapeHtml(order.shipping_company || "택배사 미입력")} · ${escapeHtml(order.tracking_number || "송장번호 미입력")}</span>
+        </div>
+      ` : ""}
       ${canChange ? `
         <div class="order-actions">
           ${orderStatuses.map((status) => `<button type="button" class="${order.status === status ? "active" : ""}" data-order-status="${status}" data-order-id="${escapeAttr(order.order_id)}">${status}</button>`).join("")}
+        </div>
+      ` : ""}
+      ${canCancel ? `
+        <div class="order-actions">
+          <button type="button" class="danger-button" data-action="cancelOrder" data-order-id="${escapeAttr(order.order_id)}">발주 취소</button>
         </div>
       ` : ""}
     </article>
@@ -1074,6 +1134,21 @@ function bindEvents() {
     render();
   });
 
+  document.querySelector("#orderPeriod")?.addEventListener("change", (event) => {
+    state.filters.orderPeriod = event.target.value;
+    render();
+  });
+
+  document.querySelector("#orderDate")?.addEventListener("change", (event) => {
+    state.filters.orderDate = event.target.value;
+    render();
+  });
+
+  document.querySelector("#orderMonth")?.addEventListener("change", (event) => {
+    state.filters.orderMonth = event.target.value;
+    render();
+  });
+
   document.querySelectorAll("[data-inventory-scope]").forEach((button) => {
     button.addEventListener("click", () => {
       state.filters.inventoryScope = button.dataset.inventoryScope;
@@ -1098,7 +1173,7 @@ function bindEvents() {
 
   document.querySelectorAll("[data-action]").forEach((button) => {
     button.addEventListener("click", () => {
-      handleAction(button.dataset.action, button).catch((error) => showToast(error.message || "처리 중 오류가 발생했습니다."));
+      runWithButtonBusy(button, () => handleAction(button.dataset.action, button));
     });
   });
 
@@ -1139,9 +1214,28 @@ function bindDynamicListEvents(root) {
 
   root.querySelectorAll("[data-order-status]").forEach((button) => {
     button.addEventListener("click", () => {
-      updateOrderStatus(button.dataset.orderId, button.dataset.orderStatus).catch((error) => showToast(error.message));
+      runWithButtonBusy(button, () => updateOrderStatus(button.dataset.orderId, button.dataset.orderStatus));
     });
   });
+}
+
+async function runWithButtonBusy(button, task) {
+  if (button.dataset.busy === "true") return;
+  const originalText = button.textContent;
+  button.dataset.busy = "true";
+  button.disabled = true;
+  button.classList.add("is-loading");
+  button.textContent = "처리 중...";
+  try {
+    await task();
+  } catch (error) {
+    showToast(error.message || "처리 중 오류가 발생했습니다.");
+  } finally {
+    button.dataset.busy = "false";
+    button.disabled = false;
+    button.classList.remove("is-loading");
+    button.textContent = originalText;
+  }
 }
 
 function bindSearchInput(id, update) {
@@ -1221,7 +1315,7 @@ function syncPushSupportState() {
 function pushCanSubscribe() {
   syncPushSupportState();
   return Boolean(
-    state.session?.role === "admin" &&
+    state.session &&
     window.FilmStockApi?.isEnabled() &&
     config.vapidPublicKey &&
     state.push.supported &&
@@ -1235,7 +1329,11 @@ function pushStatusText() {
   if (!config.vapidPublicKey) return "Vercel 환경변수 VAPID_PUBLIC_KEY가 설정되면 사용할 수 있습니다.";
   if (!state.push.supported) return "이 브라우저는 웹앱 푸시 알림을 지원하지 않습니다. iPhone은 홈 화면에 추가한 앱에서 사용해 주세요.";
   if (state.push.permission === "denied") return "알림 권한이 차단되어 있습니다. 휴대폰 설정에서 GLOC 알림을 허용해 주세요.";
-  if (state.push.subscribed) return "이 기기는 새 발주가 등록되면 알림을 받을 수 있습니다.";
+  if (state.push.subscribed) {
+    return state.session?.role === "admin"
+      ? "이 기기는 새 발주가 등록되면 알림을 받을 수 있습니다."
+      : "이 기기는 발주 승인, 출고, 반려 등 상태 변경 알림을 받을 수 있습니다.";
+  }
   return state.push.message || "버튼을 눌러 이 기기에 발주 알림을 등록하세요.";
 }
 
@@ -1268,7 +1366,7 @@ async function updatePushState(showDone = false) {
 }
 
 async function enablePushNotifications() {
-  if (state.session?.role !== "admin") throw new Error("관리자 계정에서만 발주 알림을 등록할 수 있습니다.");
+  if (!state.session) throw new Error("로그인 후 발주 알림을 등록할 수 있습니다.");
   if (!window.FilmStockApi?.isEnabled()) throw new Error("발주 알림은 실데이터 모드에서 사용할 수 있습니다.");
   if (!config.vapidPublicKey) throw new Error("Vercel 환경변수 VAPID_PUBLIC_KEY를 먼저 설정해 주세요.");
   if (!isPushFeatureSupported()) throw new Error("이 브라우저는 웹앱 푸시 알림을 지원하지 않습니다. iPhone은 홈 화면에 추가한 앱에서 실행해 주세요.");
@@ -1325,7 +1423,7 @@ function syncAppBadgeFromOrders() {
 }
 
 async function sendTestPushNotification() {
-  if (state.session?.role !== "admin") throw new Error("관리자 계정에서만 테스트 알림을 보낼 수 있습니다.");
+  if (!state.session) throw new Error("로그인 후 테스트 알림을 보낼 수 있습니다.");
   if (!window.FilmStockApi?.isEnabled()) throw new Error("테스트 알림은 실데이터 모드에서만 사용할 수 있습니다.");
   const data = await window.FilmStockApi.sendTestPushNotification();
   const notification = data?.notification || {};
@@ -1360,6 +1458,7 @@ async function handleAction(action, button) {
   if (action === "checkPushNotifications") return updatePushState(true);
   if (action === "sendTestPushNotification") return sendTestPushNotification();
   if (action === "createOrder") return createOrder();
+  if (action === "cancelOrder") return cancelOrder(button.dataset.orderId);
   if (action === "saveInventory") return saveInventory();
   if (action === "saveProduct") return saveProduct();
   if (action === "createAccount") return createDealerAccount();
@@ -1390,7 +1489,7 @@ async function login() {
   state.screen = toBool(state.session.is_first_login) ? "passwordChange" : defaultScreen();
   render();
   syncAppBadgeFromOrders();
-  if (state.session?.role === "admin") updatePushState(false);
+  if (state.session) updatePushState(false);
   scrollTop();
   showToast(toBool(state.session.is_first_login) ? "비밀번호 변경이 필요합니다." : "로그인되었습니다.");
 }
@@ -1506,8 +1605,20 @@ async function createOrder() {
 
 async function updateOrderStatus(orderId, status) {
   if (state.session?.role !== "admin") throw new Error("관리자만 발주 상태를 변경할 수 있습니다.");
+  const payload = { orderId, status };
+  if (status === "출고") {
+    const shippingCompany = prompt("택배사를 입력해 주세요. 예: CJ대한통운");
+    if (!shippingCompany) return;
+    const trackingNumber = prompt("송장번호를 입력해 주세요.");
+    if (!trackingNumber) return;
+    payload.shippingCompany = shippingCompany.trim();
+    payload.trackingNumber = trackingNumber.trim();
+  }
+
   if (window.FilmStockApi?.isEnabled()) {
-    const data = await window.FilmStockApi.updateOrderStatus({ orderId, status });
+    const data = payload.shippingCompany
+      ? await window.FilmStockApi.updateOrderStatusWithShipping(payload)
+      : await window.FilmStockApi.updateOrderStatus(payload);
     if (data?.order) {
       state.orders = state.orders.map((order) => (order.order_id === orderId ? data.order : order));
     }
@@ -1515,12 +1626,36 @@ async function updateOrderStatus(orderId, status) {
     const order = state.orders.find((item) => item.order_id === orderId);
     if (order) {
       order.status = status;
+      if (payload.shippingCompany) {
+        order.shipping_company = payload.shippingCompany;
+        order.tracking_number = payload.trackingNumber;
+      }
       order.updated_at = nowText();
     }
   }
   render();
   syncAppBadgeFromOrders();
   showToast(`발주 상태를 ${status}(으)로 변경했습니다.`);
+}
+
+async function cancelOrder(orderId) {
+  const order = state.orders.find((item) => item.order_id === orderId);
+  if (!order) throw new Error("취소할 발주를 찾을 수 없습니다.");
+  if (order.status !== "접수") throw new Error("승인 전 접수 상태에서만 취소할 수 있습니다.");
+  const confirmed = confirm(`${order.product_name} 발주를 취소할까요?`);
+  if (!confirmed) return;
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.cancelOrder({ orderId });
+    if (data?.order) {
+      state.orders = state.orders.map((item) => (item.order_id === orderId ? data.order : item));
+    }
+  } else {
+    order.status = "취소";
+    order.updated_at = nowText();
+  }
+  render();
+  showToast("발주가 취소되었습니다.");
 }
 
 async function saveInventory() {
@@ -1826,11 +1961,27 @@ function visibleOrders() {
   const query = normalize(state.filters.orderQuery);
   return state.orders.filter((order) => {
     if (state.session?.role === "dealer" && order.dealer_code !== state.session.dealer_code) return false;
+    if (state.session?.role === "admin" && state.filters.dealerCode !== "전체" && order.dealer_code !== state.filters.dealerCode) return false;
     if (state.filters.orderStatus !== "전체" && order.status !== state.filters.orderStatus) return false;
+    if (state.filters.orderPeriod === "일별" && orderDatePart(order.created_at) !== state.filters.orderDate) return false;
+    if (state.filters.orderPeriod === "월별" && !orderDatePart(order.created_at).startsWith(state.filters.orderMonth)) return false;
     if (!query) return true;
-    return [order.order_id, order.product_name, order.sku, order.dealer_name, order.dealer_code, order.memo, order.status]
+    return [order.order_id, order.product_name, order.sku, order.dealer_name, order.dealer_code, order.memo, order.status, order.shipping_company, order.tracking_number]
       .some((value) => normalize(value).includes(query));
   });
+}
+
+function orderReportStats(rows) {
+  return rows.reduce(
+    (stats, order) => {
+      stats.count += 1;
+      stats.qty += Number(order.qty || 0);
+      if (order.status === "접수") stats.received += 1;
+      if (order.status === "완료") stats.done += 1;
+      return stats;
+    },
+    { count: 0, qty: 0, received: 0, done: 0 }
+  );
 }
 
 function inventoryStats(rows) {
@@ -1994,7 +2145,7 @@ function roleLabel(role) {
 }
 
 function statusTone(status) {
-  if (status === "반려") return "danger";
+  if (status === "반려" || status === "취소") return "danger";
   if (status === "접수" || status === "승인") return "warn";
   return "";
 }
@@ -2024,6 +2175,26 @@ function nowText() {
   }).format(new Date());
 }
 
+function dateInputValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function monthInputValue(date = new Date()) {
+  return dateInputValue(date).slice(0, 7);
+}
+
+function orderDatePart(value) {
+  const text = String(value || "");
+  const isoMatch = text.match(/\d{4}-\d{2}-\d{2}/);
+  if (isoMatch) return isoMatch[0];
+  const koreanMatch = text.match(/(\d{4})\.\s*(\d{2})\.\s*(\d{2})/);
+  if (koreanMatch) return `${koreanMatch[1]}-${koreanMatch[2]}-${koreanMatch[3]}`;
+  return "";
+}
+
 function commonLoginUrl() {
   const base = appPublicBase();
   if (base.endsWith("index.html") || base.endsWith("/login")) return base;
@@ -2050,7 +2221,14 @@ function kakaoMessage(account, url, temporaryPassword) {
 초기 PW: ${temporaryPassword}
 대리점 코드: ${account.dealer_code}
 
-최초 로그인 후 비밀번호를 변경해 주세요.`;
+최초 로그인 후 비밀번호를 변경해 주세요.
+
+사용방법:
+1. 링크를 열고 대리점 계정으로 로그인합니다.
+2. 재고 메뉴에서 본사 재고와 대리점/샵 재고를 확인합니다.
+3. 발주 메뉴에서 제품과 수량을 선택해 발주합니다.
+4. 내 발주 메뉴에서 접수/승인/출고/완료 상태와 택배 송장번호를 확인합니다.
+5. 접수 상태의 발주는 승인 전까지 취소할 수 있습니다.`;
 }
 
 async function copyText(value) {

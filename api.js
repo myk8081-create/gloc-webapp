@@ -93,6 +93,19 @@
     return request("updateOrderStatus", { order_id: orderId, status });
   }
 
+  async function updateOrderStatusWithShipping({ orderId, status, shippingCompany, trackingNumber }) {
+    return request("updateOrderStatus", {
+      order_id: orderId,
+      status,
+      shipping_company: shippingCompany,
+      tracking_number: trackingNumber
+    });
+  }
+
+  async function cancelOrder({ orderId }) {
+    return request("cancelOrder", { order_id: orderId });
+  }
+
   async function saveInventory(row) {
     return request("saveInventory", row);
   }
@@ -156,6 +169,8 @@
     createOrder,
     getOrders,
     updateOrderStatus,
+    updateOrderStatusWithShipping,
+    cancelOrder,
     saveInventory,
     saveProduct,
     createDealerAccount,
