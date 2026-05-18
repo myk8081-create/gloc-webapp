@@ -693,21 +693,13 @@ function renderOrders() {
 
       ${state.session?.role === "dealer" ? renderPushNotificationPanel() : ""}
       ${state.session?.role === "admin" ? renderOrderDealerTabs() : ""}
+      ${renderOrderCalendarPanel()}
 
       <section class="toolbar">
         <input class="search-input" id="orderQuery" type="search" placeholder="주문번호, 제품명, SKU, 대리점명 검색" value="${escapeAttr(state.filters.orderQuery)}" />
         <select class="search-input compact-select" id="orderStatus">
           ${["전체", ...orderStatuses].map((status) => `<option value="${status}" ${state.filters.orderStatus === status ? "selected" : ""}>${status}</option>`).join("")}
         </select>
-        <select class="search-input compact-select" id="orderPeriod">
-          ${[
-            ["전체", "전체 기간"],
-            ["일별", "일별"],
-            ["월별", "월별"]
-          ].map(([value, label]) => `<option value="${value}" ${state.filters.orderPeriod === value ? "selected" : ""}>${label}</option>`).join("")}
-        </select>
-        ${state.filters.orderPeriod === "일별" ? `<input class="search-input compact-select" id="orderDate" type="date" value="${escapeAttr(state.filters.orderDate)}" />` : ""}
-        ${state.filters.orderPeriod === "월별" ? `<input class="search-input compact-select" id="orderMonth" type="month" value="${escapeAttr(state.filters.orderMonth)}" />` : ""}
       </section>
 
       <section class="stats-grid order-report-grid">
@@ -815,6 +807,44 @@ function renderOrderDealerTabs() {
           <strong>${dealer.count}건</strong>
         </button>
       `).join("")}
+    </section>
+  `;
+}
+
+function renderOrderCalendarPanel() {
+  const period = state.filters.orderPeriod;
+  const dateInput = period === "일별"
+    ? `<input id="orderDate" class="calendar-native-input" type="date" value="${escapeAttr(state.filters.orderDate)}" aria-label="일별 조회 날짜" />`
+    : "";
+  const monthInput = period === "월별"
+    ? `<input id="orderMonth" class="calendar-native-input" type="month" value="${escapeAttr(state.filters.orderMonth)}" aria-label="월별 조회 월" />`
+    : "";
+  return `
+    <section class="order-calendar-panel" aria-label="발주 기간 선택">
+      <div class="period-toggle">
+        ${[
+          ["전체", "전체 기간"],
+          ["일별", "일별"],
+          ["월별", "월별"]
+        ].map(([value, label]) => `<button type="button" class="${period === value ? "active" : ""}" data-order-period="${value}">${label}</button>`).join("")}
+      </div>
+      ${period === "전체" ? `
+        <div class="calendar-summary">
+          <span>기간 제한 없음</span>
+          <strong>전체 발주를 확인합니다</strong>
+        </div>
+      ` : `
+        <div class="calendar-card">
+          <button type="button" class="date-step-button" data-order-date-step="-1" aria-label="이전 ${period === "일별" ? "날짜" : "월"}">&lt;</button>
+          <label class="calendar-display">
+            <span>${period === "일별" ? "일별 조회 날짜" : "월별 조회"}</span>
+            <strong>${escapeHtml(orderCalendarLabel())}</strong>
+            ${dateInput}${monthInput}
+          </label>
+          <button type="button" class="date-step-button" data-order-date-step="1" aria-label="다음 ${period === "일별" ? "날짜" : "월"}">&gt;</button>
+          <button type="button" class="calendar-current-button" data-order-date-current>${period === "일별" ? "오늘" : "이번 달"}</button>
+        </div>
+      `}
     </section>
   `;
 }
@@ -1163,11 +1193,6 @@ function bindEvents() {
     render();
   });
 
-  document.querySelector("#orderPeriod")?.addEventListener("change", (event) => {
-    state.filters.orderPeriod = event.target.value;
-    render();
-  });
-
   document.querySelector("#orderDate")?.addEventListener("change", (event) => {
     state.filters.orderDate = event.target.value;
     render();
@@ -1175,6 +1200,28 @@ function bindEvents() {
 
   document.querySelector("#orderMonth")?.addEventListener("change", (event) => {
     state.filters.orderMonth = event.target.value;
+    render();
+  });
+
+  document.querySelectorAll("[data-order-period]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.orderPeriod = button.dataset.orderPeriod;
+      if (!state.filters.orderDate) state.filters.orderDate = dateInputValue();
+      if (!state.filters.orderMonth) state.filters.orderMonth = monthInputValue();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-order-date-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      shiftOrderCalendar(Number(button.dataset.orderDateStep || 0));
+      render();
+    });
+  });
+
+  document.querySelector("[data-order-date-current]")?.addEventListener("click", () => {
+    if (state.filters.orderPeriod === "일별") state.filters.orderDate = dateInputValue();
+    if (state.filters.orderPeriod === "월별") state.filters.orderMonth = monthInputValue();
     render();
   });
 
@@ -2257,6 +2304,52 @@ function dateInputValue(date = new Date()) {
 
 function monthInputValue(date = new Date()) {
   return dateInputValue(date).slice(0, 7);
+}
+
+function parseDateInput(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return new Date();
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function parseMonthInput(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return new Date();
+  return new Date(Number(match[1]), Number(match[2]) - 1, 1);
+}
+
+function shiftOrderCalendar(step) {
+  if (!step) return;
+  if (state.filters.orderPeriod === "일별") {
+    const date = parseDateInput(state.filters.orderDate);
+    date.setDate(date.getDate() + step);
+    state.filters.orderDate = dateInputValue(date);
+  }
+  if (state.filters.orderPeriod === "월별") {
+    const date = parseMonthInput(state.filters.orderMonth);
+    date.setMonth(date.getMonth() + step);
+    state.filters.orderMonth = monthInputValue(date);
+  }
+}
+
+function orderCalendarLabel() {
+  if (state.filters.orderPeriod === "일별") {
+    const date = parseDateInput(state.filters.orderDate);
+    return new Intl.DateTimeFormat("ko-KR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "short"
+    }).format(date);
+  }
+  if (state.filters.orderPeriod === "월별") {
+    const date = parseMonthInput(state.filters.orderMonth);
+    return new Intl.DateTimeFormat("ko-KR", {
+      year: "numeric",
+      month: "long"
+    }).format(date);
+  }
+  return "전체 기간";
 }
 
 function orderDatePart(value) {
