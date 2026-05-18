@@ -349,7 +349,8 @@ function handleDeleteProduct_(payload, user) {
 function handleCreateDealerAccount_(payload, user) {
   requireAdmin_(user);
   const loginId = required_(payload.login_id, "login_id");
-  const dealerCode = required_(payload.dealer_code, "dealer_code").toUpperCase();
+  const role = payload.role === "admin" ? "admin" : "dealer";
+  const dealerCode = role === "admin" ? HEAD_OFFICE_CODE : required_(payload.dealer_code, "dealer_code").toUpperCase();
   const dealerName = required_(payload.dealer_name, "dealer_name");
   const temporaryPassword = required_(payload.temporary_password, "temporary_password");
 
@@ -360,13 +361,13 @@ function handleCreateDealerAccount_(payload, user) {
     password_hash: hashPassword_(temporaryPassword),
     dealer_code: dealerCode,
     dealer_name: dealerName,
-    role: "dealer",
+    role: role,
     is_first_login: true,
     is_active: true,
     updated_at: isoNow_()
   };
   appendObject_(SHEETS.accounts, account);
-  seedInventoryForDealer_(dealerCode, dealerName);
+  if (role === "dealer") seedInventoryForDealer_(dealerCode, dealerName);
   return { account: publicAccount_(account), temporary_password: temporaryPassword };
 }
 
@@ -375,7 +376,7 @@ function handleResetDealerPassword_(payload, user) {
   const loginId = required_(payload.login_id, "login_id");
   const temporaryPassword = required_(payload.temporary_password, "temporary_password");
   const account = findAccountByLoginId_(loginId);
-  if (!account || account.role !== "dealer") throw new Error("대리점 계정을 찾을 수 없습니다.");
+  if (!account) throw new Error("계정을 찾을 수 없습니다.");
 
   const updated = updateAccount_(loginId, {
     password_hash: hashPassword_(temporaryPassword),
@@ -388,8 +389,9 @@ function handleResetDealerPassword_(payload, user) {
 function handleDeactivateDealerAccount_(payload, user) {
   requireAdmin_(user);
   const loginId = required_(payload.login_id, "login_id");
+  if (loginId === user.login_id) throw new Error("현재 로그인한 본인 계정은 사용중지할 수 없습니다.");
   const account = findAccountByLoginId_(loginId);
-  if (!account || account.role !== "dealer") throw new Error("대리점 계정을 찾을 수 없습니다.");
+  if (!account) throw new Error("계정을 찾을 수 없습니다.");
 
   const updated = updateAccount_(loginId, {
     is_active: false,
@@ -401,11 +403,14 @@ function handleDeactivateDealerAccount_(payload, user) {
 function handleDeleteDealerAccount_(payload, user) {
   requireAdmin_(user);
   const loginId = required_(payload.login_id, "login_id");
+  if (loginId === user.login_id) throw new Error("현재 로그인한 본인 계정은 삭제할 수 없습니다.");
   const account = findAccountByLoginId_(loginId);
-  if (!account || account.role !== "dealer") throw new Error("삭제할 대리점 계정을 찾을 수 없습니다.");
+  if (!account) throw new Error("삭제할 계정을 찾을 수 없습니다.");
 
   deleteRowsByKey_(SHEETS.accounts, "login_id", loginId);
-  const deletedInventoryRows = deleteRowsByKey_(SHEETS.inventory, "dealer_code", account.dealer_code);
+  const deletedInventoryRows = account.role === "dealer"
+    ? deleteRowsByKey_(SHEETS.inventory, "dealer_code", account.dealer_code)
+    : 0;
   return {
     account: publicAccount_(account),
     deleted_inventory_rows: deletedInventoryRows
