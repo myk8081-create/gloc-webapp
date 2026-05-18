@@ -263,6 +263,9 @@ function handleUpdateOrderStatus_(payload, user) {
   if (status === "출고") {
     updates.shipping_company = required_(payload.shipping_company, "택배사");
     updates.tracking_number = required_(payload.tracking_number, "송장번호");
+  } else {
+    updates.shipping_company = "";
+    updates.tracking_number = "";
   }
 
   const order = updateRowByKey_(SHEETS.orders, "order_id", orderId, updates);

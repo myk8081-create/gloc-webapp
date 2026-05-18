@@ -1649,6 +1649,9 @@ async function updateOrderStatus(orderId, status) {
       if (payload.shippingCompany) {
         order.shipping_company = payload.shippingCompany;
         order.tracking_number = payload.trackingNumber;
+      } else {
+        order.shipping_company = "";
+        order.tracking_number = "";
       }
       order.updated_at = nowText();
     }
