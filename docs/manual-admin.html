@@ -61,12 +61,19 @@
 
       .brand-mark {
         display: grid;
-        width: 44px;
-        height: 44px;
+        width: 48px;
+        height: 48px;
         place-items: center;
-        border: 2px solid rgba(255, 255, 255, 0.4);
-        border-radius: 50%;
-        font-weight: 900;
+        overflow: hidden;
+        border-radius: 12px;
+        background: #111312;
+      }
+
+      .brand-mark img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
       }
 
       .brand strong {
@@ -364,7 +371,9 @@
     <div class="layout">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">G</div>
+          <div class="brand-mark">
+            <img src="./gloc-logo.png" alt="GLOC 로고" onerror="this.onerror=null; this.src='../gloc-logo.png';" />
+          </div>
           <div>
             <strong>GLOC</strong>
             <span>본사 관리자 매뉴얼</span>
