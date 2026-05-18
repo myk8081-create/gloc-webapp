@@ -29,7 +29,10 @@ self.addEventListener("push", (event) => {
     }
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(Promise.all([
+    self.registration.showNotification(title, options),
+    updateAppBadge(payload.badgeCount)
+  ]));
 });
 
 self.addEventListener("notificationclick", (event) => {
@@ -43,3 +46,27 @@ self.addEventListener("notificationclick", (event) => {
     return self.clients.openWindow(targetUrl);
   })());
 });
+
+async function updateAppBadge(value) {
+  const count = Number(value);
+  if (!Number.isFinite(count)) return;
+
+  try {
+    if (count > 0) {
+      if (self.registration && typeof self.registration.setAppBadge === "function") {
+        await self.registration.setAppBadge(count);
+      } else if (self.navigator && typeof self.navigator.setAppBadge === "function") {
+        await self.navigator.setAppBadge(count);
+      }
+      return;
+    }
+
+    if (self.registration && typeof self.registration.clearAppBadge === "function") {
+      await self.registration.clearAppBadge();
+    } else if (self.navigator && typeof self.navigator.clearAppBadge === "function") {
+      await self.navigator.clearAppBadge();
+    }
+  } catch (error) {
+    console.warn("앱 배지 업데이트 실패", error);
+  }
+}

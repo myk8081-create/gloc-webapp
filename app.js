@@ -1306,6 +1306,24 @@ async function enablePushNotifications() {
   showToast("발주 알림이 등록되었습니다.");
 }
 
+async function updateAppBadgeCount(count) {
+  try {
+    if (count > 0 && "setAppBadge" in navigator) {
+      await navigator.setAppBadge(count);
+    } else if ("clearAppBadge" in navigator) {
+      await navigator.clearAppBadge();
+    }
+  } catch (error) {
+    console.warn("앱 배지 업데이트 실패", error);
+  }
+}
+
+function syncAppBadgeFromOrders() {
+  if (state.session?.role !== "admin") return;
+  const pendingCount = state.orders.filter((order) => order.status === "접수").length;
+  updateAppBadgeCount(pendingCount);
+}
+
 async function sendTestPushNotification() {
   if (state.session?.role !== "admin") throw new Error("관리자 계정에서만 테스트 알림을 보낼 수 있습니다.");
   if (!window.FilmStockApi?.isEnabled()) throw new Error("테스트 알림은 실데이터 모드에서만 사용할 수 있습니다.");
@@ -1371,6 +1389,7 @@ async function login() {
   state.forms.password = "";
   state.screen = toBool(state.session.is_first_login) ? "passwordChange" : defaultScreen();
   render();
+  syncAppBadgeFromOrders();
   if (state.session?.role === "admin") updatePushState(false);
   scrollTop();
   showToast(toBool(state.session.is_first_login) ? "비밀번호 변경이 필요합니다." : "로그인되었습니다.");
@@ -1394,6 +1413,7 @@ function applyRemoteSession(data) {
   if (Array.isArray(data.products)) state.products = data.products;
   if (Array.isArray(data.inventory)) state.inventory = data.inventory;
   if (Array.isArray(data.orders)) state.orders = data.orders;
+  syncAppBadgeFromOrders();
 }
 
 async function changePassword() {
@@ -1433,6 +1453,7 @@ async function refreshData(showDone = true) {
     if (Array.isArray(inventoryData?.inventory)) state.inventory = inventoryData.inventory;
     if (Array.isArray(orderData?.orders)) state.orders = orderData.orders;
     if (Array.isArray(orderData?.accounts)) state.accounts = orderData.accounts;
+    syncAppBadgeFromOrders();
   }
   render();
   if (showDone) showToast("최신 데이터로 갱신했습니다.");
@@ -1498,6 +1519,7 @@ async function updateOrderStatus(orderId, status) {
     }
   }
   render();
+  syncAppBadgeFromOrders();
   showToast(`발주 상태를 ${status}(으)로 변경했습니다.`);
 }
 
@@ -1694,6 +1716,7 @@ function logout() {
   window.FilmStockApi?.signOut?.();
   state.session = null;
   state.screen = "login";
+  updateAppBadgeCount(0);
   render();
   scrollTop();
   showToast("로그아웃되었습니다.");

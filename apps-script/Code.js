@@ -470,7 +470,8 @@ function handleSendTestPushNotification_(payload, user) {
       title: "GLOC 테스트 알림",
       body: "새 발주 알림 설정이 정상적으로 연결되었습니다.",
       url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
-      tag: "gloc-test-" + new Date().getTime()
+      tag: "gloc-test-" + new Date().getTime(),
+      badgeCount: pendingOrderCount_()
     })
   };
 }
@@ -480,8 +481,13 @@ function notifyOrderCreated_(order) {
     title: "GLOC 발주 접수",
     body: order.dealer_name + " · " + order.product_name + " / " + order.qty + "롤",
     url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
-    tag: "gloc-order-" + order.order_id
+    tag: "gloc-order-" + order.order_id,
+    badgeCount: pendingOrderCount_()
   });
+}
+
+function pendingOrderCount_() {
+  return readRows_(SHEETS.orders).filter((order) => order.status === "접수").length;
 }
 
 function sendPushNotification_(notification) {
