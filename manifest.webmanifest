@@ -1,7 +1,9 @@
 {
   "name": "GLOC 재고관리",
   "short_name": "GLOC",
+  "id": "./index.html",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0f1110",
   "theme_color": "#0f1110",

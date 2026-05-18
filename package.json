@@ -6,9 +6,13 @@
   "scripts": {
     "build": "node scripts/build.js",
     "dev": "python3 -m http.server 4173",
-    "preview": "python3 -m http.server 4173 -d dist"
+    "preview": "python3 -m http.server 4173 -d dist",
+    "generate:vapid": "node scripts/generate-vapid.js"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
   }
 }

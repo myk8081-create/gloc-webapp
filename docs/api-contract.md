@@ -177,3 +177,41 @@
 ```
 
 응답의 `common_link`와 각 `links[].link`는 모두 같은 공통 로그인 링크입니다. 대리점 구분은 URL이 아니라 로그인 시 입력하는 `login_id`, `password`, `dealer_code`로 처리합니다.
+
+### savePushSubscription
+
+관리자 전용입니다. 관리자 기기에서 웹앱 푸시 알림 권한을 허용하면 브라우저 구독 정보를 `푸시구독` 시트에 저장합니다.
+
+```json
+{
+  "subscription": {
+    "endpoint": "https://...",
+    "keys": {
+      "p256dh": "...",
+      "auth": "..."
+    }
+  },
+  "user_agent": "브라우저 정보"
+}
+```
+
+### deletePushSubscription
+
+관리자 전용입니다. 저장된 푸시 구독을 비활성화합니다.
+
+```json
+{
+  "endpoint": "https://..."
+}
+```
+
+### 발주 푸시 알림 설정
+
+`createOrder` 성공 후 Apps Script는 `settings` 시트의 아래 값을 기준으로 Vercel API에 발주 알림 발송을 요청합니다.
+
+```text
+push_api_url=https://stock.example.com/api/send-push
+push_api_secret=Vercel PUSH_API_SECRET과 같은 값
+push_click_url=https://stock.example.com/index.html
+app_public_url=https://stock.example.com
+```

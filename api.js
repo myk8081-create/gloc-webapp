@@ -128,6 +128,17 @@
     return request("getDealerLinks", { base_url: baseUrl });
   }
 
+  async function savePushSubscription({ subscription, userAgent }) {
+    return request("savePushSubscription", {
+      subscription,
+      user_agent: userAgent || ""
+    });
+  }
+
+  async function deletePushSubscription({ endpoint }) {
+    return request("deletePushSubscription", { endpoint });
+  }
+
   function signOut() {
     setSession(null);
   }
@@ -149,6 +160,8 @@
     deleteDealerAccount,
     deleteProduct,
     getDealerLinks,
+    savePushSubscription,
+    deletePushSubscription,
     signOut
   };
 })();

@@ -7,7 +7,7 @@ PPF/틴팅 제품을 판매하는 본사와 대리점용 재고조회 및 발주
 
 - Frontend: HTML, CSS, JavaScript 정적 웹앱
 - Backend/DB: Google Sheets + Google Apps Script Web App API
-- Deploy: Vercel 정적 배포
+- Deploy: Vercel 정적 배포 + 발주 푸시 알림 API
 - 주요 화면: 로그인, 최초 비밀번호 변경, 관리자 대시보드, 대리점 관리, 본사/내 재고/전체 대리점·샵 재고조회, 재고수정, 제품등록/수정, 발주관리, 발주신청, QR/카카오톡 안내문 생성
 
 ## 최종 인수인계
@@ -88,6 +88,21 @@ PPF/틴팅 제품을 판매하는 본사와 대리점용 재고조회 및 발주
 | key | 설정 키 |
 | value | 설정 값 |
 
+### 푸시구독
+
+| 컬럼 | 설명 |
+| --- | --- |
+| subscription_id | 푸시 구독 고유값 |
+| login_id | 관리자 아이디 |
+| dealer_code | 관리자 코드 |
+| role | 계정 권한 |
+| endpoint | 브라우저 푸시 엔드포인트 |
+| subscription_json | 브라우저 푸시 구독 JSON |
+| user_agent | 등록한 기기/브라우저 정보 |
+| is_active | 알림 사용 여부 |
+| created_at | 생성일 |
+| updated_at | 수정일 |
+
 ## Apps Script 배포
 
 1. Apps Script 편집기 오른쪽 위 `배포 > 새 배포`를 누릅니다.
@@ -127,7 +142,8 @@ npm run dev
 window.FILM_STOCK_CONFIG = {
   dataMode: "appsScript",
   appsScriptUrl: "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec",
-  appPublicUrl: "https://stock.example.com"
+  appPublicUrl: "https://stock.example.com",
+  vapidPublicKey: "VAPID_PUBLIC_KEY"
 };
 ```
 
@@ -141,11 +157,40 @@ window.FILM_STOCK_CONFIG = {
 DATA_MODE=appsScript
 APPS_SCRIPT_API_URL=https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec
 APP_PUBLIC_URL=https://stock.example.com
+VAPID_PUBLIC_KEY=YOUR_VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY=YOUR_VAPID_PRIVATE_KEY
+VAPID_SUBJECT=mailto:admin@example.com
+PUSH_API_SECRET=CHANGE_ME_TO_A_LONG_RANDOM_SECRET
 ```
 
 4. 배포합니다.
 
 빌드 명령은 `npm run build`, 출력 폴더는 `dist`입니다. `vercel.json`에 이미 설정되어 있습니다.
+
+푸시 알림용 VAPID 키는 아래 명령으로 생성합니다.
+
+```bash
+npm run generate:vapid
+```
+
+## 관리자 발주 푸시 알림
+
+관리자가 홈 화면에 추가한 웹앱에서 알림을 허용하면, 대리점 발주 등록 시 관리자 기기로 푸시 알림을 받을 수 있습니다.
+
+1. Vercel 환경변수에 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUSH_API_SECRET`를 등록합니다.
+2. 재배포 후 Google Sheets의 `settings` 시트에 아래 값을 추가합니다.
+
+```text
+push_api_url=https://stock.example.com/api/send-push
+push_api_secret=Vercel에 넣은 PUSH_API_SECRET과 같은 값
+push_click_url=https://stock.example.com/index.html
+app_public_url=https://stock.example.com
+```
+
+3. Apps Script의 `apps-script/Code.js` 최신 내용을 붙여 넣고 웹 앱을 다시 배포합니다.
+4. 관리자 계정으로 로그인합니다.
+5. 관리자 대시보드의 `새 발주 푸시 알림` 영역에서 `이 기기에서 발주 알림 받기`를 누릅니다.
+6. iPhone은 Safari에서 사이트를 열어 홈 화면에 추가한 뒤, 홈 화면 아이콘으로 실행해야 알림 권한을 받을 수 있습니다. Android는 Chrome에서 바로가기 앱 또는 브라우저에서 사용할 수 있습니다.
 
 ## 대리점 계정 생성
 

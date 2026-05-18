@@ -3,7 +3,8 @@ const SHEETS = {
   inventory: "재고현황",
   orders: "발주현황",
   products: "제품등록",
-  settings: "settings"
+  settings: "settings",
+  pushSubscriptions: "푸시구독"
 };
 
 const HEADERS = {
@@ -11,7 +12,8 @@ const HEADERS = {
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
   orders: ["order_id", "dealer_code", "dealer_name", "product_name", "sku", "qty", "status", "memo", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "is_active"],
-  settings: ["key", "value"]
+  settings: ["key", "value"],
+  pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
 };
 
 const ORDER_STATUSES = ["접수", "승인", "출고", "완료", "반려"];
@@ -43,6 +45,8 @@ function doPost(e) {
     if (action === "deleteDealerAccount") return ok_(handleDeleteDealerAccount_(payload, user));
     if (action === "deleteProduct") return ok_(handleDeleteProduct_(payload, user));
     if (action === "getDealerLinks") return ok_(handleGetDealerLinks_(payload, user));
+    if (action === "savePushSubscription") return ok_(handleSavePushSubscription_(payload, user));
+    if (action === "deletePushSubscription") return ok_(handleDeletePushSubscription_(payload, user));
 
     throw new Error("지원하지 않는 action입니다: " + action);
   } catch (error) {
@@ -224,7 +228,7 @@ function handleCreateOrder_(payload, user) {
     updated_at: isoNow_()
   };
   appendObject_(SHEETS.orders, order);
-  return { order: order };
+  return { order: order, notification: notifyOrderCreated_(order) };
 }
 
 function handleGetOrders_(payload, user) {
@@ -390,6 +394,105 @@ function handleGetDealerLinks_(payload, user) {
     };
   });
   return { common_link: commonLink, accounts: accounts, links: links };
+}
+
+function handleSavePushSubscription_(payload, user) {
+  requireAdmin_(user);
+  const subscription = payload.subscription;
+  if (!subscription || !subscription.endpoint) throw new Error("푸시 구독 정보가 없습니다.");
+
+  const endpoint = String(subscription.endpoint);
+  const subscriptionId = sha256Text_(endpoint);
+  const now = isoNow_();
+  const existing = readRows_(SHEETS.pushSubscriptions).find((row) => row.subscription_id === subscriptionId);
+  const row = {
+    subscription_id: subscriptionId,
+    login_id: user.login_id,
+    dealer_code: user.dealer_code,
+    role: user.role,
+    endpoint: endpoint,
+    subscription_json: JSON.stringify(subscription),
+    user_agent: payload.user_agent || "",
+    is_active: true,
+    created_at: existing && existing.created_at ? existing.created_at : now,
+    updated_at: now
+  };
+
+  if (existing) {
+    return {
+      subscription: updateRowByKey_(SHEETS.pushSubscriptions, "subscription_id", subscriptionId, row)
+    };
+  }
+
+  appendObject_(SHEETS.pushSubscriptions, row);
+  return { subscription: row };
+}
+
+function handleDeletePushSubscription_(payload, user) {
+  requireAdmin_(user);
+  const endpoint = required_(payload.endpoint, "endpoint");
+  const subscriptionId = sha256Text_(endpoint);
+  const updated = updateRowByKey_(SHEETS.pushSubscriptions, "subscription_id", subscriptionId, {
+    is_active: false,
+    updated_at: isoNow_()
+  });
+  return { subscription: updated };
+}
+
+function notifyOrderCreated_(order) {
+  try {
+    const apiUrl = getSetting_("push_api_url");
+    const secret = getSetting_("push_api_secret");
+    if (!apiUrl || !secret) return { ok: false, skipped: true, reason: "push_api_url 또는 push_api_secret 미설정" };
+
+    const subscriptions = activePushSubscriptions_();
+    if (!subscriptions.length) return { ok: false, skipped: true, reason: "등록된 관리자 푸시 구독 없음" };
+
+    const notification = {
+      title: "GLOC 발주 접수",
+      body: order.dealer_name + " · " + order.product_name + " / " + order.qty + "롤",
+      url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
+      tag: "gloc-order-" + order.order_id
+    };
+
+    const response = UrlFetchApp.fetch(apiUrl, {
+      method: "post",
+      contentType: "application/json",
+      headers: {
+        "x-push-secret": secret
+      },
+      muteHttpExceptions: true,
+      payload: JSON.stringify({
+        subscriptions: subscriptions,
+        notification: notification
+      })
+    });
+
+    const text = response.getContentText();
+    const status = response.getResponseCode();
+    let parsed = {};
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch (error) {
+      parsed = { raw: text };
+    }
+    return { ok: status >= 200 && status < 300, status: status, result: parsed };
+  } catch (error) {
+    return { ok: false, error: error.message || String(error) };
+  }
+}
+
+function activePushSubscriptions_() {
+  return readRows_(SHEETS.pushSubscriptions)
+    .filter((row) => row.role === "admin" && toBool_(row.is_active))
+    .map((row) => {
+      try {
+        return JSON.parse(row.subscription_json);
+      } catch (error) {
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
 function commonLoginUrl_(baseUrl) {
@@ -590,9 +693,13 @@ function requireAdmin_(user) {
 
 function hashPassword_(password) {
   const salt = ensurePasswordSalt_();
+  return sha256Text_(salt + ":" + password);
+}
+
+function sha256Text_(text) {
   const bytes = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
-    salt + ":" + password,
+    text,
     Utilities.Charset.UTF_8
   );
   return bytes.map((byte) => {

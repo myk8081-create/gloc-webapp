@@ -833,6 +833,23 @@ h3 {
   line-height: 1.4;
 }
 
+.panel-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compact-lead {
+  max-width: 720px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.push-panel .page-actions {
+  margin-top: 16px;
+}
+
 .toolbar-actions {
   display: flex;
   gap: 8px;

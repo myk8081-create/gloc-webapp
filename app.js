@@ -174,7 +174,14 @@ const state = {
     resetPassword: ""
   },
   tempPasswords: {},
-  lastKakaoText: ""
+  lastKakaoText: "",
+  push: {
+    supported: false,
+    permission: "default",
+    subscribed: false,
+    checking: false,
+    message: "이 기기에서 발주 알림을 받을 수 있는지 확인 중입니다."
+  }
 };
 
 let searchRefreshTimer = null;
@@ -375,8 +382,31 @@ function renderAdminDashboard() {
             ${visibleOrders().slice(0, 5).map(renderOrderMini).join("") || `<div class="empty">발주 내역이 없습니다.</div>`}
           </div>
         </article>
+        ${renderPushNotificationPanel()}
       </section>
     </main>
+  `;
+}
+
+function renderPushNotificationPanel() {
+  if (state.session?.role !== "admin") return "";
+  const canSubscribe = pushCanSubscribe();
+  const buttonText = state.push.subscribed ? "이 기기 알림 다시 등록" : "이 기기에서 발주 알림 받기";
+  return `
+    <article class="panel summary-panel history-panel push-panel">
+      <div class="panel-head-row">
+        <div>
+          <p class="eyebrow">관리자 알림</p>
+          <h3>새 발주 푸시 알림</h3>
+        </div>
+        <span class="badge ${state.push.subscribed ? "" : "warn"}">${state.push.subscribed ? "등록됨" : "대기"}</span>
+      </div>
+      <p class="lead compact-lead">${escapeHtml(pushStatusText())}</p>
+      <div class="page-actions">
+        <button class="primary-button" type="button" data-action="enablePushNotifications" ${canSubscribe ? "" : "disabled"}>${buttonText}</button>
+        <button class="secondary-button" type="button" data-action="checkPushNotifications">상태 확인</button>
+      </div>
+    </article>
   `;
 }
 
@@ -1169,12 +1199,122 @@ function replaceHtml(selector, html) {
   bindDynamicListEvents(target);
 }
 
+function isPushFeatureSupported() {
+  return Boolean(
+    window.isSecureContext &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window
+  );
+}
+
+function notificationPermission() {
+  return "Notification" in window ? Notification.permission : "unsupported";
+}
+
+function syncPushSupportState() {
+  state.push.supported = isPushFeatureSupported();
+  state.push.permission = notificationPermission();
+}
+
+function pushCanSubscribe() {
+  syncPushSupportState();
+  return Boolean(
+    state.session?.role === "admin" &&
+    window.FilmStockApi?.isEnabled() &&
+    config.vapidPublicKey &&
+    state.push.supported &&
+    state.push.permission !== "denied"
+  );
+}
+
+function pushStatusText() {
+  syncPushSupportState();
+  if (!window.FilmStockApi?.isEnabled()) return "실데이터 모드에서만 발주 알림을 저장할 수 있습니다.";
+  if (!config.vapidPublicKey) return "Vercel 환경변수 VAPID_PUBLIC_KEY가 설정되면 사용할 수 있습니다.";
+  if (!state.push.supported) return "이 브라우저는 웹앱 푸시 알림을 지원하지 않습니다. iPhone은 홈 화면에 추가한 앱에서 사용해 주세요.";
+  if (state.push.permission === "denied") return "알림 권한이 차단되어 있습니다. 휴대폰 설정에서 GLOC 알림을 허용해 주세요.";
+  if (state.push.subscribed) return "이 기기는 새 발주가 등록되면 알림을 받을 수 있습니다.";
+  return state.push.message || "버튼을 눌러 이 기기에 발주 알림을 등록하세요.";
+}
+
+async function updatePushState(showDone = false) {
+  syncPushSupportState();
+  if (!state.push.supported) {
+    state.push.subscribed = false;
+    state.push.message = "이 브라우저는 웹앱 푸시 알림을 지원하지 않습니다.";
+    render();
+    if (showDone) showToast(state.push.message);
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.register("./service-worker.js");
+    const subscription = await registration.pushManager.getSubscription();
+    state.push.permission = notificationPermission();
+    state.push.subscribed = Boolean(subscription);
+    state.push.message = subscription
+      ? "이 기기는 새 발주 알림을 받을 준비가 되어 있습니다."
+      : "아직 이 기기에 발주 알림이 등록되지 않았습니다.";
+    render();
+    if (showDone) showToast(state.push.message);
+  } catch (error) {
+    state.push.subscribed = false;
+    state.push.message = error.message || "알림 상태를 확인할 수 없습니다.";
+    render();
+    if (showDone) showToast(state.push.message);
+  }
+}
+
+async function enablePushNotifications() {
+  if (state.session?.role !== "admin") throw new Error("관리자 계정에서만 발주 알림을 등록할 수 있습니다.");
+  if (!window.FilmStockApi?.isEnabled()) throw new Error("발주 알림은 실데이터 모드에서 사용할 수 있습니다.");
+  if (!config.vapidPublicKey) throw new Error("Vercel 환경변수 VAPID_PUBLIC_KEY를 먼저 설정해 주세요.");
+  if (!isPushFeatureSupported()) throw new Error("이 브라우저는 웹앱 푸시 알림을 지원하지 않습니다. iPhone은 홈 화면에 추가한 앱에서 실행해 주세요.");
+
+  const permission = await Notification.requestPermission();
+  state.push.permission = permission;
+  if (permission !== "granted") throw new Error("알림 권한이 허용되지 않았습니다.");
+
+  const registration = await navigator.serviceWorker.register("./service-worker.js");
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(config.vapidPublicKey)
+    });
+  }
+
+  await window.FilmStockApi.savePushSubscription({
+    subscription: subscription.toJSON(),
+    userAgent: navigator.userAgent
+  });
+
+  state.push.subscribed = true;
+  state.push.message = "이 기기에 발주 알림이 등록되었습니다.";
+  render();
+  showToast("발주 알림이 등록되었습니다.");
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let index = 0; index < rawData.length; index += 1) {
+    outputArray[index] = rawData.charCodeAt(index);
+  }
+  return outputArray;
+}
+
 async function handleAction(action, button) {
   if (action === "login") return login();
   if (action === "changePassword") return changePassword();
   if (action === "logout") return logout();
   if (action === "refresh") return refreshData();
   if (action === "refreshLinks") return refreshLinks();
+  if (action === "enablePushNotifications") return enablePushNotifications();
+  if (action === "checkPushNotifications") return updatePushState(true);
   if (action === "createOrder") return createOrder();
   if (action === "saveInventory") return saveInventory();
   if (action === "saveProduct") return saveProduct();
@@ -1205,6 +1345,7 @@ async function login() {
   state.forms.password = "";
   state.screen = toBool(state.session.is_first_login) ? "passwordChange" : defaultScreen();
   render();
+  if (state.session?.role === "admin") updatePushState(false);
   scrollTop();
   showToast(toBool(state.session.is_first_login) ? "비밀번호 변경이 필요합니다." : "로그인되었습니다.");
 }
