@@ -12,7 +12,9 @@
       :root {
         --green: #cf4e42;
         --green-dark: #0f1110;
-        --mint: #3a2b16;
+        --mint: #d9a84f;
+        --gold-strong: #f4ce78;
+        --gold-soft: rgba(217, 168, 79, 0.18);
         --line: #3b3631;
         --ink: #f1eee8;
         --muted: #b6aca1;
@@ -100,6 +102,7 @@
 
       .card:hover {
         border-color: var(--green);
+        box-shadow: 0 16px 34px rgba(0, 0, 0, 0.26);
       }
 
       .badge {
@@ -112,6 +115,7 @@
         background: var(--mint);
         font-size: 13px;
         font-weight: 900;
+        box-shadow: 0 5px 14px rgba(0, 0, 0, 0.2);
       }
 
       h2 {
@@ -128,8 +132,14 @@
       .button-text {
         display: inline-block;
         margin-top: 22px;
-        color: var(--green);
+        min-height: 42px;
+        padding: 9px 16px;
+        border: 1px solid rgba(255, 225, 160, 0.72);
+        border-radius: 8px;
+        color: #18120b;
+        background: linear-gradient(180deg, var(--gold-strong), var(--mint));
         font-weight: 900;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
       }
 
       @media (max-width: 720px) {

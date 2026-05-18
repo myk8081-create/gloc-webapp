@@ -12,7 +12,9 @@
       :root {
         --green: #cf4e42;
         --green-dark: #0f1110;
-        --mint: #3a2b16;
+        --mint: #d9a84f;
+        --gold-strong: #f4ce78;
+        --gold-soft: rgba(217, 168, 79, 0.18);
         --line: #3b3631;
         --ink: #f1eee8;
         --muted: #b6aca1;
@@ -109,9 +111,10 @@
 
       .nav-button:hover,
       .nav-button.active {
-        border-color: rgba(255, 255, 255, 0.18);
-        background: rgba(255, 255, 255, 0.11);
+        border-color: rgba(217, 168, 79, 0.76);
+        background: rgba(207, 78, 66, 0.22);
         color: #ffffff;
+        box-shadow: inset 3px 0 0 var(--green);
       }
 
       .content {
@@ -196,6 +199,7 @@
         background: var(--mint);
         font-size: 13px;
         font-weight: 900;
+        box-shadow: 0 5px 14px rgba(0, 0, 0, 0.2);
       }
 
       .steps {
@@ -225,11 +229,28 @@
       .click-path {
         display: inline-block;
         margin-top: 8px;
-        padding: 8px 10px;
+        min-height: 38px;
+        padding: 8px 14px;
+        border: 1px solid rgba(255, 225, 160, 0.72);
         border-radius: 8px;
-        color: var(--green-dark);
-        background: var(--mint);
+        color: #18120b;
+        background: linear-gradient(180deg, var(--gold-strong), var(--mint));
         font-weight: 900;
+        line-height: 1.45;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+      }
+
+      .click-path::before {
+        content: "진행 ";
+        display: inline-block;
+        margin-right: 6px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        color: #ffffff;
+        background: var(--green);
+        font-size: 12px;
+        line-height: 1.5;
+        vertical-align: 1px;
       }
 
       .callout {
@@ -278,7 +299,9 @@
       code {
         padding: 2px 6px;
         border-radius: 6px;
+        color: #18120b;
         background: var(--mint);
+        font-weight: 800;
       }
 
       .pager {
@@ -292,12 +315,13 @@
       .print-button {
         min-height: 44px;
         padding: 0 18px;
-        border: 1px solid var(--line);
+        border: 1px solid rgba(217, 168, 79, 0.74);
         border-radius: 8px;
-        color: var(--ink);
-        background: var(--paper);
+        color: #f7eee0;
+        background: var(--gold-soft);
         cursor: pointer;
         font-weight: 900;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
       }
 
       .pager button.primary,
@@ -305,6 +329,13 @@
         border-color: var(--green);
         color: #ffffff;
         background: var(--green);
+      }
+
+      .pager button:hover,
+      .print-button:hover {
+        transform: translateY(-1px);
+        border-color: var(--gold-strong);
+        filter: brightness(1.08);
       }
 
       .mobile-top {
