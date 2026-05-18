@@ -27,6 +27,7 @@ html {
   width: 100%;
   overflow-x: hidden;
   background: var(--bg);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -53,11 +54,18 @@ input,
 select,
 textarea {
   font: inherit;
+  max-width: 100%;
 }
 
 button {
   border: 0;
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+input[type="search"] {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 button:disabled {
@@ -172,13 +180,15 @@ button:disabled {
 
 .login-direct {
   display: grid;
-  min-height: calc(100vh - 116px);
-  align-items: start;
-  padding-top: 10px;
+  min-height: calc(100dvh - 116px);
+  align-items: center;
+  justify-items: center;
+  padding: 18px 0;
 }
 
 .login-direct .login-card {
   width: 100%;
+  max-width: 500px;
 }
 
 .login-intro {
@@ -397,7 +407,7 @@ h3 {
   border-radius: 7px;
   background: var(--panel);
   color: var(--text);
-  font-size: 14px;
+  font-size: 16px;
   outline: none;
   padding: 0 12px;
 }
@@ -1052,7 +1062,7 @@ h3 {
 
   .login-direct {
     width: min(500px, 100%);
-    min-height: calc(100vh - 156px);
+    min-height: calc(100dvh - 156px);
     margin: 0 auto;
     align-items: center;
     padding-top: 0;
@@ -1139,6 +1149,44 @@ h3 {
 
   .bottom-nav.admin-nav {
     grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  }
+}
+
+@media (max-width: 759px) {
+  .app-shell {
+    min-height: 100dvh;
+  }
+
+  .login-direct {
+    min-height: auto;
+    padding: 18px 0 26px;
+  }
+
+  .login-card {
+    padding: 18px;
+  }
+
+  .login-logo {
+    max-width: 100%;
+    margin-bottom: 18px;
+  }
+
+  .field input,
+  .field select,
+  .field textarea,
+  .search-input {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .bottom-nav,
+  .bottom-nav.admin-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .bottom-nav.admin-nav button {
+    min-height: 40px;
+    font-size: 11px;
   }
 }
 

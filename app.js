@@ -177,7 +177,7 @@ const state = {
   lastKakaoText: ""
 };
 
-let searchRenderTimer = null;
+let searchRefreshTimer = null;
 
 function initFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -427,7 +427,6 @@ function renderDealerManagement() {
 
 function renderInventory() {
   const rows = visibleInventory();
-  const stats = inventoryStats(rows);
   const scope = currentInventoryScope();
   return `
     <main class="screen ${state.screen === "inventory" ? "active" : ""}" data-screen="inventory">
@@ -445,27 +444,8 @@ function renderInventory() {
 
       ${renderInventoryScopeSwitch(scope)}
 
-      <section class="stats-grid">
-        <div class="metric">
-          <div class="metric-label">조회 결과</div>
-          <div class="metric-value">${rows.length}개</div>
-          <div class="metric-note">현재 필터 기준</div>
-        </div>
-        <div class="metric blue">
-          <div class="metric-label">보유 재고</div>
-          <div class="metric-value">${roll(stats.totalStock)}</div>
-          <div class="metric-note">검색 결과 합산</div>
-        </div>
-        <div class="metric danger">
-          <div class="metric-label">안전재고 이하</div>
-          <div class="metric-value">${stats.lowStock}개</div>
-          <div class="metric-note">강조 표시 대상</div>
-        </div>
-        <div class="metric warn">
-          <div class="metric-label">제품 종류</div>
-          <div class="metric-value">${activeProducts().length}개</div>
-          <div class="metric-note">판매중 PPF/틴팅 SKU</div>
-        </div>
+      <section class="stats-grid" id="inventoryStats">
+        ${renderInventoryStatsCards(rows)}
       </section>
 
       <section class="toolbar">
@@ -492,13 +472,39 @@ function renderInventory() {
                 <th>위치</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="inventoryRows">
               ${rows.slice(0, 80).map(renderInventoryRow).join("") || `<tr><td colspan="6" class="empty-cell">조회 결과가 없습니다.</td></tr>`}
             </tbody>
           </table>
         </div>
       </section>
     </main>
+  `;
+}
+
+function renderInventoryStatsCards(rows) {
+  const stats = inventoryStats(rows);
+  return `
+    <div class="metric">
+      <div class="metric-label">조회 결과</div>
+      <div class="metric-value">${rows.length}개</div>
+      <div class="metric-note">현재 필터 기준</div>
+    </div>
+    <div class="metric blue">
+      <div class="metric-label">보유 재고</div>
+      <div class="metric-value">${roll(stats.totalStock)}</div>
+      <div class="metric-note">검색 결과 합산</div>
+    </div>
+    <div class="metric danger">
+      <div class="metric-label">안전재고 이하</div>
+      <div class="metric-value">${stats.lowStock}개</div>
+      <div class="metric-note">강조 표시 대상</div>
+    </div>
+    <div class="metric warn">
+      <div class="metric-label">제품 종류</div>
+      <div class="metric-value">${activeProducts().length}개</div>
+      <div class="metric-note">판매중 PPF/틴팅 SKU</div>
+    </div>
   `;
 }
 
@@ -525,7 +531,7 @@ function renderInventoryManage() {
         <div class="panel list-panel">
           <h3>수정할 재고 선택</h3>
           <input class="search-input" id="inventoryQuery" type="search" placeholder="구분, 제품명, SKU 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
-          <div class="product-list">
+          <div class="product-list" id="inventoryEditList">
             ${rows.slice(0, 16).map(renderInventoryEditRow).join("") || `<div class="empty">수정할 재고가 없습니다.</div>`}
           </div>
         </div>
@@ -645,7 +651,7 @@ function renderOrders() {
 
       <section class="panel list-panel">
         <h3>발주 내역</h3>
-        <div class="order-list">
+        <div class="order-list" id="orderList">
           ${rows.map(renderOrderCard).join("") || `<div class="empty">발주 내역이 없습니다.</div>`}
         </div>
       </section>
@@ -668,7 +674,7 @@ function renderOrderCreate() {
         <div class="panel list-panel">
           <h3>제품 선택</h3>
           <input class="search-input" id="inventoryQuery" type="search" placeholder="제품명, SKU, 컬러 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
-          <div class="product-list">
+          <div class="product-list" id="orderProductList">
             ${filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`}
           </div>
         </div>
@@ -1053,26 +1059,7 @@ function bindEvents() {
     });
   });
 
-  document.querySelectorAll("[data-sku]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.selectedSku = button.dataset.sku;
-      render();
-    });
-  });
-
-  document.querySelectorAll("[data-edit-inventory-sku]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectInventoryRow(button.dataset.editInventoryDealer, button.dataset.editInventorySku);
-      render();
-    });
-  });
-
-  document.querySelectorAll("[data-edit-product]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectProductForEdit(button.dataset.editProduct);
-      render();
-    });
-  });
+  bindDynamicListEvents(document);
 
   document.querySelectorAll("[data-nav]").forEach((button) => {
     button.addEventListener("click", () => navigate(button.dataset.nav));
@@ -1081,12 +1068,6 @@ function bindEvents() {
   document.querySelectorAll("[data-action]").forEach((button) => {
     button.addEventListener("click", () => {
       handleAction(button.dataset.action, button).catch((error) => showToast(error.message || "처리 중 오류가 발생했습니다."));
-    });
-  });
-
-  document.querySelectorAll("[data-order-status]").forEach((button) => {
-    button.addEventListener("click", () => {
-      updateOrderStatus(button.dataset.orderId, button.dataset.orderStatus).catch((error) => showToast(error.message));
     });
   });
 
@@ -1103,6 +1084,35 @@ function bindInput(id, update) {
   document.querySelector(`#${id}`)?.addEventListener("input", (event) => update(event.target.value));
 }
 
+function bindDynamicListEvents(root) {
+  root.querySelectorAll("[data-sku]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedSku = button.dataset.sku;
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-edit-inventory-sku]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectInventoryRow(button.dataset.editInventoryDealer, button.dataset.editInventorySku);
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-edit-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectProductForEdit(button.dataset.editProduct);
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-order-status]").forEach((button) => {
+    button.addEventListener("click", () => {
+      updateOrderStatus(button.dataset.orderId, button.dataset.orderStatus).catch((error) => showToast(error.message));
+    });
+  });
+}
+
 function bindSearchInput(id, update) {
   document.querySelectorAll(`#${id}`).forEach((input) => {
     let composing = false;
@@ -1112,36 +1122,51 @@ function bindSearchInput(id, update) {
     input.addEventListener("compositionend", (event) => {
       composing = false;
       update(event.target.value);
-      scheduleSearchRender(id);
+      refreshActiveSearchResults();
     });
     input.addEventListener("input", (event) => {
       update(event.target.value);
       if (composing || event.isComposing) return;
-      scheduleSearchRender(id);
+      scheduleSearchRefresh();
     });
   });
 }
 
-function scheduleSearchRender(inputId) {
-  window.clearTimeout(searchRenderTimer);
-  searchRenderTimer = window.setTimeout(() => {
-    render();
-    focusActiveInput(inputId);
-  }, 120);
+function scheduleSearchRefresh() {
+  window.clearTimeout(searchRefreshTimer);
+  searchRefreshTimer = window.setTimeout(refreshActiveSearchResults, 80);
 }
 
-function focusActiveInput(inputId) {
-  window.requestAnimationFrame(() => {
-    const input = document.querySelector(`.screen.active #${inputId}`) || document.querySelector(`#${inputId}`);
-    if (!input) return;
-    input.focus({ preventScroll: true });
-    try {
-      const cursor = input.value.length;
-      input.setSelectionRange(cursor, cursor);
-    } catch {
-      // Some input types may not support selection ranges.
-    }
-  });
+function refreshActiveSearchResults() {
+  window.clearTimeout(searchRefreshTimer);
+
+  if (state.screen === "inventory") {
+    const rows = visibleInventory();
+    replaceHtml("#inventoryStats", renderInventoryStatsCards(rows));
+    replaceHtml("#inventoryRows", rows.slice(0, 80).map(renderInventoryRow).join("") || `<tr><td colspan="6" class="empty-cell">조회 결과가 없습니다.</td></tr>`);
+    return;
+  }
+
+  if (state.screen === "inventoryManage") {
+    replaceHtml("#inventoryEditList", editableInventoryRows().slice(0, 16).map(renderInventoryEditRow).join("") || `<div class="empty">수정할 재고가 없습니다.</div>`);
+    return;
+  }
+
+  if (state.screen === "orderCreate") {
+    replaceHtml("#orderProductList", filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`);
+    return;
+  }
+
+  if (state.screen === "orders") {
+    replaceHtml("#orderList", visibleOrders().map(renderOrderCard).join("") || `<div class="empty">발주 내역이 없습니다.</div>`);
+  }
+}
+
+function replaceHtml(selector, html) {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  target.innerHTML = html;
+  bindDynamicListEvents(target);
 }
 
 async function handleAction(action, button) {
