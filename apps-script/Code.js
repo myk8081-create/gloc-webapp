@@ -152,7 +152,7 @@ function handleLogin_(payload) {
   return {
     session,
     user,
-    accounts: user.role === "admin" ? listPublicAccounts_() : [user],
+    accounts: listAccessibleAccounts_(user),
     products: inventoryData.products,
     inventory: inventoryData.inventory,
     orders: orderData.orders
@@ -245,7 +245,7 @@ function handleGetOrders_(payload, user) {
   }
   return {
     orders: orders.reverse(),
-    accounts: user.role === "admin" ? listPublicAccounts_() : undefined
+    accounts: listAccessibleAccounts_(user)
   };
 }
 
@@ -350,11 +350,15 @@ function handleDeleteProduct_(payload, user) {
 }
 
 function handleCreateDealerAccount_(payload, user) {
-  requireAdmin_(user);
+  if (!user || (user.role !== "admin" && user.role !== "dealer")) throw new Error("계정 생성 권한이 없습니다.");
   const loginId = required_(payload.login_id, "login_id");
-  const role = payload.role === "admin" ? "admin" : "dealer";
-  const dealerCode = role === "admin" ? HEAD_OFFICE_CODE : required_(payload.dealer_code, "dealer_code").toUpperCase();
-  const dealerName = required_(payload.dealer_name, "dealer_name");
+  const role = user.role === "admin" && payload.role === "admin" ? "admin" : "dealer";
+  const dealerCode = user.role === "dealer"
+    ? String(user.dealer_code).toUpperCase()
+    : role === "admin"
+      ? HEAD_OFFICE_CODE
+      : required_(payload.dealer_code, "dealer_code").toUpperCase();
+  const dealerName = user.role === "dealer" ? user.dealer_name : required_(payload.dealer_name, "dealer_name");
   const temporaryPassword = required_(payload.temporary_password, "temporary_password");
 
   if (findAccountByLoginId_(loginId)) throw new Error("이미 사용 중인 아이디입니다.");
@@ -371,7 +375,7 @@ function handleCreateDealerAccount_(payload, user) {
   };
   appendObject_(SHEETS.accounts, account);
   if (role === "dealer") seedInventoryForDealer_(dealerCode, dealerName);
-  return { account: publicAccount_(account), temporary_password: temporaryPassword };
+  return { account: publicAccount_(account), accounts: listAccessibleAccounts_(user), temporary_password: temporaryPassword };
 }
 
 function handleResetDealerPassword_(payload, user) {
@@ -380,6 +384,7 @@ function handleResetDealerPassword_(payload, user) {
   const temporaryPassword = required_(payload.temporary_password, "temporary_password");
   const account = findAccountByLoginId_(loginId);
   if (!account) throw new Error("계정을 찾을 수 없습니다.");
+  if (isProtectedRootAdmin_(account) && String(user.login_id).toLowerCase() !== "admin") throw new Error("기본 본사 관리자 계정은 보호됩니다.");
 
   const updated = updateAccount_(loginId, {
     password_hash: hashPassword_(temporaryPassword),
@@ -395,6 +400,7 @@ function handleDeactivateDealerAccount_(payload, user) {
   if (loginId === user.login_id) throw new Error("현재 로그인한 본인 계정은 사용중지할 수 없습니다.");
   const account = findAccountByLoginId_(loginId);
   if (!account) throw new Error("계정을 찾을 수 없습니다.");
+  if (isProtectedRootAdmin_(account)) throw new Error("기본 본사 관리자 계정은 사용중지할 수 없습니다.");
 
   const updated = updateAccount_(loginId, {
     is_active: false,
@@ -409,9 +415,12 @@ function handleDeleteDealerAccount_(payload, user) {
   if (loginId === user.login_id) throw new Error("현재 로그인한 본인 계정은 삭제할 수 없습니다.");
   const account = findAccountByLoginId_(loginId);
   if (!account) throw new Error("삭제할 계정을 찾을 수 없습니다.");
+  if (isProtectedRootAdmin_(account)) throw new Error("기본 본사 관리자 계정은 삭제할 수 없습니다.");
 
   deleteRowsByKey_(SHEETS.accounts, "login_id", loginId);
-  const deletedInventoryRows = account.role === "dealer"
+  const hasOtherDealerAccount = account.role === "dealer" && readRows_(SHEETS.accounts)
+    .some((row) => row.role === "dealer" && String(row.dealer_code).toUpperCase() === String(account.dealer_code).toUpperCase());
+  const deletedInventoryRows = account.role === "dealer" && !hasOtherDealerAccount
     ? deleteRowsByKey_(SHEETS.inventory, "dealer_code", account.dealer_code)
     : 0;
   return {
@@ -746,6 +755,23 @@ function listPublicAccounts_() {
   return readRows_(SHEETS.accounts).map(publicAccount_);
 }
 
+function listAccessibleAccounts_(user) {
+  if (user.role === "admin") return listPublicAccounts_();
+  return listPublicAccounts_().filter((account) => (
+    account.role === "dealer" &&
+    String(account.dealer_code).toUpperCase() === String(user.dealer_code).toUpperCase()
+  ));
+}
+
+function isProtectedRootAdmin_(account) {
+  return (
+    account &&
+    String(account.login_id || "").toLowerCase() === "admin" &&
+    String(account.dealer_code || "").toUpperCase() === HEAD_OFFICE_CODE &&
+    account.role === "admin"
+  );
+}
+
 function publicAccount_(account) {
   return {
     login_id: account.login_id,
@@ -951,10 +977,15 @@ function seedInventoryForDealer_(dealerCode, dealerName) {
 }
 
 function seedInventoryForProduct_(product) {
-  const accounts = [
-    { dealer_code: HEAD_OFFICE_CODE, dealer_name: HEAD_OFFICE_NAME },
-    ...readRows_(SHEETS.accounts).filter((account) => account.role === "dealer" && toBool_(account.is_active))
-  ];
+  const accountMap = {};
+  accountMap[HEAD_OFFICE_CODE] = { dealer_code: HEAD_OFFICE_CODE, dealer_name: HEAD_OFFICE_NAME };
+  readRows_(SHEETS.accounts)
+    .filter((account) => account.role === "dealer" && toBool_(account.is_active))
+    .forEach((account) => {
+      const code = String(account.dealer_code).toUpperCase();
+      if (!accountMap[code]) accountMap[code] = account;
+    });
+  const accounts = Object.keys(accountMap).map((code) => accountMap[code]);
   const inventory = readRows_(SHEETS.inventory);
   accounts.forEach((account) => {
     const exists = inventory.some((row) => row.dealer_code === account.dealer_code && row.sku === product.sku);

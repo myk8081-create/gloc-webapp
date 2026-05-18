@@ -417,51 +417,57 @@ function renderPushNotificationPanel() {
 }
 
 function renderDealerManagement() {
-  const accounts = state.accounts.filter((account) => account.role === "dealer" || account.role === "admin");
-  const accountRole = state.forms.accountRole || "dealer";
-  const isAdminAccount = accountRole === "admin";
-  const dealerCodeValue = isAdminAccount ? "ADMIN" : state.forms.accountDealerCode;
+  const isAdminSession = state.session?.role === "admin";
+  const accounts = managedAccounts();
+  const accountRole = isAdminSession ? state.forms.accountRole || "dealer" : "dealer";
+  const isAdminAccount = isAdminSession && accountRole === "admin";
+  const dealerCodeValue = isAdminSession
+    ? isAdminAccount ? "ADMIN" : state.forms.accountDealerCode
+    : state.session?.dealer_code || "";
+  const dealerNameValue = isAdminSession ? state.forms.accountDealerName : state.session?.dealer_name || "";
   return `
     <main class="screen ${state.screen === "dealers" ? "active" : ""}" data-screen="dealers">
       <section class="page-head">
-        <p class="eyebrow">계정 관리</p>
-        <h1>계정 생성 및 상태 관리</h1>
-        <p class="lead">대리점과 관리자 계정을 생성하고, 비밀번호 초기화 또는 사용중지를 처리합니다.</p>
+        <p class="eyebrow">${isAdminSession ? "계정 관리" : "담당자 관리"}</p>
+        <h1>${isAdminSession ? "계정 생성 및 상태 관리" : "대리점 담당자 ID 생성"}</h1>
+        <p class="lead">${isAdminSession ? "대리점과 관리자 계정을 생성하고, 비밀번호 초기화 또는 사용중지를 처리합니다." : "같은 대리점 코드를 사용하는 추가 담당자 계정을 생성합니다."}</p>
       </section>
 
       <section class="work-layout">
         <div class="panel form-panel">
-          <h3>${isAdminAccount ? "관리자 계정 생성" : "대리점 계정 생성"}</h3>
+          <h3>${isAdminSession ? isAdminAccount ? "관리자 계정 생성" : "대리점 계정 생성" : "담당자 ID 생성"}</h3>
           <div class="form-grid">
-            <label class="field">
-              <span>계정 유형</span>
-              <select id="accountRole">
-                <option value="dealer" ${accountRole === "dealer" ? "selected" : ""}>대리점</option>
-                <option value="admin" ${accountRole === "admin" ? "selected" : ""}>관리자</option>
-              </select>
-            </label>
+            ${isAdminSession ? `
+              <label class="field">
+                <span>계정 유형</span>
+                <select id="accountRole">
+                  <option value="dealer" ${accountRole === "dealer" ? "selected" : ""}>대리점</option>
+                  <option value="admin" ${accountRole === "admin" ? "selected" : ""}>관리자</option>
+                </select>
+              </label>
+            ` : ""}
             <label class="field">
               <span>${isAdminAccount ? "관리자 코드" : "대리점 코드"}</span>
-              <input id="accountDealerCode" type="text" value="${escapeAttr(dealerCodeValue)}" placeholder="${isAdminAccount ? "ADMIN" : "예: D013"}" ${isAdminAccount ? "readonly" : ""} />
+              <input id="accountDealerCode" type="text" value="${escapeAttr(dealerCodeValue)}" placeholder="${isAdminAccount ? "ADMIN" : "예: D013"}" ${isAdminAccount || !isAdminSession ? "readonly" : ""} />
             </label>
             <label class="field">
               <span>${isAdminAccount ? "관리자명" : "대리점명"}</span>
-              <input id="accountDealerName" type="text" value="${escapeAttr(state.forms.accountDealerName)}" placeholder="${isAdminAccount ? "예: 본사 관리자 2" : "예: 강남 대리점"}" />
+              <input id="accountDealerName" type="text" value="${escapeAttr(dealerNameValue)}" placeholder="${isAdminAccount ? "예: 본사 관리자 2" : "예: 강남 대리점"}" ${!isAdminSession ? "readonly" : ""} />
             </label>
             <label class="field">
               <span>초기 아이디</span>
-              <input id="accountLoginId" type="text" value="${escapeAttr(state.forms.accountLoginId)}" placeholder="${isAdminAccount ? "예: admin02" : "예: gangnam01"}" />
+              <input id="accountLoginId" type="text" value="${escapeAttr(state.forms.accountLoginId)}" placeholder="${isAdminAccount ? "예: admin02" : "예: seoul-staff02"}" />
             </label>
             <label class="field">
               <span>초기 비밀번호</span>
               <input id="accountTemporaryPassword" type="text" value="${escapeAttr(state.forms.accountTemporaryPassword)}" placeholder="관리자가 전달할 임시 비밀번호" />
             </label>
-            <button type="button" class="primary-button" data-action="createAccount">${isAdminAccount ? "관리자 계정 생성" : "대리점 계정 생성"}</button>
+            <button type="button" class="primary-button" data-action="createAccount">${isAdminSession ? isAdminAccount ? "관리자 계정 생성" : "대리점 계정 생성" : "담당자 ID 생성"}</button>
           </div>
         </div>
 
         <div class="panel list-panel">
-          <h3>계정 목록</h3>
+          <h3>${isAdminSession ? "계정 목록" : "우리 대리점 담당자"}</h3>
           <div class="account-list">
             ${accounts.map(renderAccountRow).join("") || `<div class="empty">등록된 계정이 없습니다.</div>`}
           </div>
@@ -1110,20 +1116,24 @@ function renderOrderMini(order) {
 
 function renderAccountRow(account) {
   const isSelf = state.session?.login_id === account.login_id;
+  const isAdminSession = state.session?.role === "admin";
+  const protectedAdmin = isProtectedRootAdmin(account);
+  const resetButton = !protectedAdmin || isSelf
+    ? `<button type="button" class="secondary-button small-button" data-action="resetPassword" data-login-id="${escapeAttr(account.login_id)}">PW 초기화</button>`
+    : "";
+  const dangerButtons = isSelf || protectedAdmin ? "" : `
+      <button type="button" class="secondary-button small-button danger-button" data-action="deactivateAccount" data-login-id="${escapeAttr(account.login_id)}">사용중지</button>
+      <button type="button" class="secondary-button small-button danger-button" data-action="deleteAccount" data-login-id="${escapeAttr(account.login_id)}">계정삭제</button>
+    `;
+  const actionButtons = isAdminSession ? `${resetButton}${dangerButtons}` : "";
   return `
     <article class="account-row">
       <div>
         <span class="badge ${toBool(account.is_active) ? "" : "danger"}">${toBool(account.is_active) ? "사용중" : "중지"}</span>
         <h3>${escapeHtml(account.dealer_name)}</h3>
-        <p class="product-meta">${roleLabel(account.role)} · ${escapeHtml(account.login_id)} · ${escapeHtml(account.dealer_code)} · 최초로그인 ${toBool(account.is_first_login) ? "필요" : "완료"}${isSelf ? " · 현재 로그인 계정" : ""}</p>
+        <p class="product-meta">${roleLabel(account.role)} · ${escapeHtml(account.login_id)} · ${escapeHtml(account.dealer_code)} · 최초로그인 ${toBool(account.is_first_login) ? "필요" : "완료"}${isSelf ? " · 현재 로그인 계정" : ""}${protectedAdmin ? " · 기본 관리자 보호" : ""}</p>
       </div>
-      <div class="account-actions">
-        <button type="button" class="secondary-button small-button" data-action="resetPassword" data-login-id="${escapeAttr(account.login_id)}">PW 초기화</button>
-        ${isSelf ? "" : `
-          <button type="button" class="secondary-button small-button danger-button" data-action="deactivateAccount" data-login-id="${escapeAttr(account.login_id)}">사용중지</button>
-          <button type="button" class="secondary-button small-button danger-button" data-action="deleteAccount" data-login-id="${escapeAttr(account.login_id)}">계정삭제</button>
-        `}
-      </div>
+      ${actionButtons ? `<div class="account-actions">${actionButtons}</div>` : ""}
     </article>
   `;
 }
@@ -1188,7 +1198,8 @@ function renderBottomNav() {
         ["inventory", "재고"],
         ["inventoryManage", "재고수정"],
         ["orderCreate", "발주신청"],
-        ["orders", "내 발주"]
+        ["orders", "내 발주"],
+        ["dealers", "담당자"]
       ];
   return `
     <nav class="bottom-nav visible ${admin ? "admin-nav" : ""}" aria-label="하단 메뉴">
@@ -1919,11 +1930,15 @@ async function saveProduct() {
 }
 
 async function createDealerAccount() {
-  const role = state.forms.accountRole === "admin" ? "admin" : "dealer";
+  const role = state.session?.role === "admin" && state.forms.accountRole === "admin" ? "admin" : "dealer";
   const account = {
     login_id: state.forms.accountLoginId.trim(),
-    dealer_code: role === "admin" ? "ADMIN" : state.forms.accountDealerCode.trim().toUpperCase(),
-    dealer_name: state.forms.accountDealerName.trim(),
+    dealer_code: role === "admin"
+      ? "ADMIN"
+      : state.session?.role === "admin"
+        ? state.forms.accountDealerCode.trim().toUpperCase()
+        : state.session?.dealer_code || "",
+    dealer_name: state.session?.role === "admin" ? state.forms.accountDealerName.trim() : state.session?.dealer_name || "",
     role,
     temporary_password: state.forms.accountTemporaryPassword.trim()
   };
@@ -1933,7 +1948,8 @@ async function createDealerAccount() {
 
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.createDealerAccount(account);
-    if (data?.account) upsertAccount(data.account);
+    if (Array.isArray(data?.accounts)) state.accounts = data.accounts;
+    else if (data?.account) upsertAccount(data.account);
     state.tempPasswords[account.login_id] = data?.temporary_password || account.temporary_password;
   } else {
     if (state.accounts.some((item) => item.login_id === account.login_id)) throw new Error("이미 사용 중인 아이디입니다.");
@@ -1948,25 +1964,27 @@ async function createDealerAccount() {
     };
     state.accounts.push(newAccount);
     state.tempPasswords[account.login_id] = account.temporary_password;
-    if (account.role === "dealer") seedInventoryForDealer(newAccount);
+    if (account.role === "dealer" && !state.inventory.some((row) => row.dealer_code === account.dealer_code)) seedInventoryForDealer(newAccount);
   }
 
   state.forms.accountLoginId = "";
-  state.forms.accountDealerCode = state.forms.accountRole === "admin" ? "ADMIN" : "";
-  state.forms.accountDealerName = "";
+  if (state.session?.role === "admin") {
+    state.forms.accountDealerCode = state.forms.accountRole === "admin" ? "ADMIN" : "";
+    state.forms.accountDealerName = "";
+  }
   state.forms.accountTemporaryPassword = "";
   render();
-  showToast(account.role === "admin" ? "관리자 계정을 생성했습니다." : "대리점 계정을 생성했습니다.");
+  showToast(account.role === "admin" ? "관리자 계정을 생성했습니다." : state.session?.role === "admin" ? "대리점 계정을 생성했습니다." : "담당자 ID를 생성했습니다.");
 }
 
 async function resetDealerPassword(loginId) {
+  const account = state.accounts.find((item) => item.login_id === loginId);
   const temporaryPassword = prompt("새 임시 비밀번호를 입력해 주세요. 최초 로그인 후 해당 사용자가 변경해야 합니다.");
   if (!temporaryPassword) return;
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.resetDealerPassword({ loginId, temporaryPassword });
     if (data?.account) upsertAccount(data.account);
   } else {
-    const account = state.accounts.find((item) => item.login_id === loginId);
     if (account) {
       account.is_first_login = true;
       account.updated_at = nowText();
@@ -1978,13 +1996,14 @@ async function resetDealerPassword(loginId) {
 }
 
 async function deactivateDealerAccount(loginId) {
+  const account = state.accounts.find((item) => item.login_id === loginId);
+  if (isProtectedRootAdmin(account)) throw new Error("기본 본사 관리자 계정은 사용중지할 수 없습니다.");
   const confirmed = confirm("이 계정을 사용중지할까요?");
   if (!confirmed) return;
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.deactivateDealerAccount({ loginId });
     if (data?.account) upsertAccount(data.account);
   } else {
-    const account = state.accounts.find((item) => item.login_id === loginId);
     if (account) {
       account.is_active = false;
       account.updated_at = nowText();
@@ -1996,8 +2015,12 @@ async function deactivateDealerAccount(loginId) {
 
 async function deleteDealerAccount(loginId) {
   const account = state.accounts.find((item) => item.login_id === loginId);
+  if (isProtectedRootAdmin(account)) throw new Error("기본 본사 관리자 계정은 삭제할 수 없습니다.");
   const dealerName = account?.dealer_name || loginId;
-  const inventoryNotice = account?.role === "dealer" ? "\n해당 대리점의 재고 행도 함께 삭제됩니다. 발주 이력은 보존됩니다." : "\n관리자 계정만 삭제되며 발주 이력은 보존됩니다.";
+  const hasOtherDealerAccount = account?.role === "dealer" && state.accounts.some((item) => item.login_id !== loginId && item.role === "dealer" && item.dealer_code === account.dealer_code);
+  const inventoryNotice = account?.role === "dealer" && !hasOtherDealerAccount
+    ? "\n같은 대리점의 다른 담당자 계정이 없으면 재고 행도 함께 삭제됩니다. 발주 이력은 보존됩니다."
+    : "\n계정만 삭제되며 재고와 발주 이력은 보존됩니다.";
   const confirmed = confirm(`${dealerName} 계정을 완전히 삭제할까요?${inventoryNotice}`);
   if (!confirmed) return;
 
@@ -2041,7 +2064,7 @@ function logout() {
 }
 
 function navigate(screen) {
-  if (screen === "dealers" || screen === "links" || screen === "admin" || screen === "productManage") {
+  if (screen === "links" || screen === "admin" || screen === "productManage") {
     if (state.session?.role !== "admin") {
       showToast("관리자만 접근할 수 있습니다.");
       return;
@@ -2212,7 +2235,7 @@ function inventoryStats(rows) {
 function dashboardStats() {
   const inventory = inventoryStats(state.inventory);
   return {
-    activeDealers: state.accounts.filter((account) => account.role === "dealer" && toBool(account.is_active)).length,
+    activeDealers: uniqueDealerAccounts().filter((account) => toBool(account.is_active)).length,
     totalStock: inventory.totalStock,
     lowStock: inventory.lowStock,
     openOrders: state.orders.filter((order) => order.status === "접수").length
@@ -2252,10 +2275,38 @@ function dealerAccounts() {
   return state.accounts.filter((account) => account.role === "dealer");
 }
 
+function uniqueDealerAccounts() {
+  const map = new Map();
+  dealerAccounts().forEach((account) => {
+    if (!account.dealer_code || map.has(account.dealer_code)) return;
+    map.set(account.dealer_code, account);
+  });
+  return Array.from(map.values());
+}
+
+function managedAccounts() {
+  if (state.session?.role === "admin") {
+    return state.accounts.filter((account) => account.role === "dealer" || account.role === "admin");
+  }
+  return state.accounts.filter((account) => (
+    account.role === "dealer" &&
+    String(account.dealer_code).toUpperCase() === String(state.session?.dealer_code || "").toUpperCase()
+  ));
+}
+
+function isProtectedRootAdmin(account) {
+  if (!account) return false;
+  return (
+    String(account.login_id || "").toLowerCase() === "admin" &&
+    String(account.dealer_code || "").toUpperCase() === headOfficeCode &&
+    account.role === "admin"
+  );
+}
+
 function inventoryOwnerAccounts() {
   return [
     { dealer_code: headOfficeCode, dealer_name: headOfficeName, is_active: true },
-    ...dealerAccounts().filter((account) => toBool(account.is_active))
+    ...uniqueDealerAccounts().filter((account) => toBool(account.is_active))
   ];
 }
 
@@ -2294,7 +2345,8 @@ function upsertProduct(product) {
 function removeDealerAccount(loginId) {
   const account = state.accounts.find((item) => item.login_id === loginId);
   state.accounts = state.accounts.filter((item) => item.login_id !== loginId);
-  if (account) {
+  const hasOtherDealerAccount = account?.role === "dealer" && state.accounts.some((item) => item.role === "dealer" && item.dealer_code === account.dealer_code);
+  if (account?.role === "dealer" && !hasOtherDealerAccount) {
     state.inventory = state.inventory.filter((row) => row.dealer_code !== account.dealer_code);
     if (state.filters.dealerCode === account.dealer_code) state.filters.dealerCode = "전체";
   }
