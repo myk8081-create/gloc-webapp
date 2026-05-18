@@ -1166,6 +1166,10 @@ function renderAccountRow(account) {
   const protectedAdmin = isProtectedRootAdmin(account);
   const dealerTopManager = isDealerTopManagerAccount(account);
   const canDealerManagerDelete = canManageDealerStaff() && !isAdminSession && account.role === "dealer" && !isSelf && !dealerTopManager && sameDealerCode(account.dealer_code, state.session?.dealer_code);
+  const canCopyGuide = canManageDealerStaff() && account.role === "dealer" && (isAdminSession || sameDealerCode(account.dealer_code, state.session?.dealer_code));
+  const guideButton = canCopyGuide
+    ? `<button type="button" class="secondary-button small-button" data-share="${escapeAttr(accountKakaoGuideMessage(account))}">안내문 공유</button>`
+    : "";
   const resetButton = !protectedAdmin || isSelf
     ? `<button type="button" class="secondary-button small-button" data-action="resetPassword" data-login-id="${escapeAttr(account.login_id)}">PW 초기화</button>`
     : "";
@@ -1176,7 +1180,7 @@ function renderAccountRow(account) {
   const dealerManagerButtons = canDealerManagerDelete
     ? `<button type="button" class="secondary-button small-button danger-button" data-action="deleteAccount" data-login-id="${escapeAttr(account.login_id)}">담당자 삭제</button>`
     : "";
-  const actionButtons = isAdminSession ? `${resetButton}${dangerButtons}` : dealerManagerButtons;
+  const actionButtons = isAdminSession ? `${guideButton}${resetButton}${dangerButtons}` : `${guideButton}${dealerManagerButtons}`;
   return `
     <article class="account-row">
       <div>
@@ -1420,6 +1424,10 @@ function bindEvents() {
 
   document.querySelectorAll("[data-copy]").forEach((button) => {
     button.addEventListener("click", () => copyText(button.dataset.copy));
+  });
+
+  document.querySelectorAll("[data-share]").forEach((button) => {
+    button.addEventListener("click", () => shareText(button.dataset.share));
   });
 
   document.querySelectorAll("[data-qr-download]").forEach((button) => {
@@ -2628,9 +2636,22 @@ function kakaoMessage(account, url, temporaryPassword) {
 대리점 사용설명서: ${manualUrl}`;
 }
 
+function accountKakaoGuideMessage(account) {
+  const tempPassword = state.tempPasswords[account.login_id] || "초기 발급/초기화한 비밀번호";
+  return kakaoMessage(account, commonLoginUrl(), tempPassword);
+}
+
 async function copyText(value) {
   await navigator.clipboard.writeText(value);
   showToast("복사되었습니다.");
+}
+
+async function shareText(value) {
+  if (navigator.share) {
+    await navigator.share({ text: value });
+    return;
+  }
+  await copyText(value);
 }
 
 function downloadQr(url, fileName) {
