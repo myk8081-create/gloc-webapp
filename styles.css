@@ -546,6 +546,44 @@ h3 {
   margin-bottom: 14px;
 }
 
+.dealer-order-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dealer-order-tabs button {
+  display: grid;
+  gap: 3px;
+  flex: 0 0 auto;
+  min-width: 130px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+}
+
+.dealer-order-tabs button.active {
+  border-color: var(--primary);
+  background: var(--red-soft);
+}
+
+.dealer-order-tabs span {
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.dealer-order-tabs strong {
+  color: var(--amber);
+  font-size: 12px;
+}
+
 .scope-switch {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));

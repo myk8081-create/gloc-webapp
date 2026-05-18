@@ -692,18 +692,13 @@ function renderOrders() {
       </section>
 
       ${state.session?.role === "dealer" ? renderPushNotificationPanel() : ""}
+      ${state.session?.role === "admin" ? renderOrderDealerTabs() : ""}
 
       <section class="toolbar">
         <input class="search-input" id="orderQuery" type="search" placeholder="주문번호, 제품명, SKU, 대리점명 검색" value="${escapeAttr(state.filters.orderQuery)}" />
         <select class="search-input compact-select" id="orderStatus">
           ${["전체", ...orderStatuses].map((status) => `<option value="${status}" ${state.filters.orderStatus === status ? "selected" : ""}>${status}</option>`).join("")}
         </select>
-        ${state.session?.role === "admin" ? `
-          <select class="search-input compact-select" id="dealerFilter">
-            <option value="전체" ${state.filters.dealerCode === "전체" ? "selected" : ""}>통합 발주현황</option>
-            ${state.accounts.filter((account) => account.role === "dealer").map((account) => `<option value="${escapeAttr(account.dealer_code)}" ${state.filters.dealerCode === account.dealer_code ? "selected" : ""}>${escapeHtml(account.dealer_name)}</option>`).join("")}
-          </select>
-        ` : ""}
         <select class="search-input compact-select" id="orderPeriod">
           ${[
             ["전체", "전체 기간"],
@@ -802,6 +797,25 @@ function renderOrderCreate() {
         </div>
       </section>
     </main>
+  `;
+}
+
+function renderOrderDealerTabs() {
+  const options = orderDealerOptions();
+  const totalCount = state.orders.length;
+  return `
+    <section class="dealer-order-tabs" aria-label="대리점별 발주현황">
+      <button type="button" class="${state.filters.dealerCode === "전체" ? "active" : ""}" data-order-dealer="전체">
+        <span>통합 발주현황</span>
+        <strong>${totalCount}건</strong>
+      </button>
+      ${options.map((dealer) => `
+        <button type="button" class="${state.filters.dealerCode === dealer.dealer_code ? "active" : ""}" data-order-dealer="${escapeAttr(dealer.dealer_code)}">
+          <span>${escapeHtml(dealer.dealer_name)}</span>
+          <strong>${dealer.count}건</strong>
+        </button>
+      `).join("")}
+    </section>
   `;
 }
 
@@ -1149,11 +1163,6 @@ function bindEvents() {
     render();
   });
 
-  document.querySelector("#dealerFilter")?.addEventListener("change", (event) => {
-    state.filters.dealerCode = event.target.value;
-    render();
-  });
-
   document.querySelector("#orderPeriod")?.addEventListener("change", (event) => {
     state.filters.orderPeriod = event.target.value;
     render();
@@ -1172,6 +1181,13 @@ function bindEvents() {
   document.querySelectorAll("[data-inventory-scope]").forEach((button) => {
     button.addEventListener("click", () => {
       state.filters.inventoryScope = button.dataset.inventoryScope;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-order-dealer]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.dealerCode = button.dataset.orderDealer;
       render();
     });
   });
@@ -1981,6 +1997,37 @@ function filteredProducts() {
     if (!query) return true;
     return [product.product_name, product.sku, product.category, product.color].some((value) => normalize(value).includes(query));
   });
+}
+
+function orderDealerOptions() {
+  const counts = state.orders.reduce((map, order) => {
+    const code = order.dealer_code || "";
+    if (!code || code === headOfficeCode) return map;
+    map.set(code, (map.get(code) || 0) + 1);
+    return map;
+  }, new Map());
+
+  const dealers = new Map();
+  state.accounts
+    .filter((account) => account.role === "dealer")
+    .forEach((account) => {
+      dealers.set(account.dealer_code, {
+        dealer_code: account.dealer_code,
+        dealer_name: account.dealer_name,
+        count: counts.get(account.dealer_code) || 0
+      });
+    });
+
+  state.orders.forEach((order) => {
+    if (!order.dealer_code || order.dealer_code === headOfficeCode || dealers.has(order.dealer_code)) return;
+    dealers.set(order.dealer_code, {
+      dealer_code: order.dealer_code,
+      dealer_name: order.dealer_name || order.dealer_code,
+      count: counts.get(order.dealer_code) || 0
+    });
+  });
+
+  return Array.from(dealers.values()).sort((a, b) => String(a.dealer_name).localeCompare(String(b.dealer_name), "ko"));
 }
 
 function visibleOrders() {
