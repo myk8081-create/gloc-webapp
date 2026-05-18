@@ -139,6 +139,10 @@
     return request("deletePushSubscription", { endpoint });
   }
 
+  async function sendTestPushNotification() {
+    return request("sendTestPushNotification", {});
+  }
+
   function signOut() {
     setSession(null);
   }
@@ -162,6 +166,7 @@
     getDealerLinks,
     savePushSubscription,
     deletePushSubscription,
+    sendTestPushNotification,
     signOut
   };
 })();

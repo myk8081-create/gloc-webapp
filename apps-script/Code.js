@@ -47,6 +47,7 @@ function doPost(e) {
     if (action === "getDealerLinks") return ok_(handleGetDealerLinks_(payload, user));
     if (action === "savePushSubscription") return ok_(handleSavePushSubscription_(payload, user));
     if (action === "deletePushSubscription") return ok_(handleDeletePushSubscription_(payload, user));
+    if (action === "sendTestPushNotification") return ok_(handleSendTestPushNotification_(payload, user));
 
     throw new Error("지원하지 않는 action입니다: " + action);
   } catch (error) {
@@ -439,7 +440,28 @@ function handleDeletePushSubscription_(payload, user) {
   return { subscription: updated };
 }
 
+function handleSendTestPushNotification_(payload, user) {
+  requireAdmin_(user);
+  return {
+    notification: sendPushNotification_({
+      title: "GLOC 테스트 알림",
+      body: "새 발주 알림 설정이 정상적으로 연결되었습니다.",
+      url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
+      tag: "gloc-test-" + new Date().getTime()
+    })
+  };
+}
+
 function notifyOrderCreated_(order) {
+  return sendPushNotification_({
+    title: "GLOC 발주 접수",
+    body: order.dealer_name + " · " + order.product_name + " / " + order.qty + "롤",
+    url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
+    tag: "gloc-order-" + order.order_id
+  });
+}
+
+function sendPushNotification_(notification) {
   try {
     const apiUrl = getSetting_("push_api_url");
     const secret = getSetting_("push_api_secret");
@@ -447,13 +469,6 @@ function notifyOrderCreated_(order) {
 
     const subscriptions = activePushSubscriptions_();
     if (!subscriptions.length) return { ok: false, skipped: true, reason: "등록된 관리자 푸시 구독 없음" };
-
-    const notification = {
-      title: "GLOC 발주 접수",
-      body: order.dealer_name + " · " + order.product_name + " / " + order.qty + "롤",
-      url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
-      tag: "gloc-order-" + order.order_id
-    };
 
     const response = UrlFetchApp.fetch(apiUrl, {
       method: "post",
@@ -723,7 +738,7 @@ function ensurePasswordSalt_() {
 
 function getSetting_(key) {
   const row = readRows_(SHEETS.settings).find((item) => item.key === key);
-  return row ? row.value : "";
+  return row ? String(row.value || "").trim() : "";
 }
 
 function setSetting_(key, value) {

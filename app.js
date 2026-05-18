@@ -405,6 +405,7 @@ function renderPushNotificationPanel() {
       <div class="page-actions">
         <button class="primary-button" type="button" data-action="enablePushNotifications" ${canSubscribe ? "" : "disabled"}>${buttonText}</button>
         <button class="secondary-button" type="button" data-action="checkPushNotifications">상태 확인</button>
+        <button class="secondary-button" type="button" data-action="sendTestPushNotification" ${state.push.subscribed && window.FilmStockApi?.isEnabled() ? "" : "disabled"}>테스트 알림 보내기</button>
       </div>
     </article>
   `;
@@ -1278,12 +1279,21 @@ async function enablePushNotifications() {
 
   const registration = await navigator.serviceWorker.register("./service-worker.js");
   let subscription = await registration.pushManager.getSubscription();
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(config.vapidPublicKey)
-    });
+  if (subscription) {
+    try {
+      await window.FilmStockApi.deletePushSubscription({
+        endpoint: subscription.endpoint
+      });
+    } catch (error) {
+      console.warn("기존 푸시 구독 삭제 실패", error);
+    }
+    await subscription.unsubscribe();
   }
+
+  subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(config.vapidPublicKey)
+  });
 
   await window.FilmStockApi.savePushSubscription({
     subscription: subscription.toJSON(),
@@ -1294,6 +1304,21 @@ async function enablePushNotifications() {
   state.push.message = "이 기기에 발주 알림이 등록되었습니다.";
   render();
   showToast("발주 알림이 등록되었습니다.");
+}
+
+async function sendTestPushNotification() {
+  if (state.session?.role !== "admin") throw new Error("관리자 계정에서만 테스트 알림을 보낼 수 있습니다.");
+  if (!window.FilmStockApi?.isEnabled()) throw new Error("테스트 알림은 실데이터 모드에서만 사용할 수 있습니다.");
+  const data = await window.FilmStockApi.sendTestPushNotification();
+  const notification = data?.notification || {};
+  if (!notification.ok) {
+    throw new Error(notification.reason || notification.error || notification.result?.error || "테스트 알림을 보낼 수 없습니다.");
+  }
+  const failed = Number(notification.result?.failed || 0);
+  if (failed > 0) {
+    throw new Error("테스트 알림 발송에 실패한 구독이 있습니다. 알림을 다시 등록해 주세요.");
+  }
+  showToast("테스트 알림을 보냈습니다.");
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -1315,6 +1340,7 @@ async function handleAction(action, button) {
   if (action === "refreshLinks") return refreshLinks();
   if (action === "enablePushNotifications") return enablePushNotifications();
   if (action === "checkPushNotifications") return updatePushState(true);
+  if (action === "sendTestPushNotification") return sendTestPushNotification();
   if (action === "createOrder") return createOrder();
   if (action === "saveInventory") return saveInventory();
   if (action === "saveProduct") return saveProduct();
