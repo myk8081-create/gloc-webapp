@@ -406,6 +406,7 @@ function handleSavePushSubscription_(payload, user) {
   const subscriptionId = sha256Text_(endpoint);
   const now = isoNow_();
   const existing = readRows_(SHEETS.pushSubscriptions).find((row) => row.subscription_id === subscriptionId);
+  deactivateOtherPushSubscriptions_(user.login_id, subscriptionId, now);
   const row = {
     subscription_id: subscriptionId,
     login_id: user.login_id,
@@ -427,6 +428,28 @@ function handleSavePushSubscription_(payload, user) {
 
   appendObject_(SHEETS.pushSubscriptions, row);
   return { subscription: row };
+}
+
+function deactivateOtherPushSubscriptions_(loginId, currentSubscriptionId, now) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.pushSubscriptions);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return;
+
+  const headers = values[0].map(String);
+  const subscriptionIndex = headers.indexOf("subscription_id");
+  const loginIndex = headers.indexOf("login_id");
+  const activeIndex = headers.indexOf("is_active");
+  const updatedIndex = headers.indexOf("updated_at");
+  if (subscriptionIndex === -1 || loginIndex === -1 || activeIndex === -1) return;
+
+  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    const sameLogin = String(values[rowIndex][loginIndex]) === String(loginId);
+    const otherSubscription = String(values[rowIndex][subscriptionIndex]) !== String(currentSubscriptionId);
+    if (sameLogin && otherSubscription && toBool_(values[rowIndex][activeIndex])) {
+      sheet.getRange(rowIndex + 1, activeIndex + 1).setValue(false);
+      if (updatedIndex >= 0) sheet.getRange(rowIndex + 1, updatedIndex + 1).setValue(now);
+    }
+  }
 }
 
 function handleDeletePushSubscription_(payload, user) {

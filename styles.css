@@ -622,6 +622,7 @@ h3 {
   font-size: 13px;
   font-weight: 850;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .product-meta {
@@ -629,6 +630,7 @@ h3 {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .stock-mini {
@@ -783,13 +785,21 @@ h3 {
 
 .history-item {
   display: grid;
-  grid-template-columns: 52px 1fr auto;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
+}
+
+.history-item > div:nth-child(2) {
+  min-width: 0;
+}
+
+.history-item strong {
+  white-space: nowrap;
 }
 
 .history-time {
@@ -848,6 +858,14 @@ h3 {
 
 .push-panel .page-actions {
   margin-top: 16px;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.push-panel .page-actions .primary-button,
+.push-panel .page-actions .secondary-button {
+  flex: 1 1 170px;
+  min-width: 0;
 }
 
 .toolbar-actions {
@@ -1172,6 +1190,11 @@ h3 {
 @media (max-width: 759px) {
   .app-shell {
     min-height: 100dvh;
+    padding-bottom: calc(128px + env(safe-area-inset-bottom));
+  }
+
+  .app-shell.admin-shell {
+    padding-bottom: calc(220px + env(safe-area-inset-bottom));
   }
 
   .login-direct {
@@ -1204,6 +1227,10 @@ h3 {
   .bottom-nav.admin-nav button {
     min-height: 40px;
     font-size: 11px;
+  }
+
+  .push-panel {
+    margin-bottom: 18px;
   }
 }
 
@@ -1241,6 +1268,19 @@ h3 {
   .page-actions .secondary-button {
     flex: 0 0 auto;
     min-width: max-content;
+  }
+
+  .push-panel .page-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .push-panel .page-actions .primary-button,
+  .push-panel .page-actions .secondary-button {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
   }
 
   .summary-grid,

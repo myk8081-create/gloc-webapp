@@ -199,7 +199,7 @@ function initFromUrl() {
 
 function render() {
   app.innerHTML = `
-    <div class="app-shell">
+    <div class="app-shell ${state.session?.role === "admin" ? "admin-shell" : ""}">
       ${renderTopbar()}
       ${renderLogin()}
       ${renderPasswordChange()}
