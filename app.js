@@ -813,12 +813,7 @@ function renderOrderDealerTabs() {
 
 function renderOrderCalendarPanel() {
   const period = state.filters.orderPeriod;
-  const dateInput = period === "일별"
-    ? `<input id="orderDate" class="calendar-native-input" type="date" value="${escapeAttr(state.filters.orderDate)}" aria-label="일별 조회 날짜" />`
-    : "";
-  const monthInput = period === "월별"
-    ? `<input id="orderMonth" class="calendar-native-input" type="month" value="${escapeAttr(state.filters.orderMonth)}" aria-label="월별 조회 월" />`
-    : "";
+  const picker = period === "일별" ? renderDayCalendarPicker() : period === "월별" ? renderMonthCalendarPicker() : "";
   return `
     <section class="order-calendar-panel" aria-label="발주 기간 선택">
       <div class="period-toggle">
@@ -834,18 +829,96 @@ function renderOrderCalendarPanel() {
           <strong>전체 발주를 확인합니다</strong>
         </div>
       ` : `
-        <div class="calendar-card">
+        <div class="calendar-card ${period === "월별" ? "month-mode" : "day-mode"}">
+          ${period === "월별" ? `<button type="button" class="year-step-button" data-order-year-step="-1" aria-label="이전 연도">작년</button>` : ""}
           <button type="button" class="date-step-button" data-order-date-step="-1" aria-label="이전 ${period === "일별" ? "날짜" : "월"}">&lt;</button>
-          <label class="calendar-display">
+          <div class="calendar-display" aria-live="polite">
             <span>${period === "일별" ? "일별 조회 날짜" : "월별 조회"}</span>
             <strong>${escapeHtml(orderCalendarLabel())}</strong>
-            ${dateInput}${monthInput}
-          </label>
+          </div>
           <button type="button" class="date-step-button" data-order-date-step="1" aria-label="다음 ${period === "일별" ? "날짜" : "월"}">&gt;</button>
+          ${period === "월별" ? `<button type="button" class="year-step-button" data-order-year-step="1" aria-label="다음 연도">내년</button>` : ""}
           <button type="button" class="calendar-current-button" data-order-date-current>${period === "일별" ? "오늘" : "이번 달"}</button>
         </div>
+        ${picker}
       `}
     </section>
+  `;
+}
+
+function renderDayCalendarPicker() {
+  const selectedDate = parseDateInput(state.filters.orderDate);
+  const selectedValue = dateInputValue(selectedDate);
+  const todayValue = dateInputValue();
+  const year = selectedDate.getFullYear();
+  const month = selectedDate.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const startDate = new Date(year, month, 1 - firstOfMonth.getDay());
+  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + index);
+    const value = dateInputValue(date);
+    const classes = [
+      "calendar-day",
+      date.getMonth() !== month ? "is-muted" : "",
+      value === selectedValue ? "active" : "",
+      value === todayValue ? "is-today" : ""
+    ].filter(Boolean).join(" ");
+    return `
+      <button type="button" class="${classes}" data-order-day="${value}" aria-label="${escapeAttr(value)} 발주 조회">
+        <span>${date.getDate()}</span>
+      </button>
+    `;
+  }).join("");
+
+  return `
+    <div class="calendar-picker-shell day-picker" aria-label="일별 달력">
+      <div class="calendar-board-head">
+        <span>날짜 선택</span>
+        <strong>${year}년 ${month + 1}월</strong>
+      </div>
+      <div class="calendar-weekdays">
+        ${weekdays.map((day) => `<span>${day}</span>`).join("")}
+      </div>
+      <div class="day-calendar-grid">
+        ${cells}
+      </div>
+    </div>
+  `;
+}
+
+function renderMonthCalendarPicker() {
+  const selectedDate = parseMonthInput(state.filters.orderMonth);
+  const selectedValue = monthInputValue(selectedDate);
+  const currentValue = monthInputValue();
+  const year = selectedDate.getFullYear();
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const value = `${year}-${String(index + 1).padStart(2, "0")}`;
+    const classes = [
+      "month-picker-button",
+      value === selectedValue ? "active" : "",
+      value === currentValue ? "is-current" : ""
+    ].filter(Boolean).join(" ");
+    return `
+      <button type="button" class="${classes}" data-order-month-value="${value}" aria-label="${escapeAttr(`${year}년 ${index + 1}월 발주 조회`)}">
+        <span>${index + 1}월</span>
+        <small>${year}</small>
+      </button>
+    `;
+  }).join("");
+
+  return `
+    <div class="calendar-picker-shell month-picker" aria-label="월별 선택">
+      <div class="calendar-board-head">
+        <span>월 선택</span>
+        <strong>${year}년</strong>
+      </div>
+      <div class="month-picker-grid">
+        ${months}
+      </div>
+    </div>
   `;
 }
 
@@ -1215,6 +1288,27 @@ function bindEvents() {
   document.querySelectorAll("[data-order-date-step]").forEach((button) => {
     button.addEventListener("click", () => {
       shiftOrderCalendar(Number(button.dataset.orderDateStep || 0));
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-order-year-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      shiftOrderYear(Number(button.dataset.orderYearStep || 0));
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-order-day]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.orderDate = button.dataset.orderDay;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-order-month-value]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.orderMonth = button.dataset.orderMonthValue;
       render();
     });
   });
@@ -2330,6 +2424,13 @@ function shiftOrderCalendar(step) {
     date.setMonth(date.getMonth() + step);
     state.filters.orderMonth = monthInputValue(date);
   }
+}
+
+function shiftOrderYear(step) {
+  if (!step) return;
+  const date = parseMonthInput(state.filters.orderMonth);
+  date.setFullYear(date.getFullYear() + step);
+  state.filters.orderMonth = monthInputValue(date);
 }
 
 function orderCalendarLabel() {
