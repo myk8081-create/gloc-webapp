@@ -6,6 +6,7 @@ const headOfficeCode = "ADMIN";
 const headOfficeName = "본사";
 const defaultRetailPrice = 1000000;
 const defaultPurchasePrice = 500000;
+const defaultLegacyOrderDiscountRate = 20;
 const inventoryPageSize = 10;
 
 const colorOptions = [
@@ -851,6 +852,7 @@ function renderOrders() {
         <p class="lead">${state.session?.role === "admin" ? "전체/대리점별 발주를 일별 또는 월별로 확인하고 상태를 변경합니다." : "내 대리점 발주 내역을 일별 또는 월별로 확인합니다."}</p>
         <div class="page-actions">
           ${state.session?.role === "dealer" ? `<button class="primary-button" type="button" data-nav="orderCreate">발주 신청</button>` : ""}
+          ${state.session?.role === "admin" ? `<button class="secondary-button danger-button" type="button" data-action="clearTestOrders">테스트 발주 전체삭제</button>` : ""}
           <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
         </div>
       </section>
@@ -2198,6 +2200,7 @@ async function handleAction(action, button) {
   if (action === "checkPushNotifications") return updatePushState(true);
   if (action === "sendTestPushNotification") return sendTestPushNotification();
   if (action === "createOrder") return createOrder();
+  if (action === "clearTestOrders") return clearTestOrders();
   if (action === "cancelOrder") return cancelOrder(button.dataset.orderId);
   if (action === "saveInventory") return saveInventory();
   if (action === "saveProduct") return saveProduct();
@@ -2385,6 +2388,29 @@ async function updateOrderStatus(orderId, status) {
   render();
   syncAppBadgeFromOrders();
   showToast(`발주 상태를 ${status}(으)로 변경했습니다.`);
+}
+
+async function clearTestOrders() {
+  if (state.session?.role !== "admin") throw new Error("관리자만 테스트 발주를 삭제할 수 있습니다.");
+  const confirmed = confirm("현재 발주 내역을 모두 삭제합니다. 최종 오픈 전 테스트 발주 삭제 용도로만 사용하세요.");
+  if (!confirmed) return;
+  const typed = prompt("삭제하려면 전체삭제 라고 입력해 주세요.");
+  if (typed !== "전체삭제") {
+    showToast("삭제가 취소되었습니다.");
+    return;
+  }
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.clearOrders();
+    state.orders = [];
+    showToast(`테스트 발주 ${Number(data?.deleted_count || 0)}건을 삭제했습니다.`);
+  } else {
+    const deletedCount = state.orders.length;
+    state.orders = [];
+    showToast(`테스트 발주 ${deletedCount}건을 삭제했습니다.`);
+  }
+  syncAppBadgeFromOrders();
+  render();
 }
 
 async function cancelOrder(orderId) {
@@ -2925,7 +2951,7 @@ function enrichSalesRow(order) {
   const product = state.products.find((item) => item.sku === order.sku) || {};
   const qty = Number(order.qty || 0);
   const unitRetailPrice = Number(hasSnapshotValue(order.unit_retail_price) ? order.unit_retail_price : productRetailPrice(product));
-  const discountRate = Number(hasSnapshotValue(order.dealer_discount_rate) ? order.dealer_discount_rate : dealerDiscountRate(order.dealer_code));
+  const discountRate = Number(hasSnapshotValue(order.dealer_discount_rate) ? order.dealer_discount_rate : fallbackOrderDiscountRate(order));
   const unitSalePrice = Number(hasSnapshotValue(order.unit_sale_price) ? order.unit_sale_price : Math.round(unitRetailPrice * (1 - discountRate / 100)));
   const unitPurchasePrice = Number(hasSnapshotValue(order.unit_purchase_price) ? order.unit_purchase_price : productPurchasePrice(product));
   const revenue = unitSalePrice * qty;
@@ -2964,6 +2990,11 @@ function freezeDealerOrderPricing(dealerCode, discountRate) {
 
 function hasSnapshotValue(value) {
   return value !== undefined && value !== null && value !== "";
+}
+
+function fallbackOrderDiscountRate(order) {
+  if (hasSnapshotValue(order.dealer_discount_rate)) return Number(order.dealer_discount_rate || 0);
+  return defaultLegacyOrderDiscountRate;
 }
 
 function orderReportStats(rows) {

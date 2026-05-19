@@ -22,6 +22,7 @@ const HEAD_OFFICE_CODE = "ADMIN";
 const HEAD_OFFICE_NAME = "본사";
 const DEFAULT_RETAIL_PRICE = 1000000;
 const DEFAULT_PURCHASE_PRICE = 500000;
+const DEFAULT_LEGACY_ORDER_DISCOUNT_RATE = 20;
 
 function doPost(e) {
   try {
@@ -40,6 +41,7 @@ function doPost(e) {
     if (action === "getOrders") return ok_(handleGetOrders_(payload, user));
     if (action === "updateOrderStatus") return ok_(handleUpdateOrderStatus_(payload, user));
     if (action === "cancelOrder") return ok_(handleCancelOrder_(payload, user));
+    if (action === "clearOrders") return ok_(handleClearOrders_(payload, user));
     if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
     if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
     if (action === "updateDealerDiscount") return ok_(handleUpdateDealerDiscount_(payload, user));
@@ -307,6 +309,16 @@ function handleCancelOrder_(payload, user) {
     order: updated,
     notification: notifyOrderCanceled_(updated)
   };
+}
+
+function handleClearOrders_(payload, user) {
+  requireAdmin_(user);
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.orders);
+  if (!sheet || sheet.getLastRow() < 2) return { deleted_count: 0 };
+
+  const deletedCount = sheet.getLastRow() - 1;
+  sheet.deleteRows(2, deletedCount);
+  return { deleted_count: deletedCount };
 }
 
 function handleSaveInventory_(payload, user) {
@@ -711,6 +723,7 @@ function commonLoginUrl_(baseUrl) {
 function ensureSheets_() {
   Object.keys(SHEETS).forEach((key) => ensureSheet_(SHEETS[key], HEADERS[key]));
   ensureProductDefaultPrices_();
+  ensureOrderPriceSnapshots_();
   ensurePasswordSalt_();
 }
 
@@ -845,6 +858,58 @@ function ensureProductDefaultPrices_() {
     const purchaseValue = Number(values[rowIndex][purchaseIndex] || 0);
     if (!retailValue) sheet.getRange(rowIndex + 1, retailIndex + 1).setValue(DEFAULT_RETAIL_PRICE);
     if (!purchaseValue) sheet.getRange(rowIndex + 1, purchaseIndex + 1).setValue(DEFAULT_PURCHASE_PRICE);
+  }
+}
+
+function ensureOrderPriceSnapshots_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.orders);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const skuIndex = headers.indexOf("sku");
+  const retailIndex = headers.indexOf("unit_retail_price");
+  const discountIndex = headers.indexOf("dealer_discount_rate");
+  const saleIndex = headers.indexOf("unit_sale_price");
+  const purchaseIndex = headers.indexOf("unit_purchase_price");
+  if ([skuIndex, retailIndex, discountIndex, saleIndex, purchaseIndex].some((index) => index === -1)) return;
+
+  const productsBySku = {};
+  readRows_(SHEETS.products).forEach((product) => {
+    productsBySku[product.sku] = product;
+  });
+  const legacyDiscountRate = legacyOrderDiscountRate_();
+
+  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    const hasContent = values[rowIndex].some((cell) => cell !== "");
+    if (!hasContent) continue;
+
+    const needsSnapshot = (
+      !hasSnapshotValue_(values[rowIndex][retailIndex]) ||
+      !hasSnapshotValue_(values[rowIndex][discountIndex]) ||
+      !hasSnapshotValue_(values[rowIndex][saleIndex]) ||
+      !hasSnapshotValue_(values[rowIndex][purchaseIndex])
+    );
+    if (!needsSnapshot) continue;
+
+    const product = productsBySku[String(values[rowIndex][skuIndex])] || {};
+    const unitRetailPrice = hasSnapshotValue_(values[rowIndex][retailIndex])
+      ? Number(values[rowIndex][retailIndex])
+      : productRetailPrice_(product);
+    const discountRate = hasSnapshotValue_(values[rowIndex][discountIndex])
+      ? Number(values[rowIndex][discountIndex])
+      : legacyDiscountRate;
+    const unitSalePrice = hasSnapshotValue_(values[rowIndex][saleIndex])
+      ? Number(values[rowIndex][saleIndex])
+      : Math.round(unitRetailPrice * (1 - discountRate / 100));
+    const unitPurchasePrice = hasSnapshotValue_(values[rowIndex][purchaseIndex])
+      ? Number(values[rowIndex][purchaseIndex])
+      : productPurchasePrice_(product);
+
+    sheet.getRange(rowIndex + 1, retailIndex + 1).setValue(unitRetailPrice);
+    sheet.getRange(rowIndex + 1, discountIndex + 1).setValue(discountRate);
+    sheet.getRange(rowIndex + 1, saleIndex + 1).setValue(unitSalePrice);
+    sheet.getRange(rowIndex + 1, purchaseIndex + 1).setValue(unitPurchasePrice);
   }
 }
 
@@ -1162,6 +1227,12 @@ function dealerDiscountRate_(dealerCode) {
   }
   const legacyAccount = accounts.find((row) => row.dealer_discount_rate !== undefined && row.dealer_discount_rate !== "");
   return Number(legacyAccount ? legacyAccount.dealer_discount_rate || 0 : 0);
+}
+
+function legacyOrderDiscountRate_() {
+  const value = Number(getSetting_("legacy_order_discount_rate") || DEFAULT_LEGACY_ORDER_DISCOUNT_RATE);
+  if (Number.isNaN(value) || value < 0 || value > 100) return DEFAULT_LEGACY_ORDER_DISCOUNT_RATE;
+  return value;
 }
 
 function freezeDealerOrderPricing_(dealerCode, discountRate) {

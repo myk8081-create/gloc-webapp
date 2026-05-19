@@ -106,6 +106,10 @@
     return request("cancelOrder", { order_id: orderId });
   }
 
+  async function clearOrders() {
+    return request("clearOrders", {});
+  }
+
   async function saveInventory(row) {
     return request("saveInventory", row);
   }
@@ -178,6 +182,7 @@
     updateOrderStatus,
     updateOrderStatusWithShipping,
     cancelOrder,
+    clearOrders,
     saveInventory,
     saveProduct,
     updateDealerDiscount,
