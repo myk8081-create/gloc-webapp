@@ -412,11 +412,15 @@ function handleCreateDealerAccount_(payload, user) {
     : role === "admin"
       ? HEAD_OFFICE_CODE
       : required_(payload.dealer_code, "dealer_code").toUpperCase();
-  const dealerName = user.role === "dealer" ? user.dealer_name : required_(payload.dealer_name, "dealer_name");
   const existingDealerAccount = readRows_(SHEETS.accounts).find((row) => (
     row.role === "dealer" &&
     String(row.dealer_code).toUpperCase() === dealerCode
   ));
+  const dealerName = user.role === "dealer"
+    ? user.dealer_name
+    : role === "admin"
+      ? required_(payload.dealer_name, "dealer_name")
+      : String(payload.dealer_name || existingDealerAccount?.dealer_name || dealerCode + " 대리점").trim();
   const discountRate = role === "dealer"
     ? user.role === "dealer"
       ? ""

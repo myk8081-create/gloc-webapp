@@ -6,6 +6,7 @@ const headOfficeCode = "ADMIN";
 const headOfficeName = "본사";
 const defaultRetailPrice = 1000000;
 const defaultPurchasePrice = 500000;
+const inventoryPageSize = 10;
 
 const colorOptions = [
   { name: "전체", value: "전체", hex: "#cf4e42" },
@@ -171,6 +172,8 @@ const state = {
   filters: {
     inventoryQuery: "",
     inventoryScope: "mine",
+    inventoryDealerCode: "전체",
+    inventoryPage: 1,
     orderQuery: "",
     orderStatus: "전체",
     dealerCode: "전체",
@@ -582,6 +585,7 @@ function renderDealerManagement() {
 function renderInventory() {
   const rows = visibleInventory();
   const scope = currentInventoryScope();
+  const pageRows = paginatedInventoryRows(rows);
   return `
     <main class="screen ${state.screen === "inventory" ? "active" : ""}" data-screen="inventory">
       <section class="page-head">
@@ -597,6 +601,7 @@ function renderInventory() {
       </section>
 
       ${renderInventoryScopeSwitch(scope)}
+      ${renderInventoryDealerTabs(scope)}
 
       <section class="stats-grid" id="inventoryStats">
         ${renderInventoryStatsCards(rows)}
@@ -627,9 +632,12 @@ function renderInventory() {
               </tr>
             </thead>
             <tbody id="inventoryRows">
-              ${rows.slice(0, 80).map(renderInventoryRow).join("") || `<tr><td colspan="6" class="empty-cell">조회 결과가 없습니다.</td></tr>`}
+              ${pageRows.map(renderInventoryRow).join("") || `<tr><td colspan="6" class="empty-cell">조회 결과가 없습니다.</td></tr>`}
             </tbody>
           </table>
+        </div>
+        <div id="inventoryPager">
+          ${renderInventoryPager(rows)}
         </div>
       </section>
     </main>
@@ -658,6 +666,48 @@ function renderInventoryStatsCards(rows) {
       <div class="metric-label">제품 종류</div>
       <div class="metric-value">${activeProducts().length}개</div>
       <div class="metric-note">판매중 PPF/틴팅 SKU</div>
+    </div>
+  `;
+}
+
+function renderInventoryDealerTabs(scope) {
+  if (scope !== "dealerAll") return "";
+  return `
+    <section class="dealer-order-tabs" id="inventoryDealerTabs" aria-label="대리점별 재고현황">
+      ${renderInventoryDealerTabButtons()}
+    </section>
+  `;
+}
+
+function renderInventoryDealerTabButtons() {
+  const options = inventoryDealerOptions();
+  const totalRows = visibleInventory({ includeDealerFilter: false });
+  const totalStock = inventoryStats(totalRows).totalStock;
+  return `
+    <button type="button" class="${state.filters.inventoryDealerCode === "전체" ? "active" : ""}" data-inventory-dealer="전체">
+      <span>전체 대리점/샵</span>
+      <strong>${roll(totalStock)}</strong>
+    </button>
+    ${options.map((dealer) => `
+      <button type="button" class="${state.filters.inventoryDealerCode === dealer.dealer_code ? "active" : ""}" data-inventory-dealer="${escapeAttr(dealer.dealer_code)}">
+        <span>${escapeHtml(dealer.dealer_name)}</span>
+        <strong>${roll(dealer.totalStock)}</strong>
+      </button>
+    `).join("")}
+  `;
+}
+
+function renderInventoryPager(rows) {
+  const totalPages = inventoryTotalPages(rows);
+  if (totalPages <= 1) {
+    return `<div class="pager muted-pager">총 ${rows.length}개</div>`;
+  }
+  const page = currentInventoryPage(rows);
+  return `
+    <div class="pager" aria-label="재고 페이지 이동">
+      <button type="button" class="secondary-button small-button" data-inventory-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>이전</button>
+      <span>${page} / ${totalPages} 페이지 · 총 ${rows.length}개</span>
+      <button type="button" class="secondary-button small-button" data-inventory-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>다음</button>
     </div>
   `;
 }
@@ -815,27 +865,8 @@ function renderOrders() {
         </select>
       </section>
 
-      <section class="stats-grid order-report-grid">
-        <article class="stat-card">
-          <span>조회 발주</span>
-          <strong>${stats.count}건</strong>
-          <small>${state.session?.role === "admin" && state.filters.dealerCode === "전체" ? "통합 기준" : "선택 기준"}</small>
-        </article>
-        <article class="stat-card">
-          <span>총 수량</span>
-          <strong>${roll(stats.qty)}</strong>
-          <small>조회 결과 합산</small>
-        </article>
-        <article class="stat-card">
-          <span>접수</span>
-          <strong>${stats.received}건</strong>
-          <small>처리 전 발주</small>
-        </article>
-        <article class="stat-card">
-          <span>완료</span>
-          <strong>${stats.done}건</strong>
-          <small>완료 처리</small>
-        </article>
+      <section class="stats-grid order-report-grid" id="orderStats">
+        ${renderOrderStatsCards(rows, stats)}
       </section>
 
       <section class="panel list-panel">
@@ -1170,6 +1201,56 @@ function renderOrderDealerTabs() {
   `;
 }
 
+function renderOrderStatsCards(rows, stats = orderReportStats(rows)) {
+  if (state.session?.role === "dealer") {
+    const moneyStats = orderAmountStats(rows);
+    return `
+      <article class="stat-card">
+        <span>완료 발주</span>
+        <strong>${moneyStats.completedCount}건</strong>
+        <small>완료 처리 기준</small>
+      </article>
+      <article class="stat-card">
+        <span>총 매출</span>
+        <strong>${money(moneyStats.revenue)}</strong>
+        <small>할인 적용 발주가</small>
+      </article>
+      <article class="stat-card">
+        <span>총 매입</span>
+        <strong>${money(moneyStats.cost)}</strong>
+        <small>제품 매입가 합산</small>
+      </article>
+      <article class="stat-card">
+        <span>매출 이익</span>
+        <strong>${money(moneyStats.profit)}</strong>
+        <small>마진율 ${percent(moneyStats.marginRate)}</small>
+      </article>
+    `;
+  }
+  return `
+    <article class="stat-card">
+      <span>조회 발주</span>
+      <strong>${stats.count}건</strong>
+      <small>${state.filters.dealerCode === "전체" ? "통합 기준" : "선택 기준"}</small>
+    </article>
+    <article class="stat-card">
+      <span>총 수량</span>
+      <strong>${roll(stats.qty)}</strong>
+      <small>조회 결과 합산</small>
+    </article>
+    <article class="stat-card">
+      <span>접수</span>
+      <strong>${stats.received}건</strong>
+      <small>처리 전 발주</small>
+    </article>
+    <article class="stat-card">
+      <span>완료</span>
+      <strong>${stats.done}건</strong>
+      <small>완료 처리</small>
+    </article>
+  `;
+}
+
 function renderOrderCalendarPanel() {
   const period = state.filters.orderPeriod;
   const picker = period === "일별" ? renderDayCalendarPicker() : period === "월별" ? renderMonthCalendarPicker() : "";
@@ -1425,7 +1506,6 @@ function renderOrderCard(order) {
   const canCancel = state.session?.role === "dealer" && order.dealer_code === state.session.dealer_code && order.status === "접수";
   const hasShipping = order.shipping_company || order.tracking_number;
   const staffId = order.created_by_login_id || "";
-  const pricing = enrichSalesRow(order);
   return `
     <article class="order-card">
       <div>
@@ -1440,11 +1520,6 @@ function renderOrderCard(order) {
         <span>${escapeHtml(order.created_at || "")}</span>
       </div>
       <p class="order-memo">${escapeHtml(order.memo || "메모 없음")}</p>
-      <div class="order-price-summary">
-        <span>발주금액</span>
-        <strong>${money(pricing.revenue)}</strong>
-        <small>적용단가 ${money(pricing.unitSalePrice)} · 할인율 ${percent(pricing.discountRate)}</small>
-      </div>
       ${hasShipping ? `
         <div class="shipping-info">
           <strong>배송정보</strong>
@@ -1612,6 +1687,7 @@ function bindEvents() {
   bindInput("newPasswordConfirm", (value) => (state.forms.newPasswordConfirm = value));
   bindInput("accountDealerCode", (value) => {
     state.forms.accountDealerCode = value.toUpperCase();
+    syncAccountDealerNameFromCode();
     window.clearTimeout(accountFormRefreshTimer);
     accountFormRefreshTimer = window.setTimeout(render, 120);
   });
@@ -1657,7 +1733,10 @@ function bindEvents() {
     state.forms.productIsActive = event.target.checked;
   });
 
-  bindSearchInput("inventoryQuery", (value) => (state.filters.inventoryQuery = value));
+  bindSearchInput("inventoryQuery", (value) => {
+    state.filters.inventoryQuery = value;
+    state.filters.inventoryPage = 1;
+  });
   bindSearchInput("orderQuery", (value) => (state.filters.orderQuery = value));
   bindSearchInput("salesQuery", (value) => (state.filters.salesQuery = value));
 
@@ -1765,6 +1844,8 @@ function bindEvents() {
   document.querySelectorAll("[data-inventory-scope]").forEach((button) => {
     button.addEventListener("click", () => {
       state.filters.inventoryScope = button.dataset.inventoryScope;
+      state.filters.inventoryDealerCode = "전체";
+      state.filters.inventoryPage = 1;
       render();
     });
   });
@@ -1786,6 +1867,7 @@ function bindEvents() {
   document.querySelectorAll("[data-color]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedColor = button.dataset.color;
+      state.filters.inventoryPage = 1;
       const first = filteredProducts()[0];
       if (first) state.selectedSku = first.sku;
       render();
@@ -1848,6 +1930,21 @@ function bindDynamicListEvents(root) {
       runWithButtonBusy(button, () => updateOrderStatus(button.dataset.orderId, button.dataset.orderStatus));
     });
   });
+
+  root.querySelectorAll("[data-inventory-dealer]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.inventoryDealerCode = button.dataset.inventoryDealer;
+      state.filters.inventoryPage = 1;
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-inventory-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.inventoryPage = Number(button.dataset.inventoryPage || 1);
+      render();
+    });
+  });
 }
 
 async function runWithButtonBusy(button, task) {
@@ -1898,8 +1995,11 @@ function refreshActiveSearchResults() {
 
   if (state.screen === "inventory") {
     const rows = visibleInventory();
+    const pageRows = paginatedInventoryRows(rows);
     replaceHtml("#inventoryStats", renderInventoryStatsCards(rows));
-    replaceHtml("#inventoryRows", rows.slice(0, 80).map(renderInventoryRow).join("") || `<tr><td colspan="6" class="empty-cell">조회 결과가 없습니다.</td></tr>`);
+    replaceHtml("#inventoryRows", pageRows.map(renderInventoryRow).join("") || `<tr><td colspan="6" class="empty-cell">조회 결과가 없습니다.</td></tr>`);
+    replaceHtml("#inventoryPager", renderInventoryPager(rows));
+    replaceHtml("#inventoryDealerTabs", currentInventoryScope() === "dealerAll" ? renderInventoryDealerTabButtons() : "");
     return;
   }
 
@@ -1914,7 +2014,9 @@ function refreshActiveSearchResults() {
   }
 
   if (state.screen === "orders") {
-    replaceHtml("#orderList", visibleOrders().map(renderOrderCard).join("") || `<div class="empty">발주 내역이 없습니다.</div>`);
+    const rows = visibleOrders();
+    replaceHtml("#orderStats", renderOrderStatsCards(rows));
+    replaceHtml("#orderList", rows.map(renderOrderCard).join("") || `<div class="empty">발주 내역이 없습니다.</div>`);
     return;
   }
 
@@ -2408,7 +2510,7 @@ async function createDealerAccount() {
   const account = {
     login_id: state.forms.accountLoginId.trim(),
     dealer_code: dealerCode,
-    dealer_name: state.session?.role === "admin" ? state.forms.accountDealerName.trim() : state.session?.dealer_name || "",
+    dealer_name: state.session?.role === "admin" ? dealerNameForCode(dealerCode, state.forms.accountDealerName) : state.session?.dealer_name || "",
     role,
     dealer_discount_rate: accountDiscountRate,
     temporary_password: state.forms.accountTemporaryPassword.trim()
@@ -2645,7 +2747,8 @@ function editableInventoryRows() {
     .sort((a, b) => String(a.dealer_code).localeCompare(String(b.dealer_code)) || String(a.product_name).localeCompare(String(b.product_name), "ko"));
 }
 
-function visibleInventory() {
+function visibleInventory(options = {}) {
+  const includeDealerFilter = options.includeDealerFilter !== false;
   const query = normalize(state.filters.inventoryQuery);
   const scope = currentInventoryScope();
   return state.inventory
@@ -2653,12 +2756,58 @@ function visibleInventory() {
       if (scope === "mine" && row.dealer_code !== state.session?.dealer_code) return false;
       if (scope === "headOffice" && row.dealer_code !== headOfficeCode) return false;
       if (scope === "dealerAll" && row.dealer_code === headOfficeCode) return false;
+      if (includeDealerFilter && scope === "dealerAll" && state.filters.inventoryDealerCode !== "전체" && row.dealer_code !== state.filters.inventoryDealerCode) return false;
       if (state.selectedColor !== "전체" && row.color !== state.selectedColor && !normalize(row.product_name).includes(normalize(state.selectedColor))) return false;
       if (!query) return true;
       return [row.product_name, row.sku, row.dealer_name, row.dealer_code, row.stock_qty, row.category, row.color]
         .some((value) => normalize(value).includes(query));
     })
     .sort((a, b) => Number(a.stock_qty) - Number(b.stock_qty));
+}
+
+function inventoryDealerOptions() {
+  const rows = visibleInventory({ includeDealerFilter: false });
+  const map = new Map();
+  uniqueDealerAccounts().forEach((account) => {
+    map.set(account.dealer_code, {
+      dealer_code: account.dealer_code,
+      dealer_name: account.dealer_name,
+      totalStock: 0,
+      count: 0
+    });
+  });
+  rows.forEach((row) => {
+    if (!row.dealer_code || row.dealer_code === headOfficeCode) return;
+    if (!map.has(row.dealer_code)) {
+      map.set(row.dealer_code, {
+        dealer_code: row.dealer_code,
+        dealer_name: row.dealer_name || row.dealer_code,
+        totalStock: 0,
+        count: 0
+      });
+    }
+    const dealer = map.get(row.dealer_code);
+    dealer.totalStock += Number(row.stock_qty || 0);
+    dealer.count += 1;
+  });
+  return Array.from(map.values()).sort((a, b) => String(a.dealer_name).localeCompare(String(b.dealer_name), "ko"));
+}
+
+function inventoryTotalPages(rows) {
+  return Math.max(1, Math.ceil(rows.length / inventoryPageSize));
+}
+
+function currentInventoryPage(rows) {
+  const totalPages = inventoryTotalPages(rows);
+  const page = Math.min(Math.max(Number(state.filters.inventoryPage || 1), 1), totalPages);
+  state.filters.inventoryPage = page;
+  return page;
+}
+
+function paginatedInventoryRows(rows) {
+  const page = currentInventoryPage(rows);
+  const start = (page - 1) * inventoryPageSize;
+  return rows.slice(start, start + inventoryPageSize);
 }
 
 function filteredProducts() {
@@ -2800,6 +2949,23 @@ function orderReportStats(rows) {
     },
     { count: 0, qty: 0, received: 0, done: 0 }
   );
+}
+
+function orderAmountStats(rows) {
+  const stats = rows.reduce(
+    (stats, order) => {
+      if (order.status !== "완료") return stats;
+      const pricing = enrichSalesRow(order);
+      stats.completedCount += 1;
+      stats.revenue += pricing.revenue;
+      stats.cost += pricing.cost;
+      stats.profit += pricing.profit;
+      return stats;
+    },
+    { completedCount: 0, revenue: 0, cost: 0, profit: 0, marginRate: 0 }
+  );
+  stats.marginRate = stats.revenue > 0 ? (stats.profit / stats.revenue) * 100 : 0;
+  return stats;
 }
 
 function salesReportStats(rows) {
@@ -2997,6 +3163,30 @@ function removeProduct(sku) {
 
 function dealerNameByCode(dealerCode) {
   return state.accounts.find((account) => account.dealer_code === dealerCode)?.dealer_name || dealerCode;
+}
+
+function dealerNameForCode(dealerCode, preferredName = "") {
+  const existing = topDealerAccountByCode(dealerCode);
+  if (existing?.dealer_name) return existing.dealer_name;
+  const name = String(preferredName || "").trim();
+  if (name) return name;
+  return dealerCode ? `${dealerCode} 대리점` : "";
+}
+
+function syncAccountDealerNameFromCode() {
+  if (state.forms.accountRole === "admin") return;
+  const code = state.forms.accountDealerCode.trim().toUpperCase();
+  if (!code) return;
+  const existing = topDealerAccountByCode(code);
+  const currentName = state.forms.accountDealerName.trim();
+  const looksGenerated = /^[A-Z0-9-]+\s대리점$/.test(currentName);
+  if (existing?.dealer_name) {
+    state.forms.accountDealerName = existing.dealer_name;
+    return;
+  }
+  if (!currentName || looksGenerated) {
+    state.forms.accountDealerName = `${code} 대리점`;
+  }
 }
 
 function seedInventoryForDealer(account) {
