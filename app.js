@@ -1203,27 +1203,27 @@ function renderOrderDealerTabs() {
 
 function renderOrderStatsCards(rows, stats = orderReportStats(rows)) {
   if (state.session?.role === "dealer") {
-    const moneyStats = orderAmountStats(rows);
+    const amountStats = orderAmountStats(rows);
     return `
       <article class="stat-card">
+        <span>전체 발주</span>
+        <strong>${stats.count}건</strong>
+        <small>내 대리점 조회 기준</small>
+      </article>
+      <article class="stat-card">
+        <span>진행중 발주</span>
+        <strong>${stats.inProgress}건</strong>
+        <small>접수 · 승인 · 출고</small>
+      </article>
+      <article class="stat-card">
         <span>완료 발주</span>
-        <strong>${moneyStats.completedCount}건</strong>
-        <small>완료 처리 기준</small>
+        <strong>${stats.done}건</strong>
+        <small>처리 완료</small>
       </article>
       <article class="stat-card">
-        <span>총 매출</span>
-        <strong>${money(moneyStats.revenue)}</strong>
-        <small>할인 적용 발주가</small>
-      </article>
-      <article class="stat-card">
-        <span>총 매입</span>
-        <strong>${money(moneyStats.cost)}</strong>
-        <small>제품 매입가 합산</small>
-      </article>
-      <article class="stat-card">
-        <span>매출 이익</span>
-        <strong>${money(moneyStats.profit)}</strong>
-        <small>마진율 ${percent(moneyStats.marginRate)}</small>
+        <span>총 발주금액</span>
+        <strong>${money(amountStats.orderAmount)}</strong>
+        <small>취소 · 반려 제외</small>
       </article>
     `;
   }
@@ -2944,28 +2944,24 @@ function orderReportStats(rows) {
       stats.count += 1;
       stats.qty += Number(order.qty || 0);
       if (order.status === "접수") stats.received += 1;
+      if (["접수", "승인", "출고"].includes(order.status)) stats.inProgress += 1;
       if (order.status === "완료") stats.done += 1;
       return stats;
     },
-    { count: 0, qty: 0, received: 0, done: 0 }
+    { count: 0, qty: 0, received: 0, inProgress: 0, done: 0 }
   );
 }
 
 function orderAmountStats(rows) {
-  const stats = rows.reduce(
+  return rows.reduce(
     (stats, order) => {
-      if (order.status !== "완료") return stats;
+      if (["취소", "반려"].includes(order.status)) return stats;
       const pricing = enrichSalesRow(order);
-      stats.completedCount += 1;
-      stats.revenue += pricing.revenue;
-      stats.cost += pricing.cost;
-      stats.profit += pricing.profit;
+      stats.orderAmount += pricing.revenue;
       return stats;
     },
-    { completedCount: 0, revenue: 0, cost: 0, profit: 0, marginRate: 0 }
+    { orderAmount: 0 }
   );
-  stats.marginRate = stats.revenue > 0 ? (stats.profit / stats.revenue) * 100 : 0;
-  return stats;
 }
 
 function salesReportStats(rows) {
