@@ -2567,16 +2567,22 @@ async function updateDealerDiscount(dealerCode) {
 
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.updateDealerDiscount({ dealerCode, discountRate });
+    freezeDealerOrderPricing(dealerCode, currentRate);
     if (Array.isArray(data?.accounts)) state.accounts = data.accounts;
   } else {
-    state.accounts = state.accounts.map((account) => (
-      account.role === "dealer" && sameDealerCode(account.dealer_code, dealerCode)
-        ? { ...account, dealer_discount_rate: discountRate, updated_at: nowText() }
-        : account
-    ));
+    freezeDealerOrderPricing(dealerCode, currentRate);
+    let topManagerUpdated = false;
+    state.accounts = state.accounts.map((account) => {
+      if (account.role !== "dealer" || !sameDealerCode(account.dealer_code, dealerCode)) return account;
+      if (!topManagerUpdated) {
+        topManagerUpdated = true;
+        return { ...account, dealer_discount_rate: discountRate, updated_at: nowText() };
+      }
+      return { ...account, dealer_discount_rate: "", updated_at: nowText() };
+    });
   }
   render();
-  showToast("대리점 할인율을 저장했습니다.");
+  showToast("할인율을 저장했습니다. 새 할인율은 이후 발주부터 적용됩니다.");
 }
 
 async function resetDealerPassword(loginId) {
@@ -2918,10 +2924,10 @@ function salesDealerOptions() {
 function enrichSalesRow(order) {
   const product = state.products.find((item) => item.sku === order.sku) || {};
   const qty = Number(order.qty || 0);
-  const unitRetailPrice = Number(order.unit_retail_price || productRetailPrice(product));
-  const discountRate = Number(order.dealer_discount_rate !== undefined && order.dealer_discount_rate !== "" ? order.dealer_discount_rate : dealerDiscountRate(order.dealer_code));
-  const unitSalePrice = Number(order.unit_sale_price || Math.round(unitRetailPrice * (1 - discountRate / 100)));
-  const unitPurchasePrice = Number(order.unit_purchase_price || productPurchasePrice(product));
+  const unitRetailPrice = Number(hasSnapshotValue(order.unit_retail_price) ? order.unit_retail_price : productRetailPrice(product));
+  const discountRate = Number(hasSnapshotValue(order.dealer_discount_rate) ? order.dealer_discount_rate : dealerDiscountRate(order.dealer_code));
+  const unitSalePrice = Number(hasSnapshotValue(order.unit_sale_price) ? order.unit_sale_price : Math.round(unitRetailPrice * (1 - discountRate / 100)));
+  const unitPurchasePrice = Number(hasSnapshotValue(order.unit_purchase_price) ? order.unit_purchase_price : productPurchasePrice(product));
   const revenue = unitSalePrice * qty;
   const cost = unitPurchasePrice * qty;
   const profit = revenue - cost;
@@ -2936,6 +2942,28 @@ function enrichSalesRow(order) {
     cost,
     profit
   };
+}
+
+function freezeDealerOrderPricing(dealerCode, discountRate) {
+  state.orders = state.orders.map((order) => {
+    if (!sameDealerCode(order.dealer_code, dealerCode)) return order;
+    const product = state.products.find((item) => item.sku === order.sku) || {};
+    const unitRetailPrice = Number(hasSnapshotValue(order.unit_retail_price) ? order.unit_retail_price : productRetailPrice(product));
+    const orderDiscountRate = Number(hasSnapshotValue(order.dealer_discount_rate) ? order.dealer_discount_rate : discountRate);
+    const unitSalePrice = Number(hasSnapshotValue(order.unit_sale_price) ? order.unit_sale_price : Math.round(unitRetailPrice * (1 - orderDiscountRate / 100)));
+    const unitPurchasePrice = Number(hasSnapshotValue(order.unit_purchase_price) ? order.unit_purchase_price : productPurchasePrice(product));
+    return {
+      ...order,
+      unit_retail_price: unitRetailPrice,
+      dealer_discount_rate: orderDiscountRate,
+      unit_sale_price: unitSalePrice,
+      unit_purchase_price: unitPurchasePrice
+    };
+  });
+}
+
+function hasSnapshotValue(value) {
+  return value !== undefined && value !== null && value !== "";
 }
 
 function orderReportStats(rows) {

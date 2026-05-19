@@ -359,6 +359,8 @@ function handleUpdateDealerDiscount_(payload, user) {
   const dealerCode = required_(payload.dealer_code, "dealer_code").toUpperCase();
   const discountRate = Number(payload.dealer_discount_rate || 0);
   if (discountRate < 0 || discountRate > 100) throw new Error("대리점 할인율은 0~100 사이여야 합니다.");
+  const previousDiscountRate = dealerDiscountRate_(dealerCode);
+  const frozenOrderCount = freezeDealerOrderPricing_(dealerCode, previousDiscountRate);
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.accounts);
   const values = sheet.getDataRange().getValues();
@@ -386,7 +388,12 @@ function handleUpdateDealerDiscount_(payload, user) {
     }
   }
   if (!topManagerUpdated) throw new Error("할인율을 수정할 대리점 최상위 관리자 계정을 찾을 수 없습니다.");
-  return { accounts: listAccessibleAccounts_(user), updated_count: 1, cleared_staff_count: clearedStaffCount };
+  return {
+    accounts: listAccessibleAccounts_(user),
+    updated_count: 1,
+    cleared_staff_count: clearedStaffCount,
+    frozen_order_count: frozenOrderCount
+  };
 }
 
 function handleDeleteProduct_(payload, user) {
@@ -1155,6 +1162,67 @@ function dealerDiscountRate_(dealerCode) {
   }
   const legacyAccount = accounts.find((row) => row.dealer_discount_rate !== undefined && row.dealer_discount_rate !== "");
   return Number(legacyAccount ? legacyAccount.dealer_discount_rate || 0 : 0);
+}
+
+function freezeDealerOrderPricing_(dealerCode, discountRate) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.orders);
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const dealerIndex = headers.indexOf("dealer_code");
+  const skuIndex = headers.indexOf("sku");
+  const retailIndex = headers.indexOf("unit_retail_price");
+  const discountIndex = headers.indexOf("dealer_discount_rate");
+  const saleIndex = headers.indexOf("unit_sale_price");
+  const purchaseIndex = headers.indexOf("unit_purchase_price");
+  if ([dealerIndex, skuIndex, retailIndex, discountIndex, saleIndex, purchaseIndex].some((index) => index === -1)) {
+    return 0;
+  }
+
+  const productsBySku = {};
+  readRows_(SHEETS.products).forEach((product) => {
+    productsBySku[product.sku] = product;
+  });
+
+  let frozenCount = 0;
+  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    const sameDealer = String(values[rowIndex][dealerIndex]).toUpperCase() === String(dealerCode).toUpperCase();
+    if (!sameDealer) continue;
+
+    const needsFreeze = (
+      !hasSnapshotValue_(values[rowIndex][retailIndex]) ||
+      !hasSnapshotValue_(values[rowIndex][discountIndex]) ||
+      !hasSnapshotValue_(values[rowIndex][saleIndex]) ||
+      !hasSnapshotValue_(values[rowIndex][purchaseIndex])
+    );
+    if (!needsFreeze) continue;
+
+    const product = productsBySku[String(values[rowIndex][skuIndex])] || {};
+    const unitRetailPrice = hasSnapshotValue_(values[rowIndex][retailIndex])
+      ? Number(values[rowIndex][retailIndex])
+      : productRetailPrice_(product);
+    const orderDiscountRate = hasSnapshotValue_(values[rowIndex][discountIndex])
+      ? Number(values[rowIndex][discountIndex])
+      : Number(discountRate || 0);
+    const unitSalePrice = hasSnapshotValue_(values[rowIndex][saleIndex])
+      ? Number(values[rowIndex][saleIndex])
+      : Math.round(unitRetailPrice * (1 - orderDiscountRate / 100));
+    const unitPurchasePrice = hasSnapshotValue_(values[rowIndex][purchaseIndex])
+      ? Number(values[rowIndex][purchaseIndex])
+      : productPurchasePrice_(product);
+
+    sheet.getRange(rowIndex + 1, retailIndex + 1).setValue(unitRetailPrice);
+    sheet.getRange(rowIndex + 1, discountIndex + 1).setValue(orderDiscountRate);
+    sheet.getRange(rowIndex + 1, saleIndex + 1).setValue(unitSalePrice);
+    sheet.getRange(rowIndex + 1, purchaseIndex + 1).setValue(unitPurchasePrice);
+    frozenCount += 1;
+  }
+  return frozenCount;
+}
+
+function hasSnapshotValue_(value) {
+  return value !== undefined && value !== null && value !== "";
 }
 
 function productRetailPrice_(product) {
