@@ -114,6 +114,13 @@
     return request("saveProduct", product);
   }
 
+  async function updateDealerDiscount({ dealerCode, discountRate }) {
+    return request("updateDealerDiscount", {
+      dealer_code: dealerCode,
+      dealer_discount_rate: discountRate
+    });
+  }
+
   async function createDealerAccount(account) {
     return request("createDealerAccount", account);
   }
@@ -173,6 +180,7 @@
     cancelOrder,
     saveInventory,
     saveProduct,
+    updateDealerDiscount,
     createDealerAccount,
     resetDealerPassword,
     deactivateDealerAccount,

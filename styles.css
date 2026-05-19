@@ -1225,6 +1225,27 @@ h3 {
   background: var(--red-soft);
 }
 
+.sales-table {
+  min-width: 980px;
+}
+
+.sales-table td {
+  white-space: nowrap;
+}
+
+.sales-table td:nth-child(2),
+.sales-table td:nth-child(3) {
+  white-space: normal;
+}
+
+.positive-profit {
+  color: var(--amber);
+}
+
+.negative-profit {
+  color: var(--red);
+}
+
 .empty-cell {
   color: var(--muted);
   text-align: center !important;

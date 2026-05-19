@@ -41,12 +41,15 @@ function createMockProducts() {
     const base = baseProducts[i % baseProducts.length];
     const size = base.sizes[Math.floor(i / baseProducts.length) % base.sizes.length];
     const number = String(i + 1).padStart(3, "0");
+    const retailPrice = base.category === "PPF" ? 260000 + (i % 9) * 12000 : 180000 + (i % 9) * 8000;
     products.push({
       sku: `${base.sku}-${number}`,
       product_name: `${base.product_name} ${size}`,
       category: base.category,
       color: base.color,
       unit: base.unit,
+      retail_price: retailPrice,
+      purchase_price: Math.round(retailPrice * 0.58),
       is_active: true
     });
   }
@@ -69,6 +72,7 @@ function createMockAccounts() {
       dealer_code: "ADMIN",
       dealer_name: "본사 관리자",
       role: "admin",
+      dealer_discount_rate: 0,
       is_first_login: false,
       is_active: true,
       updated_at: nowText()
@@ -78,6 +82,7 @@ function createMockAccounts() {
       dealer_code: dealer.dealer_code,
       dealer_name: dealer.dealer_name,
       role: "dealer",
+      dealer_discount_rate: 20,
       is_first_login: index === 1,
       is_active: true,
       updated_at: nowText()
@@ -121,8 +126,29 @@ function createMockOrders(products) {
       product_name: products[0].product_name,
       sku: products[0].sku,
       qty: 40,
+      unit_retail_price: Number(products[0].retail_price || 0),
+      dealer_discount_rate: 20,
+      unit_sale_price: Math.round(Number(products[0].retail_price || 0) * 0.8),
+      unit_purchase_price: Number(products[0].purchase_price || 0),
       status: "접수",
       memo: "이번 주 내 출고 요청",
+      created_at: nowText(),
+      updated_at: nowText()
+    },
+    {
+      order_id: "ORD-260511-000",
+      dealer_code: "D001",
+      dealer_name: "서울 총판",
+      created_by_login_id: "dealer01",
+      product_name: products[1].product_name,
+      sku: products[1].sku,
+      qty: 12,
+      unit_retail_price: Number(products[1].retail_price || 0),
+      dealer_discount_rate: 20,
+      unit_sale_price: Math.round(Number(products[1].retail_price || 0) * 0.8),
+      unit_purchase_price: Number(products[1].purchase_price || 0),
+      status: "완료",
+      memo: "샘플 매출 데이터",
       created_at: nowText(),
       updated_at: nowText()
     }
@@ -149,7 +175,12 @@ const state = {
     dealerCode: "전체",
     orderPeriod: "전체",
     orderDate: dateInputValue(),
-    orderMonth: monthInputValue()
+    orderMonth: monthInputValue(),
+    salesQuery: "",
+    salesDealerCode: "전체",
+    salesPeriod: "월별",
+    salesDate: dateInputValue(),
+    salesMonth: monthInputValue()
   },
   forms: {
     loginRole: "dealer",
@@ -163,6 +194,7 @@ const state = {
     accountRole: "dealer",
     accountDealerCode: "",
     accountDealerName: "",
+    accountDiscountRate: 0,
     accountTemporaryPassword: "",
     inventoryDealerCode: "",
     inventorySku: "",
@@ -175,6 +207,8 @@ const state = {
     productName: "",
     productCategory: "PPF",
     productUnit: "롤",
+    productRetailPrice: 0,
+    productPurchasePrice: 0,
     productIsActive: true,
     resetPassword: ""
   },
@@ -214,6 +248,7 @@ function render() {
       ${renderInventoryManage()}
       ${renderProductManage()}
       ${renderOrders()}
+      ${renderSales()}
       ${renderOrderCreate()}
       ${renderDealerLinks()}
       ${renderNotifications()}
@@ -324,6 +359,7 @@ function renderAdminDashboard() {
         <div class="page-actions">
           <button class="primary-button" type="button" data-nav="inventoryManage">재고 수정</button>
           <button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>
+          <button class="secondary-button" type="button" data-nav="sales">매출현황</button>
           <button class="primary-button" type="button" data-nav="dealers">대리점 계정 관리</button>
           <button class="secondary-button" type="button" data-nav="links">QR/카카오톡 안내문</button>
         </div>
@@ -371,6 +407,10 @@ function renderAdminDashboard() {
             <button class="quick-card" type="button" data-nav="orders">
               <strong>발주관리</strong>
               <span>접수, 승인, 출고, 완료, 반려 변경</span>
+            </button>
+            <button class="quick-card" type="button" data-nav="sales">
+              <strong>매출현황</strong>
+              <span>일별/월별 대리점별 매출과 이익 확인</span>
             </button>
             <button class="quick-card" type="button" data-nav="dealers">
               <strong>계정관리</strong>
@@ -465,6 +505,7 @@ function renderDealerManagement() {
     ? isAdminAccount ? "ADMIN" : state.forms.accountDealerCode
     : state.session?.dealer_code || "";
   const dealerNameValue = isAdminSession ? state.forms.accountDealerName : state.session?.dealer_name || "";
+  const discountValue = isAdminSession ? state.forms.accountDiscountRate : dealerDiscountRate(state.session?.dealer_code);
   return `
     <main class="screen ${state.screen === "dealers" ? "active" : ""}" data-screen="dealers">
       <section class="page-head">
@@ -495,6 +536,12 @@ function renderDealerManagement() {
                 <span>${isAdminAccount ? "관리자명" : "대리점명"}</span>
                 <input id="accountDealerName" type="text" value="${escapeAttr(dealerNameValue)}" placeholder="${isAdminAccount ? "예: 본사 관리자 2" : "예: 강남 대리점"}" ${!isAdminSession ? "readonly" : ""} />
               </label>
+              ${!isAdminAccount ? `
+                <label class="field">
+                  <span>대리점 할인율(%)</span>
+                  <input id="accountDiscountRate" type="number" min="0" max="100" step="0.1" inputmode="decimal" value="${escapeAttr(discountValue)}" ${!isAdminSession ? "readonly" : ""} />
+                </label>
+              ` : ""}
               <label class="field">
                 <span>초기 아이디</span>
                 <input id="accountLoginId" type="text" value="${escapeAttr(state.forms.accountLoginId)}" placeholder="${isAdminAccount ? "예: admin02" : "예: seoul-staff02"}" />
@@ -706,6 +753,14 @@ function renderProductManage() {
               <span>단위</span>
               <input id="productUnit" type="text" value="${escapeAttr(state.forms.productUnit)}" placeholder="예: 롤" />
             </label>
+            <label class="field">
+              <span>소비자가</span>
+              <input id="productRetailPrice" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.productRetailPrice)}" placeholder="예: 260000" />
+            </label>
+            <label class="field">
+              <span>매입가</span>
+              <input id="productPurchasePrice" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.productPurchasePrice)}" placeholder="예: 150000" />
+            </label>
             <label class="checkbox-row inline-check">
               <input id="productIsActive" type="checkbox" ${state.forms.productIsActive ? "checked" : ""} />
               <span>판매중</span>
@@ -783,10 +838,253 @@ function renderOrders() {
   `;
 }
 
+function renderSales() {
+  if (state.session?.role !== "admin") return "";
+  const rows = visibleSalesRows();
+  const stats = salesReportStats(rows);
+  return `
+    <main class="screen ${state.screen === "sales" ? "active" : ""}" data-screen="sales">
+      <section class="page-head">
+        <p class="eyebrow">관리자 매출현황</p>
+        <h1>대리점별 매출과 이익</h1>
+        <p class="lead">완료 처리된 발주를 기준으로 소비자가, 대리점 할인율, 매입가를 계산해 일별/월별 매출을 확인합니다.</p>
+        <div class="page-actions">
+          <button class="secondary-button" type="button" data-nav="orders">발주관리</button>
+          <button class="secondary-button" type="button" data-nav="productManage">제품 가격 관리</button>
+          <button class="secondary-button" type="button" data-nav="dealers">대리점 할인율 관리</button>
+          <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
+        </div>
+      </section>
+
+      ${renderSalesDealerTabs()}
+      ${renderSalesCalendarPanel()}
+
+      <section class="toolbar">
+        <input class="search-input" id="salesQuery" type="search" placeholder="주문번호, 제품명, SKU, 대리점명, 담당자 ID 검색" value="${escapeAttr(state.filters.salesQuery)}" />
+      </section>
+
+      <section class="stats-grid sales-report-grid" id="salesStats">
+        ${renderSalesStatsCards(rows, stats)}
+      </section>
+
+      <section class="panel list-panel">
+        <div class="panel-head-row">
+          <div>
+            <h3>매출 내역</h3>
+            <p class="product-meta">계산식: 판매가=소비자가×(1-할인율/100), 이익=판매가-매입가, 수량 반영</p>
+          </div>
+          <span class="badge warn">${escapeHtml(salesPeriodLabel())}</span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table sales-table">
+            <thead>
+              <tr>
+                <th>일자</th>
+                <th>대리점</th>
+                <th>제품</th>
+                <th>수량</th>
+                <th>소비자가</th>
+                <th>할인</th>
+                <th>매출</th>
+                <th>매입</th>
+                <th>이익</th>
+              </tr>
+            </thead>
+            <tbody id="salesRows">
+              ${rows.map(renderSalesRow).join("") || `<tr><td colspan="9" class="empty-cell">완료된 매출 내역이 없습니다.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderSalesStatsCards(rows, stats = salesReportStats(rows)) {
+  return `
+    <article class="stat-card">
+      <span>완료 발주</span>
+      <strong>${stats.count}건</strong>
+      <small>${state.filters.salesDealerCode === "전체" ? "통합 기준" : "대리점 기준"}</small>
+    </article>
+    <article class="stat-card">
+      <span>총 매출</span>
+      <strong>${money(stats.revenue)}</strong>
+      <small>할인 적용 판매가</small>
+    </article>
+    <article class="stat-card">
+      <span>총 매입</span>
+      <strong>${money(stats.cost)}</strong>
+      <small>제품 매입가 합산</small>
+    </article>
+    <article class="stat-card">
+      <span>매출 이익</span>
+      <strong>${money(stats.profit)}</strong>
+      <small>마진율 ${percent(stats.marginRate)}</small>
+    </article>
+  `;
+}
+
+function renderSalesDealerTabs() {
+  const options = salesDealerOptions();
+  const total = salesRowsBase();
+  const totalRevenue = total.reduce((sum, row) => sum + row.revenue, 0);
+  return `
+    <section class="dealer-order-tabs" aria-label="대리점별 매출현황">
+      <button type="button" class="${state.filters.salesDealerCode === "전체" ? "active" : ""}" data-sales-dealer="전체">
+        <span>통합 매출현황</span>
+        <strong>${money(totalRevenue)}</strong>
+      </button>
+      ${options.map((dealer) => `
+        <button type="button" class="${state.filters.salesDealerCode === dealer.dealer_code ? "active" : ""}" data-sales-dealer="${escapeAttr(dealer.dealer_code)}">
+          <span>${escapeHtml(dealer.dealer_name)}</span>
+          <strong>${money(dealer.revenue)}</strong>
+        </button>
+      `).join("")}
+    </section>
+  `;
+}
+
+function renderSalesCalendarPanel() {
+  const period = state.filters.salesPeriod;
+  const picker = period === "일별" ? renderSalesDayCalendarPicker() : period === "월별" ? renderSalesMonthCalendarPicker() : "";
+  return `
+    <section class="order-calendar-panel sales-calendar-panel" aria-label="매출 기간 선택">
+      <div class="period-toggle">
+        ${[
+          ["전체", "전체 기간"],
+          ["일별", "일별"],
+          ["월별", "월별"]
+        ].map(([value, label]) => `<button type="button" class="${period === value ? "active" : ""}" data-sales-period="${value}">${label}</button>`).join("")}
+      </div>
+      ${period === "전체" ? `
+        <div class="calendar-summary">
+          <span>기간 제한 없음</span>
+          <strong>완료된 전체 매출을 확인합니다</strong>
+        </div>
+      ` : `
+        <div class="calendar-card ${period === "월별" ? "month-mode" : "day-mode"}">
+          ${period === "월별" ? `<button type="button" class="year-step-button" data-sales-year-step="-1" aria-label="이전 연도">작년</button>` : ""}
+          <button type="button" class="date-step-button" data-sales-date-step="-1" aria-label="이전 ${period === "일별" ? "날짜" : "월"}">&lt;</button>
+          <div class="calendar-display" aria-live="polite">
+            <span>${period === "일별" ? "일별 매출 날짜" : "월별 매출"}</span>
+            <strong>${escapeHtml(salesCalendarLabel())}</strong>
+          </div>
+          <button type="button" class="date-step-button" data-sales-date-step="1" aria-label="다음 ${period === "일별" ? "날짜" : "월"}">&gt;</button>
+          ${period === "월별" ? `<button type="button" class="year-step-button" data-sales-year-step="1" aria-label="다음 연도">내년</button>` : ""}
+          <button type="button" class="calendar-current-button" data-sales-date-current>${period === "일별" ? "오늘" : "이번 달"}</button>
+        </div>
+        ${picker}
+      `}
+    </section>
+  `;
+}
+
+function renderSalesDayCalendarPicker() {
+  const selectedDate = parseDateInput(state.filters.salesDate);
+  const selectedValue = dateInputValue(selectedDate);
+  const todayValue = dateInputValue();
+  const year = selectedDate.getFullYear();
+  const month = selectedDate.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const startDate = new Date(year, month, 1 - firstOfMonth.getDay());
+  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + index);
+    const value = dateInputValue(date);
+    const classes = [
+      "calendar-day",
+      date.getMonth() !== month ? "is-muted" : "",
+      value === selectedValue ? "active" : "",
+      value === todayValue ? "is-today" : ""
+    ].filter(Boolean).join(" ");
+    return `
+      <button type="button" class="${classes}" data-sales-day="${value}" aria-label="${escapeAttr(value)} 매출 조회">
+        <span>${date.getDate()}</span>
+      </button>
+    `;
+  }).join("");
+
+  return `
+    <div class="calendar-picker-shell day-picker" aria-label="매출 일별 달력">
+      <div class="calendar-board-head">
+        <span>날짜 선택</span>
+        <strong>${year}년 ${month + 1}월</strong>
+      </div>
+      <div class="calendar-weekdays">
+        ${weekdays.map((day) => `<span>${day}</span>`).join("")}
+      </div>
+      <div class="day-calendar-grid">
+        ${cells}
+      </div>
+    </div>
+  `;
+}
+
+function renderSalesMonthCalendarPicker() {
+  const selectedDate = parseMonthInput(state.filters.salesMonth);
+  const selectedValue = monthInputValue(selectedDate);
+  const currentValue = monthInputValue();
+  const year = selectedDate.getFullYear();
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const value = `${year}-${String(index + 1).padStart(2, "0")}`;
+    const classes = [
+      "month-picker-button",
+      value === selectedValue ? "active" : "",
+      value === currentValue ? "is-current" : ""
+    ].filter(Boolean).join(" ");
+    return `
+      <button type="button" class="${classes}" data-sales-month-value="${value}" aria-label="${escapeAttr(`${year}년 ${index + 1}월 매출 조회`)}">
+        <span>${index + 1}월</span>
+        <small>${year}</small>
+      </button>
+    `;
+  }).join("");
+
+  return `
+    <div class="calendar-picker-shell month-picker" aria-label="매출 월별 선택">
+      <div class="calendar-board-head">
+        <span>월 선택</span>
+        <strong>${year}년</strong>
+      </div>
+      <div class="month-picker-grid">
+        ${months}
+      </div>
+    </div>
+  `;
+}
+
+function renderSalesRow(row) {
+  return `
+    <tr>
+      <td>
+        <strong>${escapeHtml(orderDatePart(row.created_at) || "-")}</strong>
+        <div class="product-meta">${escapeHtml(row.order_id)}</div>
+      </td>
+      <td>
+        <strong>${escapeHtml(row.dealer_name || row.dealer_code)}</strong>
+        <div class="product-meta">${escapeHtml(row.dealer_code)} · ${escapeHtml(row.created_by_login_id || "담당자 미기록")}</div>
+      </td>
+      <td>
+        <strong>${escapeHtml(row.product_name)}</strong>
+        <div class="product-meta">${escapeHtml(row.sku)}</div>
+      </td>
+      <td>${roll(row.qty)}</td>
+      <td>${money(row.unitRetailPrice)}</td>
+      <td>${percent(row.discountRate)}</td>
+      <td><strong>${money(row.revenue)}</strong></td>
+      <td>${money(row.cost)}</td>
+      <td><strong class="${row.profit < 0 ? "negative-profit" : "positive-profit"}">${money(row.profit)}</strong></td>
+    </tr>
+  `;
+}
+
 function renderOrderCreate() {
   const product = selectedProduct();
   const dealerInventory = state.inventory.find((row) => row.sku === product?.sku && row.dealer_code === state.session?.dealer_code);
   const staffId = state.session?.login_id || "";
+  const discountRate = dealerDiscountRate(state.session?.dealer_code);
   return `
     <main class="screen ${state.screen === "orderCreate" ? "active" : ""}" data-screen="orderCreate">
       <section class="page-head">
@@ -810,6 +1108,7 @@ function renderOrderCreate() {
             <h2>${escapeHtml(product?.product_name || "제품 선택")}</h2>
             <p class="muted">${escapeHtml(product?.sku || "-")} · ${escapeHtml(product?.category || "-")}</p>
             <p class="muted">담당자 ID: ${escapeHtml(staffId || "-")}</p>
+            <p class="muted">소비자가 ${money(productRetailPrice(product))} · 내 적용가 ${money(dealerSalePrice(product, state.session?.dealer_code))} · 할인율 ${percent(discountRate)}</p>
           </div>
           <div class="stock-grid">
             <div class="stock-box">
@@ -1074,12 +1373,14 @@ function renderInventoryEditRow(row) {
 function renderProductRow(product) {
   const active = product.sku === state.selectedSku;
   const inventory = state.inventory.find((row) => row.sku === product.sku && row.dealer_code === state.session?.dealer_code);
+  const discountRate = dealerDiscountRate(state.session?.dealer_code);
   return `
     <button type="button" class="product-row ${active ? "active" : ""}" data-sku="${escapeAttr(product.sku)}">
       <span class="color-dot" style="background:${colorHex(product.color || product.product_name)}"></span>
       <span>
         <span class="product-name">${escapeHtml(product.product_name)}</span>
         <span class="product-meta">${escapeHtml(product.sku)} · ${escapeHtml(product.category || "")}</span>
+        <span class="product-meta">소비자가 ${money(productRetailPrice(product))} · 내 적용가 ${money(dealerSalePrice(product, state.session?.dealer_code))} (${percent(discountRate)} 할인)</span>
       </span>
       <span class="stock-mini">
         <strong>${roll(Number(inventory?.stock_qty || 0))}</strong>
@@ -1097,6 +1398,7 @@ function renderProductManageRow(product) {
         <span>
           <span class="product-name">${escapeHtml(product.product_name)}</span>
           <span class="product-meta">${escapeHtml(product.sku)} · ${escapeHtml(product.category || "")} · ${toBool(product.is_active) ? "판매중" : "중지"}</span>
+          <span class="product-meta">소비자가 ${money(productRetailPrice(product))} · 매입가 ${money(productPurchasePrice(product))}</span>
         </span>
         <span class="stock-mini">
           <strong>${escapeHtml(product.unit || "롤")}</strong>
@@ -1170,6 +1472,9 @@ function renderAccountRow(account) {
   const guideButton = canCopyGuide
     ? `<button type="button" class="secondary-button small-button" data-share="${escapeAttr(accountKakaoGuideMessage(account))}">안내문 공유</button>`
     : "";
+  const discountButton = isAdminSession && account.role === "dealer"
+    ? `<button type="button" class="secondary-button small-button" data-action="updateDealerDiscount" data-dealer-code="${escapeAttr(account.dealer_code)}">할인율 수정</button>`
+    : "";
   const resetButton = !protectedAdmin || isSelf
     ? `<button type="button" class="secondary-button small-button" data-action="resetPassword" data-login-id="${escapeAttr(account.login_id)}">PW 초기화</button>`
     : "";
@@ -1180,13 +1485,14 @@ function renderAccountRow(account) {
   const dealerManagerButtons = canDealerManagerDelete
     ? `<button type="button" class="secondary-button small-button danger-button" data-action="deleteAccount" data-login-id="${escapeAttr(account.login_id)}">담당자 삭제</button>`
     : "";
-  const actionButtons = isAdminSession ? `${guideButton}${resetButton}${dangerButtons}` : `${guideButton}${dealerManagerButtons}`;
+  const actionButtons = isAdminSession ? `${guideButton}${discountButton}${resetButton}${dangerButtons}` : `${guideButton}${dealerManagerButtons}`;
+  const discountMeta = account.role === "dealer" ? ` · 할인율 ${percent(dealerDiscountRate(account.dealer_code))}` : "";
   return `
     <article class="account-row">
       <div>
         <span class="badge ${toBool(account.is_active) ? "" : "danger"}">${toBool(account.is_active) ? "사용중" : "중지"}</span>
         <h3>${escapeHtml(account.dealer_name)}</h3>
-        <p class="product-meta">${roleLabel(account.role)} · ${escapeHtml(account.login_id)} · ${escapeHtml(account.dealer_code)} · 최초로그인 ${toBool(account.is_first_login) ? "필요" : "완료"}${isSelf ? " · 현재 로그인 계정" : ""}${protectedAdmin ? " · 기본 관리자 보호" : ""}${dealerTopManager ? " · 최상위 관리자" : ""}</p>
+        <p class="product-meta">${roleLabel(account.role)} · ${escapeHtml(account.login_id)} · ${escapeHtml(account.dealer_code)}${discountMeta} · 최초로그인 ${toBool(account.is_first_login) ? "필요" : "완료"}${isSelf ? " · 현재 로그인 계정" : ""}${protectedAdmin ? " · 기본 관리자 보호" : ""}${dealerTopManager ? " · 최상위 관리자" : ""}</p>
       </div>
       ${actionButtons ? `<div class="account-actions">${actionButtons}</div>` : ""}
     </article>
@@ -1246,6 +1552,7 @@ function renderBottomNav() {
         ["inventoryManage", "수정"],
         ["productManage", "제품"],
         ["orders", "발주"],
+        ["sales", "매출"],
         ["dealers", "대리점"],
         ["links", "QR"],
         ["notifications", "알림"]
@@ -1290,6 +1597,7 @@ function bindEvents() {
   bindInput("accountDealerCode", (value) => (state.forms.accountDealerCode = value.toUpperCase()));
   bindInput("accountDealerName", (value) => (state.forms.accountDealerName = value));
   bindInput("accountLoginId", (value) => (state.forms.accountLoginId = value));
+  bindInput("accountDiscountRate", (value) => (state.forms.accountDiscountRate = Number(value || 0)));
   bindInput("accountTemporaryPassword", (value) => (state.forms.accountTemporaryPassword = value));
   bindInput("inventoryStockQty", (value) => (state.forms.inventoryStockQty = Number(value || 0)));
   bindInput("inventorySafetyStock", (value) => (state.forms.inventorySafetyStock = Number(value || 0)));
@@ -1299,6 +1607,8 @@ function bindEvents() {
   bindInput("productSku", (value) => (state.forms.productSku = value.trim()));
   bindInput("productName", (value) => (state.forms.productName = value));
   bindInput("productUnit", (value) => (state.forms.productUnit = value));
+  bindInput("productRetailPrice", (value) => (state.forms.productRetailPrice = Number(value || 0)));
+  bindInput("productPurchasePrice", (value) => (state.forms.productPurchasePrice = Number(value || 0)));
 
   document.querySelector("#inventoryDealerCode")?.addEventListener("change", (event) => {
     state.forms.inventoryDealerCode = event.target.value;
@@ -1319,6 +1629,7 @@ function bindEvents() {
   document.querySelector("#accountRole")?.addEventListener("change", (event) => {
     state.forms.accountRole = event.target.value;
     state.forms.accountDealerCode = event.target.value === "admin" ? "ADMIN" : "";
+    state.forms.accountDiscountRate = 0;
     render();
   });
 
@@ -1328,6 +1639,7 @@ function bindEvents() {
 
   bindSearchInput("inventoryQuery", (value) => (state.filters.inventoryQuery = value));
   bindSearchInput("orderQuery", (value) => (state.filters.orderQuery = value));
+  bindSearchInput("salesQuery", (value) => (state.filters.salesQuery = value));
 
   document.querySelector("#orderStatus")?.addEventListener("change", (event) => {
     state.filters.orderStatus = event.target.value;
@@ -1387,6 +1699,49 @@ function bindEvents() {
     render();
   });
 
+  document.querySelectorAll("[data-sales-period]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.salesPeriod = button.dataset.salesPeriod;
+      if (!state.filters.salesDate) state.filters.salesDate = dateInputValue();
+      if (!state.filters.salesMonth) state.filters.salesMonth = monthInputValue();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-sales-date-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      shiftSalesCalendar(Number(button.dataset.salesDateStep || 0));
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-sales-year-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      shiftSalesYear(Number(button.dataset.salesYearStep || 0));
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-sales-day]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.salesDate = button.dataset.salesDay;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-sales-month-value]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.salesMonth = button.dataset.salesMonthValue;
+      render();
+    });
+  });
+
+  document.querySelector("[data-sales-date-current]")?.addEventListener("click", () => {
+    if (state.filters.salesPeriod === "일별") state.filters.salesDate = dateInputValue();
+    if (state.filters.salesPeriod === "월별") state.filters.salesMonth = monthInputValue();
+    render();
+  });
+
   document.querySelectorAll("[data-inventory-scope]").forEach((button) => {
     button.addEventListener("click", () => {
       state.filters.inventoryScope = button.dataset.inventoryScope;
@@ -1397,6 +1752,13 @@ function bindEvents() {
   document.querySelectorAll("[data-order-dealer]").forEach((button) => {
     button.addEventListener("click", () => {
       state.filters.dealerCode = button.dataset.orderDealer;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-sales-dealer]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters.salesDealerCode = button.dataset.salesDealer;
       render();
     });
   });
@@ -1533,6 +1895,13 @@ function refreshActiveSearchResults() {
 
   if (state.screen === "orders") {
     replaceHtml("#orderList", visibleOrders().map(renderOrderCard).join("") || `<div class="empty">발주 내역이 없습니다.</div>`);
+    return;
+  }
+
+  if (state.screen === "sales") {
+    const rows = visibleSalesRows();
+    replaceHtml("#salesStats", renderSalesStatsCards(rows));
+    replaceHtml("#salesRows", rows.map(renderSalesRow).join("") || `<tr><td colspan="9" class="empty-cell">완료된 매출 내역이 없습니다.</td></tr>`);
   }
 }
 
@@ -1712,6 +2081,7 @@ async function handleAction(action, button) {
   if (action === "saveProduct") return saveProduct();
   if (action === "createAccount") return createDealerAccount();
   if (action === "resetPassword") return resetDealerPassword(button.dataset.loginId);
+  if (action === "updateDealerDiscount") return updateDealerDiscount(button.dataset.dealerCode);
   if (action === "deactivateAccount") return deactivateDealerAccount(button.dataset.loginId);
   if (action === "deleteAccount") return deleteDealerAccount(button.dataset.loginId);
   if (action === "deleteProduct") return deleteProduct(button.dataset.sku);
@@ -1838,6 +2208,10 @@ async function createOrder() {
       product_name: product.product_name,
       sku: product.sku,
       qty,
+      unit_retail_price: productRetailPrice(product),
+      dealer_discount_rate: dealerDiscountRate(state.session.dealer_code),
+      unit_sale_price: dealerSalePrice(product, state.session.dealer_code),
+      unit_purchase_price: productPurchasePrice(product),
       status: "접수",
       memo: state.forms.orderMemo,
       created_at: nowText(),
@@ -1956,10 +2330,15 @@ async function saveProduct() {
     product_name: state.forms.productName.trim(),
     category: state.forms.productCategory,
     unit: state.forms.productUnit.trim() || "롤",
+    retail_price: Number(state.forms.productRetailPrice || 0),
+    purchase_price: Number(state.forms.productPurchasePrice || 0),
     is_active: state.forms.productIsActive
   };
   if (!payload.sku || !payload.product_name || !payload.category) {
     throw new Error("SKU, 제품명, 카테고리를 입력해 주세요.");
+  }
+  if (payload.retail_price < 0 || payload.purchase_price < 0) {
+    throw new Error("소비자가와 매입가는 0 이상이어야 합니다.");
   }
 
   if (window.FilmStockApi?.isEnabled()) {
@@ -2003,8 +2382,16 @@ async function createDealerAccount() {
         : state.session?.dealer_code || "",
     dealer_name: state.session?.role === "admin" ? state.forms.accountDealerName.trim() : state.session?.dealer_name || "",
     role,
+    dealer_discount_rate: role === "dealer"
+      ? state.session?.role === "admin"
+        ? Number(state.forms.accountDiscountRate || 0)
+        : dealerDiscountRate(state.session?.dealer_code)
+      : 0,
     temporary_password: state.forms.accountTemporaryPassword.trim()
   };
+  if (account.dealer_discount_rate < 0 || account.dealer_discount_rate > 100) {
+    throw new Error("대리점 할인율은 0~100 사이로 입력해 주세요.");
+  }
   if (!account.login_id || !account.dealer_code || !account.dealer_name || !account.temporary_password) {
     throw new Error("계정 유형, 코드, 이름, 아이디, 초기 비밀번호를 모두 입력해 주세요.");
   }
@@ -2021,6 +2408,7 @@ async function createDealerAccount() {
       dealer_code: account.dealer_code,
       dealer_name: account.dealer_name,
       role: account.role,
+      dealer_discount_rate: account.dealer_discount_rate,
       is_first_login: true,
       is_active: true,
       updated_at: nowText()
@@ -2034,10 +2422,35 @@ async function createDealerAccount() {
   if (state.session?.role === "admin") {
     state.forms.accountDealerCode = state.forms.accountRole === "admin" ? "ADMIN" : "";
     state.forms.accountDealerName = "";
+    state.forms.accountDiscountRate = 0;
   }
   state.forms.accountTemporaryPassword = "";
   render();
   showToast(account.role === "admin" ? "관리자 계정을 생성했습니다." : state.session?.role === "admin" ? "대리점 계정을 생성했습니다." : "담당자 ID를 생성했습니다.");
+}
+
+async function updateDealerDiscount(dealerCode) {
+  if (state.session?.role !== "admin") throw new Error("대리점 할인율은 관리자만 변경할 수 있습니다.");
+  const currentRate = dealerDiscountRate(dealerCode);
+  const input = prompt("대리점 할인율(%)을 입력해 주세요. 예: 20", String(currentRate));
+  if (input === null) return;
+  const discountRate = Number(input);
+  if (Number.isNaN(discountRate) || discountRate < 0 || discountRate > 100) {
+    throw new Error("대리점 할인율은 0~100 사이 숫자로 입력해 주세요.");
+  }
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.updateDealerDiscount({ dealerCode, discountRate });
+    if (Array.isArray(data?.accounts)) state.accounts = data.accounts;
+  } else {
+    state.accounts = state.accounts.map((account) => (
+      account.role === "dealer" && sameDealerCode(account.dealer_code, dealerCode)
+        ? { ...account, dealer_discount_rate: discountRate, updated_at: nowText() }
+        : account
+    ));
+  }
+  render();
+  showToast("대리점 할인율을 저장했습니다.");
 }
 
 async function resetDealerPassword(loginId) {
@@ -2132,7 +2545,7 @@ function logout() {
 }
 
 function navigate(screen) {
-  if (screen === "links" || screen === "admin" || screen === "productManage") {
+  if (screen === "links" || screen === "admin" || screen === "productManage" || screen === "sales") {
     if (state.session?.role !== "admin") {
       showToast("관리자만 접근할 수 있습니다.");
       return;
@@ -2191,6 +2604,8 @@ function selectProductForEdit(sku) {
   state.forms.productName = product.product_name;
   state.forms.productCategory = product.category || "PPF";
   state.forms.productUnit = product.unit || "롤";
+  state.forms.productRetailPrice = productRetailPrice(product);
+  state.forms.productPurchasePrice = productPurchasePrice(product);
   state.forms.productIsActive = toBool(product.is_active);
 }
 
@@ -2276,6 +2691,80 @@ function visibleOrders() {
   });
 }
 
+function salesRowsBase() {
+  return state.orders
+    .filter((order) => order.status === "완료")
+    .map(enrichSalesRow);
+}
+
+function visibleSalesRows() {
+  const query = normalize(state.filters.salesQuery);
+  return salesRowsBase()
+    .filter((row) => {
+      if (state.filters.salesDealerCode !== "전체" && row.dealer_code !== state.filters.salesDealerCode) return false;
+      if (state.filters.salesPeriod === "일별" && orderDatePart(row.created_at) !== state.filters.salesDate) return false;
+      if (state.filters.salesPeriod === "월별" && !orderDatePart(row.created_at).startsWith(state.filters.salesMonth)) return false;
+      if (!query) return true;
+      return [row.order_id, row.product_name, row.sku, row.dealer_name, row.dealer_code, row.created_by_login_id]
+        .some((value) => normalize(value).includes(query));
+    })
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+}
+
+function salesDealerOptions() {
+  const revenueMap = salesRowsBase().reduce((map, row) => {
+    const code = row.dealer_code || "";
+    if (!code || code === headOfficeCode) return map;
+    map.set(code, (map.get(code) || 0) + row.revenue);
+    return map;
+  }, new Map());
+
+  const dealers = new Map();
+  state.accounts
+    .filter((account) => account.role === "dealer")
+    .forEach((account) => {
+      dealers.set(account.dealer_code, {
+        dealer_code: account.dealer_code,
+        dealer_name: account.dealer_name,
+        revenue: revenueMap.get(account.dealer_code) || 0
+      });
+    });
+
+  salesRowsBase().forEach((row) => {
+    if (!row.dealer_code || row.dealer_code === headOfficeCode || dealers.has(row.dealer_code)) return;
+    dealers.set(row.dealer_code, {
+      dealer_code: row.dealer_code,
+      dealer_name: row.dealer_name || row.dealer_code,
+      revenue: revenueMap.get(row.dealer_code) || 0
+    });
+  });
+
+  return Array.from(dealers.values()).sort((a, b) => String(a.dealer_name).localeCompare(String(b.dealer_name), "ko"));
+}
+
+function enrichSalesRow(order) {
+  const product = state.products.find((item) => item.sku === order.sku) || {};
+  const qty = Number(order.qty || 0);
+  const unitRetailPrice = Number(order.unit_retail_price || product.retail_price || 0);
+  const discountRate = Number(order.dealer_discount_rate !== undefined && order.dealer_discount_rate !== "" ? order.dealer_discount_rate : dealerDiscountRate(order.dealer_code));
+  const unitSalePrice = Number(order.unit_sale_price || Math.round(unitRetailPrice * (1 - discountRate / 100)));
+  const unitPurchasePrice = Number(order.unit_purchase_price || product.purchase_price || 0);
+  const revenue = unitSalePrice * qty;
+  const cost = unitPurchasePrice * qty;
+  const profit = revenue - cost;
+  return {
+    ...order,
+    qty,
+    unitRetailPrice,
+    discountRate,
+    unitSalePrice,
+    unitPurchasePrice,
+    revenue,
+    cost,
+    profit
+  };
+}
+
 function orderReportStats(rows) {
   return rows.reduce(
     (stats, order) => {
@@ -2287,6 +2776,22 @@ function orderReportStats(rows) {
     },
     { count: 0, qty: 0, received: 0, done: 0 }
   );
+}
+
+function salesReportStats(rows) {
+  const stats = rows.reduce(
+    (summary, row) => {
+      summary.count += 1;
+      summary.qty += Number(row.qty || 0);
+      summary.revenue += Number(row.revenue || 0);
+      summary.cost += Number(row.cost || 0);
+      summary.profit += Number(row.profit || 0);
+      return summary;
+    },
+    { count: 0, qty: 0, revenue: 0, cost: 0, profit: 0, marginRate: 0 }
+  );
+  stats.marginRate = stats.revenue > 0 ? (stats.profit / stats.revenue) * 100 : 0;
+  return stats;
 }
 
 function inventoryStats(rows) {
@@ -2400,6 +2905,7 @@ function accountToSession(account) {
     dealer_code: account.dealer_code,
     dealer_name: account.dealer_name,
     role: account.role,
+    dealer_discount_rate: account.dealer_discount_rate || 0,
     is_first_login: account.is_first_login
   };
 }
@@ -2419,6 +2925,8 @@ function upsertInventory(row) {
 function upsertProduct(product) {
   const normalized = {
     ...product,
+    retail_price: Number(product.retail_price || 0),
+    purchase_price: Number(product.purchase_price || 0),
     color: product.color || colorNameFromText(product.product_name)
   };
   const index = state.products.findIndex((item) => item.sku === normalized.sku);
@@ -2433,6 +2941,7 @@ function removeDealerAccount(loginId) {
   if (account?.role === "dealer" && !hasOtherDealerAccount) {
     state.inventory = state.inventory.filter((row) => row.dealer_code !== account.dealer_code);
     if (state.filters.dealerCode === account.dealer_code) state.filters.dealerCode = "전체";
+    if (state.filters.salesDealerCode === account.dealer_code) state.filters.salesDealerCode = "전체";
   }
   delete state.tempPasswords[loginId];
 }
@@ -2452,6 +2961,8 @@ function removeProduct(sku) {
     state.forms.productName = "";
     state.forms.productCategory = "PPF";
     state.forms.productUnit = "롤";
+    state.forms.productRetailPrice = 0;
+    state.forms.productPurchasePrice = 0;
     state.forms.productIsActive = true;
   }
 }
@@ -2514,6 +3025,33 @@ function roll(value) {
   return `${Number(value || 0).toLocaleString("ko-KR")}롤`;
 }
 
+function money(value) {
+  return `${Math.round(Number(value || 0)).toLocaleString("ko-KR")}원`;
+}
+
+function percent(value) {
+  return `${Number(value || 0).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
+}
+
+function productRetailPrice(product) {
+  return Number(product?.retail_price || 0);
+}
+
+function productPurchasePrice(product) {
+  return Number(product?.purchase_price || 0);
+}
+
+function dealerDiscountRate(dealerCode) {
+  const account = state.accounts.find((item) => item.role === "dealer" && sameDealerCode(item.dealer_code, dealerCode) && item.dealer_discount_rate !== undefined && item.dealer_discount_rate !== "");
+  return Number(account?.dealer_discount_rate || 0);
+}
+
+function dealerSalePrice(product, dealerCode) {
+  const retailPrice = productRetailPrice(product);
+  const discountRate = dealerDiscountRate(dealerCode);
+  return Math.round(retailPrice * (1 - discountRate / 100));
+}
+
 function nowText() {
   return new Intl.DateTimeFormat("ko-KR", {
     year: "numeric",
@@ -2569,6 +3107,27 @@ function shiftOrderYear(step) {
   state.filters.orderMonth = monthInputValue(date);
 }
 
+function shiftSalesCalendar(step) {
+  if (!step) return;
+  if (state.filters.salesPeriod === "일별") {
+    const date = parseDateInput(state.filters.salesDate);
+    date.setDate(date.getDate() + step);
+    state.filters.salesDate = dateInputValue(date);
+  }
+  if (state.filters.salesPeriod === "월별") {
+    const date = parseMonthInput(state.filters.salesMonth);
+    date.setMonth(date.getMonth() + step);
+    state.filters.salesMonth = monthInputValue(date);
+  }
+}
+
+function shiftSalesYear(step) {
+  if (!step) return;
+  const date = parseMonthInput(state.filters.salesMonth);
+  date.setFullYear(date.getFullYear() + step);
+  state.filters.salesMonth = monthInputValue(date);
+}
+
 function orderCalendarLabel() {
   if (state.filters.orderPeriod === "일별") {
     const date = parseDateInput(state.filters.orderDate);
@@ -2587,6 +3146,31 @@ function orderCalendarLabel() {
     }).format(date);
   }
   return "전체 기간";
+}
+
+function salesCalendarLabel() {
+  if (state.filters.salesPeriod === "일별") {
+    const date = parseDateInput(state.filters.salesDate);
+    return new Intl.DateTimeFormat("ko-KR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "short"
+    }).format(date);
+  }
+  if (state.filters.salesPeriod === "월별") {
+    const date = parseMonthInput(state.filters.salesMonth);
+    return new Intl.DateTimeFormat("ko-KR", {
+      year: "numeric",
+      month: "long"
+    }).format(date);
+  }
+  return "전체 기간";
+}
+
+function salesPeriodLabel() {
+  if (state.filters.salesDealerCode === "전체") return `통합 · ${salesCalendarLabel()}`;
+  return `${dealerNameByCode(state.filters.salesDealerCode)} · ${salesCalendarLabel()}`;
 }
 
 function orderDatePart(value) {

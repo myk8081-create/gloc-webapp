@@ -8,10 +8,10 @@ const SHEETS = {
 };
 
 const HEADERS = {
-  accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "role", "is_first_login", "is_active", "updated_at"],
+  accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "role", "is_first_login", "is_active", "updated_at"],
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
-  orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "status", "memo", "shipping_company", "tracking_number", "created_at", "updated_at"],
-  products: ["sku", "product_name", "category", "unit", "is_active"],
+  orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "shipping_company", "tracking_number", "created_at", "updated_at"],
+  products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
 };
@@ -40,6 +40,7 @@ function doPost(e) {
     if (action === "cancelOrder") return ok_(handleCancelOrder_(payload, user));
     if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
     if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
+    if (action === "updateDealerDiscount") return ok_(handleUpdateDealerDiscount_(payload, user));
     if (action === "createDealerAccount") return ok_(handleCreateDealerAccount_(payload, user));
     if (action === "resetDealerPassword") return ok_(handleResetDealerPassword_(payload, user));
     if (action === "deactivateDealerAccount") return ok_(handleDeactivateDealerAccount_(payload, user));
@@ -82,6 +83,7 @@ function resetAdminPassword() {
       password_hash: hashPassword_("admin1234!"),
       dealer_code: "ADMIN",
       dealer_name: "본사 관리자",
+      dealer_discount_rate: 0,
       role: "admin",
       is_first_login: true,
       is_active: true,
@@ -94,6 +96,7 @@ function resetAdminPassword() {
     password_hash: hashPassword_("admin1234!"),
     dealer_code: "ADMIN",
     dealer_name: account.dealer_name || "본사 관리자",
+    dealer_discount_rate: 0,
     role: "admin",
     is_first_login: true,
     is_active: true,
@@ -111,6 +114,7 @@ function resetDealer01Password() {
       password_hash: hashPassword_("stock2026!"),
       dealer_code: "D001",
       dealer_name: "서울 총판",
+      dealer_discount_rate: 20,
       role: "dealer",
       is_first_login: true,
       is_active: true,
@@ -122,6 +126,7 @@ function resetDealer01Password() {
 
   updateAccount_("dealer01", {
     password_hash: hashPassword_("stock2026!"),
+    dealer_discount_rate: Number(account.dealer_discount_rate || 20),
     is_first_login: true,
     is_active: true,
     updated_at: isoNow_()
@@ -216,6 +221,10 @@ function handleCreateOrder_(payload, user) {
 
   const product = readRows_(SHEETS.products).find((row) => row.sku === sku && toBool_(row.is_active));
   if (!product) throw new Error("제품을 찾을 수 없습니다.");
+  const unitRetailPrice = Number(product.retail_price || 0);
+  const discountRate = dealerDiscountRate_(user.dealer_code);
+  const unitSalePrice = Math.round(unitRetailPrice * (1 - discountRate / 100));
+  const unitPurchasePrice = Number(product.purchase_price || 0);
 
   const order = {
     order_id: makeOrderId_(),
@@ -225,6 +234,10 @@ function handleCreateOrder_(payload, user) {
     product_name: product.product_name,
     sku: product.sku,
     qty: qty,
+    unit_retail_price: unitRetailPrice,
+    dealer_discount_rate: discountRate,
+    unit_sale_price: unitSalePrice,
+    unit_purchase_price: unitPurchasePrice,
     status: "접수",
     memo: payload.memo || "",
     shipping_company: "",
@@ -328,12 +341,44 @@ function handleSaveProduct_(payload, user) {
     product_name: required_(payload.product_name, "product_name"),
     category: required_(payload.category, "category"),
     unit: payload.unit || "롤",
+    retail_price: Number(payload.retail_price || 0),
+    purchase_price: Number(payload.purchase_price || 0),
     is_active: payload.is_active === undefined ? true : toBool_(payload.is_active)
   };
+  if (product.retail_price < 0 || product.purchase_price < 0) throw new Error("소비자가와 매입가는 0 이상이어야 합니다.");
 
   const saved = upsertProductRow_(sku, product);
   seedInventoryForProduct_(saved);
   return { product: publicProduct_(saved) };
+}
+
+function handleUpdateDealerDiscount_(payload, user) {
+  requireAdmin_(user);
+  const dealerCode = required_(payload.dealer_code, "dealer_code").toUpperCase();
+  const discountRate = Number(payload.dealer_discount_rate || 0);
+  if (discountRate < 0 || discountRate > 100) throw new Error("대리점 할인율은 0~100 사이여야 합니다.");
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.accounts);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const codeIndex = headers.indexOf("dealer_code");
+  const roleIndex = headers.indexOf("role");
+  const discountIndex = headers.indexOf("dealer_discount_rate");
+  const updatedIndex = headers.indexOf("updated_at");
+  if (codeIndex === -1 || roleIndex === -1 || discountIndex === -1) throw new Error("대리점관리 시트에 할인율 컬럼이 없습니다.");
+
+  let updatedCount = 0;
+  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    const sameDealer = String(values[rowIndex][codeIndex]).toUpperCase() === dealerCode;
+    const isDealer = String(values[rowIndex][roleIndex]) === "dealer";
+    if (sameDealer && isDealer) {
+      sheet.getRange(rowIndex + 1, discountIndex + 1).setValue(discountRate);
+      if (updatedIndex >= 0) sheet.getRange(rowIndex + 1, updatedIndex + 1).setValue(isoNow_());
+      updatedCount += 1;
+    }
+  }
+  if (!updatedCount) throw new Error("할인율을 수정할 대리점 계정을 찾을 수 없습니다.");
+  return { accounts: listAccessibleAccounts_(user), updated_count: updatedCount };
 }
 
 function handleDeleteProduct_(payload, user) {
@@ -360,7 +405,13 @@ function handleCreateDealerAccount_(payload, user) {
       ? HEAD_OFFICE_CODE
       : required_(payload.dealer_code, "dealer_code").toUpperCase();
   const dealerName = user.role === "dealer" ? user.dealer_name : required_(payload.dealer_name, "dealer_name");
+  const discountRate = role === "dealer"
+    ? user.role === "dealer"
+      ? dealerDiscountRate_(user.dealer_code)
+      : Number(payload.dealer_discount_rate || dealerDiscountRate_(dealerCode))
+    : 0;
   const temporaryPassword = required_(payload.temporary_password, "temporary_password");
+  if (discountRate < 0 || discountRate > 100) throw new Error("대리점 할인율은 0~100 사이여야 합니다.");
 
   if (findAccountByLoginId_(loginId)) throw new Error("이미 사용 중인 아이디입니다.");
 
@@ -369,6 +420,7 @@ function handleCreateDealerAccount_(payload, user) {
     password_hash: hashPassword_(temporaryPassword),
     dealer_code: dealerCode,
     dealer_name: dealerName,
+    dealer_discount_rate: discountRate,
     role: role,
     is_first_login: true,
     is_active: true,
@@ -801,6 +853,7 @@ function publicAccount_(account) {
     login_id: account.login_id,
     dealer_code: account.dealer_code,
     dealer_name: account.dealer_name,
+    dealer_discount_rate: Number(account.dealer_discount_rate || 0),
     role: account.role,
     is_first_login: toBool_(account.is_first_login),
     is_active: toBool_(account.is_active),
@@ -815,6 +868,8 @@ function publicProduct_(product) {
     category: product.category,
     color: inferColor_(product.product_name),
     unit: product.unit,
+    retail_price: Number(product.retail_price || 0),
+    purchase_price: Number(product.purchase_price || 0),
     is_active: toBool_(product.is_active)
   };
 }
@@ -921,11 +976,14 @@ function seedProductsIfEmpty_() {
     const base = bases[i % bases.length];
     const size = base[4][Math.floor(i / bases.length) % base[4].length];
     const number = String(i + 1).padStart(3, "0");
+    const retailPrice = base[2] === "PPF" ? 260000 + (i % 9) * 12000 : 180000 + (i % 9) * 8000;
     appendObject_(SHEETS.products, {
       sku: base[0] + "-" + number,
       product_name: base[1] + " " + size,
       category: base[2],
       unit: base[3],
+      retail_price: retailPrice,
+      purchase_price: Math.round(retailPrice * 0.58),
       is_active: true
     });
   }
@@ -938,6 +996,7 @@ function seedAdminIfEmpty_() {
     password_hash: hashPassword_("admin1234!"),
     dealer_code: "ADMIN",
     dealer_name: "본사 관리자",
+    dealer_discount_rate: 0,
     role: "admin",
     is_first_login: true,
     is_active: true,
@@ -952,6 +1011,7 @@ function seedDemoDealerIfEmpty_() {
     password_hash: hashPassword_("stock2026!"),
     dealer_code: "D001",
     dealer_name: "서울 총판",
+    dealer_discount_rate: 20,
     role: "dealer",
     is_first_login: true,
     is_active: true,
@@ -1045,6 +1105,16 @@ function mapBy_(rows, key) {
     map[row[key]] = row;
   });
   return map;
+}
+
+function dealerDiscountRate_(dealerCode) {
+  const account = readRows_(SHEETS.accounts).find((row) => (
+    row.role === "dealer" &&
+    String(row.dealer_code).toUpperCase() === String(dealerCode).toUpperCase() &&
+    row.dealer_discount_rate !== undefined &&
+    row.dealer_discount_rate !== ""
+  ));
+  return Number(account ? account.dealer_discount_rate || 0 : 0);
 }
 
 function inferColor_(name) {
