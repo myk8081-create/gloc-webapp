@@ -4,6 +4,8 @@ const config = window.FILM_STOCK_CONFIG || {};
 const orderStatuses = ["접수", "승인", "출고", "완료", "반려", "취소"];
 const headOfficeCode = "ADMIN";
 const headOfficeName = "본사";
+const defaultRetailPrice = 1000000;
+const defaultPurchasePrice = 500000;
 
 const colorOptions = [
   { name: "전체", value: "전체", hex: "#cf4e42" },
@@ -41,15 +43,14 @@ function createMockProducts() {
     const base = baseProducts[i % baseProducts.length];
     const size = base.sizes[Math.floor(i / baseProducts.length) % base.sizes.length];
     const number = String(i + 1).padStart(3, "0");
-    const retailPrice = base.category === "PPF" ? 260000 + (i % 9) * 12000 : 180000 + (i % 9) * 8000;
     products.push({
       sku: `${base.sku}-${number}`,
       product_name: `${base.product_name} ${size}`,
       category: base.category,
       color: base.color,
       unit: base.unit,
-      retail_price: retailPrice,
-      purchase_price: Math.round(retailPrice * 0.58),
+      retail_price: defaultRetailPrice,
+      purchase_price: defaultPurchasePrice,
       is_active: true
     });
   }
@@ -207,8 +208,8 @@ const state = {
     productName: "",
     productCategory: "PPF",
     productUnit: "롤",
-    productRetailPrice: 0,
-    productPurchasePrice: 0,
+    productRetailPrice: defaultRetailPrice,
+    productPurchasePrice: defaultPurchasePrice,
     productIsActive: true,
     resetPassword: ""
   },
@@ -505,7 +506,8 @@ function renderDealerManagement() {
     ? isAdminAccount ? "ADMIN" : state.forms.accountDealerCode
     : state.session?.dealer_code || "";
   const dealerNameValue = isAdminSession ? state.forms.accountDealerName : state.session?.dealer_name || "";
-  const discountValue = isAdminSession ? state.forms.accountDiscountRate : dealerDiscountRate(state.session?.dealer_code);
+  const existingDealerRate = dealerDiscountRate(dealerCodeValue);
+  const discountValue = isAdminSession && existingDealerRate ? existingDealerRate : isAdminSession ? state.forms.accountDiscountRate : dealerDiscountRate(state.session?.dealer_code);
   return `
     <main class="screen ${state.screen === "dealers" ? "active" : ""}" data-screen="dealers">
       <section class="page-head">
@@ -538,7 +540,7 @@ function renderDealerManagement() {
               </label>
               ${!isAdminAccount ? `
                 <label class="field">
-                  <span>대리점 할인율(%)</span>
+                  <span>대리점 공통 할인율(%)</span>
                   <input id="accountDiscountRate" type="number" min="0" max="100" step="0.1" inputmode="decimal" value="${escapeAttr(discountValue)}" ${!isAdminSession ? "readonly" : ""} />
                 </label>
               ` : ""}
@@ -755,11 +757,11 @@ function renderProductManage() {
             </label>
             <label class="field">
               <span>소비자가</span>
-              <input id="productRetailPrice" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.productRetailPrice)}" placeholder="예: 260000" />
+              <input id="productRetailPrice" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.productRetailPrice)}" placeholder="예: 1000000" />
             </label>
             <label class="field">
               <span>매입가</span>
-              <input id="productPurchasePrice" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.productPurchasePrice)}" placeholder="예: 150000" />
+              <input id="productPurchasePrice" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.productPurchasePrice)}" placeholder="예: 500000" />
             </label>
             <label class="checkbox-row inline-check">
               <input id="productIsActive" type="checkbox" ${state.forms.productIsActive ? "checked" : ""} />
@@ -2330,8 +2332,8 @@ async function saveProduct() {
     product_name: state.forms.productName.trim(),
     category: state.forms.productCategory,
     unit: state.forms.productUnit.trim() || "롤",
-    retail_price: Number(state.forms.productRetailPrice || 0),
-    purchase_price: Number(state.forms.productPurchasePrice || 0),
+    retail_price: Number(state.forms.productRetailPrice || defaultRetailPrice),
+    purchase_price: Number(state.forms.productPurchasePrice || defaultPurchasePrice),
     is_active: state.forms.productIsActive
   };
   if (!payload.sku || !payload.product_name || !payload.category) {
@@ -2373,20 +2375,24 @@ async function saveProduct() {
 async function createDealerAccount() {
   if (!canManageDealerStaff()) throw new Error("담당자 추가는 본사 관리자 또는 대리점 최상위 관리자만 가능합니다.");
   const role = state.session?.role === "admin" && state.forms.accountRole === "admin" ? "admin" : "dealer";
+  const dealerCode = role === "admin"
+    ? "ADMIN"
+    : state.session?.role === "admin"
+      ? state.forms.accountDealerCode.trim().toUpperCase()
+      : state.session?.dealer_code || "";
+  const existingDealerAccount = state.accounts.find((item) => item.role === "dealer" && sameDealerCode(item.dealer_code, dealerCode));
+  let accountDiscountRate = 0;
+  if (role === "dealer") {
+    if (existingDealerAccount) accountDiscountRate = dealerDiscountRate(dealerCode);
+    else if (state.session?.role === "admin") accountDiscountRate = Number(state.forms.accountDiscountRate || 0);
+    else accountDiscountRate = dealerDiscountRate(state.session?.dealer_code);
+  }
   const account = {
     login_id: state.forms.accountLoginId.trim(),
-    dealer_code: role === "admin"
-      ? "ADMIN"
-      : state.session?.role === "admin"
-        ? state.forms.accountDealerCode.trim().toUpperCase()
-        : state.session?.dealer_code || "",
+    dealer_code: dealerCode,
     dealer_name: state.session?.role === "admin" ? state.forms.accountDealerName.trim() : state.session?.dealer_name || "",
     role,
-    dealer_discount_rate: role === "dealer"
-      ? state.session?.role === "admin"
-        ? Number(state.forms.accountDiscountRate || 0)
-        : dealerDiscountRate(state.session?.dealer_code)
-      : 0,
+    dealer_discount_rate: accountDiscountRate,
     temporary_password: state.forms.accountTemporaryPassword.trim()
   };
   if (account.dealer_discount_rate < 0 || account.dealer_discount_rate > 100) {
@@ -2925,8 +2931,8 @@ function upsertInventory(row) {
 function upsertProduct(product) {
   const normalized = {
     ...product,
-    retail_price: Number(product.retail_price || 0),
-    purchase_price: Number(product.purchase_price || 0),
+    retail_price: productRetailPrice(product),
+    purchase_price: productPurchasePrice(product),
     color: product.color || colorNameFromText(product.product_name)
   };
   const index = state.products.findIndex((item) => item.sku === normalized.sku);
@@ -2961,8 +2967,8 @@ function removeProduct(sku) {
     state.forms.productName = "";
     state.forms.productCategory = "PPF";
     state.forms.productUnit = "롤";
-    state.forms.productRetailPrice = 0;
-    state.forms.productPurchasePrice = 0;
+    state.forms.productRetailPrice = defaultRetailPrice;
+    state.forms.productPurchasePrice = defaultPurchasePrice;
     state.forms.productIsActive = true;
   }
 }
@@ -3034,11 +3040,13 @@ function percent(value) {
 }
 
 function productRetailPrice(product) {
-  return Number(product?.retail_price || 0);
+  const value = Number(product?.retail_price || 0);
+  return value > 0 ? value : defaultRetailPrice;
 }
 
 function productPurchasePrice(product) {
-  return Number(product?.purchase_price || 0);
+  const value = Number(product?.purchase_price || 0);
+  return value > 0 ? value : defaultPurchasePrice;
 }
 
 function dealerDiscountRate(dealerCode) {

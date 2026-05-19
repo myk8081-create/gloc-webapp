@@ -20,6 +20,8 @@ const ORDER_STATUSES = ["접수", "승인", "출고", "완료", "반려", "취�
 const SESSION_SECONDS = 21600;
 const HEAD_OFFICE_CODE = "ADMIN";
 const HEAD_OFFICE_NAME = "본사";
+const DEFAULT_RETAIL_PRICE = 1000000;
+const DEFAULT_PURCHASE_PRICE = 500000;
 
 function doPost(e) {
   try {
@@ -221,10 +223,10 @@ function handleCreateOrder_(payload, user) {
 
   const product = readRows_(SHEETS.products).find((row) => row.sku === sku && toBool_(row.is_active));
   if (!product) throw new Error("제품을 찾을 수 없습니다.");
-  const unitRetailPrice = Number(product.retail_price || 0);
+  const unitRetailPrice = productRetailPrice_(product);
   const discountRate = dealerDiscountRate_(user.dealer_code);
   const unitSalePrice = Math.round(unitRetailPrice * (1 - discountRate / 100));
-  const unitPurchasePrice = Number(product.purchase_price || 0);
+  const unitPurchasePrice = productPurchasePrice_(product);
 
   const order = {
     order_id: makeOrderId_(),
@@ -341,8 +343,8 @@ function handleSaveProduct_(payload, user) {
     product_name: required_(payload.product_name, "product_name"),
     category: required_(payload.category, "category"),
     unit: payload.unit || "롤",
-    retail_price: Number(payload.retail_price || 0),
-    purchase_price: Number(payload.purchase_price || 0),
+    retail_price: Number(payload.retail_price || DEFAULT_RETAIL_PRICE),
+    purchase_price: Number(payload.purchase_price || DEFAULT_PURCHASE_PRICE),
     is_active: payload.is_active === undefined ? true : toBool_(payload.is_active)
   };
   if (product.retail_price < 0 || product.purchase_price < 0) throw new Error("소비자가와 매입가는 0 이상이어야 합니다.");
@@ -405,10 +407,16 @@ function handleCreateDealerAccount_(payload, user) {
       ? HEAD_OFFICE_CODE
       : required_(payload.dealer_code, "dealer_code").toUpperCase();
   const dealerName = user.role === "dealer" ? user.dealer_name : required_(payload.dealer_name, "dealer_name");
+  const existingDealerAccount = readRows_(SHEETS.accounts).find((row) => (
+    row.role === "dealer" &&
+    String(row.dealer_code).toUpperCase() === dealerCode
+  ));
   const discountRate = role === "dealer"
     ? user.role === "dealer"
       ? dealerDiscountRate_(user.dealer_code)
-      : Number(payload.dealer_discount_rate || dealerDiscountRate_(dealerCode))
+      : existingDealerAccount
+        ? dealerDiscountRate_(dealerCode)
+        : Number(payload.dealer_discount_rate || 0)
     : 0;
   const temporaryPassword = required_(payload.temporary_password, "temporary_password");
   if (discountRate < 0 || discountRate > 100) throw new Error("대리점 할인율은 0~100 사이여야 합니다.");
@@ -685,6 +693,7 @@ function commonLoginUrl_(baseUrl) {
 
 function ensureSheets_() {
   Object.keys(SHEETS).forEach((key) => ensureSheet_(SHEETS[key], HEADERS[key]));
+  ensureProductDefaultPrices_();
   ensurePasswordSalt_();
 }
 
@@ -803,6 +812,25 @@ function upsertProductRow_(sku, object) {
   return object;
 }
 
+function ensureProductDefaultPrices_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.products);
+  if (!sheet || sheet.getLastRow() < 2) return;
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const retailIndex = headers.indexOf("retail_price");
+  const purchaseIndex = headers.indexOf("purchase_price");
+  if (retailIndex === -1 || purchaseIndex === -1) return;
+
+  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    const hasContent = values[rowIndex].some((cell) => cell !== "");
+    if (!hasContent) continue;
+    const retailValue = Number(values[rowIndex][retailIndex] || 0);
+    const purchaseValue = Number(values[rowIndex][purchaseIndex] || 0);
+    if (!retailValue) sheet.getRange(rowIndex + 1, retailIndex + 1).setValue(DEFAULT_RETAIL_PRICE);
+    if (!purchaseValue) sheet.getRange(rowIndex + 1, purchaseIndex + 1).setValue(DEFAULT_PURCHASE_PRICE);
+  }
+}
+
 function findAccountByLoginId_(loginId) {
   return readRows_(SHEETS.accounts).find((account) => String(account.login_id).toLowerCase() === String(loginId).toLowerCase());
 }
@@ -868,8 +896,8 @@ function publicProduct_(product) {
     category: product.category,
     color: inferColor_(product.product_name),
     unit: product.unit,
-    retail_price: Number(product.retail_price || 0),
-    purchase_price: Number(product.purchase_price || 0),
+    retail_price: productRetailPrice_(product),
+    purchase_price: productPurchasePrice_(product),
     is_active: toBool_(product.is_active)
   };
 }
@@ -976,14 +1004,13 @@ function seedProductsIfEmpty_() {
     const base = bases[i % bases.length];
     const size = base[4][Math.floor(i / bases.length) % base[4].length];
     const number = String(i + 1).padStart(3, "0");
-    const retailPrice = base[2] === "PPF" ? 260000 + (i % 9) * 12000 : 180000 + (i % 9) * 8000;
     appendObject_(SHEETS.products, {
       sku: base[0] + "-" + number,
       product_name: base[1] + " " + size,
       category: base[2],
       unit: base[3],
-      retail_price: retailPrice,
-      purchase_price: Math.round(retailPrice * 0.58),
+      retail_price: DEFAULT_RETAIL_PRICE,
+      purchase_price: DEFAULT_PURCHASE_PRICE,
       is_active: true
     });
   }
@@ -1115,6 +1142,16 @@ function dealerDiscountRate_(dealerCode) {
     row.dealer_discount_rate !== ""
   ));
   return Number(account ? account.dealer_discount_rate || 0 : 0);
+}
+
+function productRetailPrice_(product) {
+  const value = Number(product && product.retail_price || 0);
+  return value > 0 ? value : DEFAULT_RETAIL_PRICE;
+}
+
+function productPurchasePrice_(product) {
+  const value = Number(product && product.purchase_price || 0);
+  return value > 0 ? value : DEFAULT_PURCHASE_PRICE;
 }
 
 function inferColor_(name) {
