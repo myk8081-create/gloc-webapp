@@ -369,18 +369,24 @@ function handleUpdateDealerDiscount_(payload, user) {
   const updatedIndex = headers.indexOf("updated_at");
   if (codeIndex === -1 || roleIndex === -1 || discountIndex === -1) throw new Error("대리점관리 시트에 할인율 컬럼이 없습니다.");
 
-  let updatedCount = 0;
+  let topManagerUpdated = false;
+  let clearedStaffCount = 0;
   for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
     const sameDealer = String(values[rowIndex][codeIndex]).toUpperCase() === dealerCode;
     const isDealer = String(values[rowIndex][roleIndex]) === "dealer";
     if (sameDealer && isDealer) {
-      sheet.getRange(rowIndex + 1, discountIndex + 1).setValue(discountRate);
+      if (!topManagerUpdated) {
+        sheet.getRange(rowIndex + 1, discountIndex + 1).setValue(discountRate);
+        topManagerUpdated = true;
+      } else {
+        sheet.getRange(rowIndex + 1, discountIndex + 1).setValue("");
+        clearedStaffCount += 1;
+      }
       if (updatedIndex >= 0) sheet.getRange(rowIndex + 1, updatedIndex + 1).setValue(isoNow_());
-      updatedCount += 1;
     }
   }
-  if (!updatedCount) throw new Error("할인율을 수정할 대리점 계정을 찾을 수 없습니다.");
-  return { accounts: listAccessibleAccounts_(user), updated_count: updatedCount };
+  if (!topManagerUpdated) throw new Error("할인율을 수정할 대리점 최상위 관리자 계정을 찾을 수 없습니다.");
+  return { accounts: listAccessibleAccounts_(user), updated_count: 1, cleared_staff_count: clearedStaffCount };
 }
 
 function handleDeleteProduct_(payload, user) {
@@ -413,13 +419,13 @@ function handleCreateDealerAccount_(payload, user) {
   ));
   const discountRate = role === "dealer"
     ? user.role === "dealer"
-      ? dealerDiscountRate_(user.dealer_code)
+      ? ""
       : existingDealerAccount
-        ? dealerDiscountRate_(dealerCode)
+        ? ""
         : Number(payload.dealer_discount_rate || 0)
     : 0;
   const temporaryPassword = required_(payload.temporary_password, "temporary_password");
-  if (discountRate < 0 || discountRate > 100) throw new Error("대리점 할인율은 0~100 사이여야 합니다.");
+  if (discountRate !== "" && (discountRate < 0 || discountRate > 100)) throw new Error("대리점 할인율은 0~100 사이여야 합니다.");
 
   if (findAccountByLoginId_(loginId)) throw new Error("이미 사용 중인 아이디입니다.");
 
@@ -1135,13 +1141,16 @@ function mapBy_(rows, key) {
 }
 
 function dealerDiscountRate_(dealerCode) {
-  const account = readRows_(SHEETS.accounts).find((row) => (
+  const accounts = readRows_(SHEETS.accounts).filter((row) => (
     row.role === "dealer" &&
-    String(row.dealer_code).toUpperCase() === String(dealerCode).toUpperCase() &&
-    row.dealer_discount_rate !== undefined &&
-    row.dealer_discount_rate !== ""
+    String(row.dealer_code).toUpperCase() === String(dealerCode).toUpperCase()
   ));
-  return Number(account ? account.dealer_discount_rate || 0 : 0);
+  const topManager = accounts[0];
+  if (topManager && topManager.dealer_discount_rate !== undefined && topManager.dealer_discount_rate !== "") {
+    return Number(topManager.dealer_discount_rate || 0);
+  }
+  const legacyAccount = accounts.find((row) => row.dealer_discount_rate !== undefined && row.dealer_discount_rate !== "");
+  return Number(legacyAccount ? legacyAccount.dealer_discount_rate || 0 : 0);
 }
 
 function productRetailPrice_(product) {

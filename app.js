@@ -225,6 +225,7 @@ const state = {
 };
 
 let searchRefreshTimer = null;
+let accountFormRefreshTimer = null;
 
 function initFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -506,8 +507,11 @@ function renderDealerManagement() {
     ? isAdminAccount ? "ADMIN" : state.forms.accountDealerCode
     : state.session?.dealer_code || "";
   const dealerNameValue = isAdminSession ? state.forms.accountDealerName : state.session?.dealer_name || "";
-  const existingDealerRate = dealerDiscountRate(dealerCodeValue);
-  const discountValue = isAdminSession && existingDealerRate ? existingDealerRate : isAdminSession ? state.forms.accountDiscountRate : dealerDiscountRate(state.session?.dealer_code);
+  const hasTopDealerManager = Boolean(topDealerAccountByCode(dealerCodeValue));
+  const showDiscountInput = !isAdminAccount && isAdminSession && !hasTopDealerManager;
+  const inheritedDiscountText = !isAdminAccount && hasTopDealerManager
+    ? `최상위 관리자 기준 할인율 ${percent(dealerDiscountRate(dealerCodeValue))}이 자동 적용됩니다.`
+    : "담당자는 대리점 최상위 관리자 할인율을 자동 적용합니다.";
   return `
     <main class="screen ${state.screen === "dealers" ? "active" : ""}" data-screen="dealers">
       <section class="page-head">
@@ -538,11 +542,15 @@ function renderDealerManagement() {
                 <span>${isAdminAccount ? "관리자명" : "대리점명"}</span>
                 <input id="accountDealerName" type="text" value="${escapeAttr(dealerNameValue)}" placeholder="${isAdminAccount ? "예: 본사 관리자 2" : "예: 강남 대리점"}" ${!isAdminSession ? "readonly" : ""} />
               </label>
-              ${!isAdminAccount ? `
+              ${showDiscountInput ? `
                 <label class="field">
                   <span>대리점 공통 할인율(%)</span>
-                  <input id="accountDiscountRate" type="number" min="0" max="100" step="0.1" inputmode="decimal" value="${escapeAttr(discountValue)}" ${!isAdminSession ? "readonly" : ""} />
+                  <input id="accountDiscountRate" type="number" min="0" max="100" step="0.1" inputmode="decimal" value="${escapeAttr(state.forms.accountDiscountRate)}" />
                 </label>
+              ` : !isAdminAccount ? `
+                <div class="form-note">
+                  ${escapeHtml(inheritedDiscountText)}
+                </div>
               ` : ""}
               <label class="field">
                 <span>초기 아이디</span>
@@ -1417,6 +1425,7 @@ function renderOrderCard(order) {
   const canCancel = state.session?.role === "dealer" && order.dealer_code === state.session.dealer_code && order.status === "접수";
   const hasShipping = order.shipping_company || order.tracking_number;
   const staffId = order.created_by_login_id || "";
+  const pricing = enrichSalesRow(order);
   return `
     <article class="order-card">
       <div>
@@ -1431,6 +1440,11 @@ function renderOrderCard(order) {
         <span>${escapeHtml(order.created_at || "")}</span>
       </div>
       <p class="order-memo">${escapeHtml(order.memo || "메모 없음")}</p>
+      <div class="order-price-summary">
+        <span>발주금액</span>
+        <strong>${money(pricing.revenue)}</strong>
+        <small>적용단가 ${money(pricing.unitSalePrice)} · 할인율 ${percent(pricing.discountRate)}</small>
+      </div>
       ${hasShipping ? `
         <div class="shipping-info">
           <strong>배송정보</strong>
@@ -1474,7 +1488,7 @@ function renderAccountRow(account) {
   const guideButton = canCopyGuide
     ? `<button type="button" class="secondary-button small-button" data-share="${escapeAttr(accountKakaoGuideMessage(account))}">안내문 공유</button>`
     : "";
-  const discountButton = isAdminSession && account.role === "dealer"
+  const discountButton = isAdminSession && account.role === "dealer" && dealerTopManager
     ? `<button type="button" class="secondary-button small-button" data-action="updateDealerDiscount" data-dealer-code="${escapeAttr(account.dealer_code)}">할인율 수정</button>`
     : "";
   const resetButton = !protectedAdmin || isSelf
@@ -1488,7 +1502,7 @@ function renderAccountRow(account) {
     ? `<button type="button" class="secondary-button small-button danger-button" data-action="deleteAccount" data-login-id="${escapeAttr(account.login_id)}">담당자 삭제</button>`
     : "";
   const actionButtons = isAdminSession ? `${guideButton}${discountButton}${resetButton}${dangerButtons}` : `${guideButton}${dealerManagerButtons}`;
-  const discountMeta = account.role === "dealer" ? ` · 할인율 ${percent(dealerDiscountRate(account.dealer_code))}` : "";
+  const discountMeta = account.role === "dealer" && dealerTopManager ? ` · 공통 할인율 ${percent(dealerDiscountRate(account.dealer_code))}` : "";
   return `
     <article class="account-row">
       <div>
@@ -1596,7 +1610,11 @@ function bindEvents() {
   bindInput("currentPassword", (value) => (state.forms.currentPassword = value));
   bindInput("newPassword", (value) => (state.forms.newPassword = value));
   bindInput("newPasswordConfirm", (value) => (state.forms.newPasswordConfirm = value));
-  bindInput("accountDealerCode", (value) => (state.forms.accountDealerCode = value.toUpperCase()));
+  bindInput("accountDealerCode", (value) => {
+    state.forms.accountDealerCode = value.toUpperCase();
+    window.clearTimeout(accountFormRefreshTimer);
+    accountFormRefreshTimer = window.setTimeout(render, 120);
+  });
   bindInput("accountDealerName", (value) => (state.forms.accountDealerName = value));
   bindInput("accountLoginId", (value) => (state.forms.accountLoginId = value));
   bindInput("accountDiscountRate", (value) => (state.forms.accountDiscountRate = Number(value || 0)));
@@ -2383,9 +2401,9 @@ async function createDealerAccount() {
   const existingDealerAccount = state.accounts.find((item) => item.role === "dealer" && sameDealerCode(item.dealer_code, dealerCode));
   let accountDiscountRate = 0;
   if (role === "dealer") {
-    if (existingDealerAccount) accountDiscountRate = dealerDiscountRate(dealerCode);
+    if (existingDealerAccount) accountDiscountRate = "";
     else if (state.session?.role === "admin") accountDiscountRate = Number(state.forms.accountDiscountRate || 0);
-    else accountDiscountRate = dealerDiscountRate(state.session?.dealer_code);
+    else accountDiscountRate = "";
   }
   const account = {
     login_id: state.forms.accountLoginId.trim(),
@@ -2395,7 +2413,7 @@ async function createDealerAccount() {
     dealer_discount_rate: accountDiscountRate,
     temporary_password: state.forms.accountTemporaryPassword.trim()
   };
-  if (account.dealer_discount_rate < 0 || account.dealer_discount_rate > 100) {
+  if (account.dealer_discount_rate !== "" && (account.dealer_discount_rate < 0 || account.dealer_discount_rate > 100)) {
     throw new Error("대리점 할인율은 0~100 사이로 입력해 주세요.");
   }
   if (!account.login_id || !account.dealer_code || !account.dealer_name || !account.temporary_password) {
@@ -2751,10 +2769,10 @@ function salesDealerOptions() {
 function enrichSalesRow(order) {
   const product = state.products.find((item) => item.sku === order.sku) || {};
   const qty = Number(order.qty || 0);
-  const unitRetailPrice = Number(order.unit_retail_price || product.retail_price || 0);
+  const unitRetailPrice = Number(order.unit_retail_price || productRetailPrice(product));
   const discountRate = Number(order.dealer_discount_rate !== undefined && order.dealer_discount_rate !== "" ? order.dealer_discount_rate : dealerDiscountRate(order.dealer_code));
   const unitSalePrice = Number(order.unit_sale_price || Math.round(unitRetailPrice * (1 - discountRate / 100)));
-  const unitPurchasePrice = Number(order.unit_purchase_price || product.purchase_price || 0);
+  const unitPurchasePrice = Number(order.unit_purchase_price || productPurchasePrice(product));
   const revenue = unitSalePrice * qty;
   const cost = unitPurchasePrice * qty;
   const profit = revenue - cost;
@@ -2881,8 +2899,12 @@ function canManageDealerStaff() {
 
 function isDealerTopManagerAccount(account) {
   if (!account || account.role !== "dealer") return false;
-  const topManager = state.accounts.find((item) => item.role === "dealer" && sameDealerCode(item.dealer_code, account.dealer_code));
+  const topManager = topDealerAccountByCode(account.dealer_code);
   return Boolean(topManager && String(topManager.login_id).toLowerCase() === String(account.login_id || "").toLowerCase());
+}
+
+function topDealerAccountByCode(dealerCode) {
+  return state.accounts.find((item) => item.role === "dealer" && sameDealerCode(item.dealer_code, dealerCode));
 }
 
 function sameDealerCode(left, right) {
@@ -3050,8 +3072,13 @@ function productPurchasePrice(product) {
 }
 
 function dealerDiscountRate(dealerCode) {
-  const account = state.accounts.find((item) => item.role === "dealer" && sameDealerCode(item.dealer_code, dealerCode) && item.dealer_discount_rate !== undefined && item.dealer_discount_rate !== "");
-  return Number(account?.dealer_discount_rate || 0);
+  const dealerAccountsForCode = state.accounts.filter((item) => item.role === "dealer" && sameDealerCode(item.dealer_code, dealerCode));
+  const topManager = dealerAccountsForCode[0];
+  if (topManager && topManager.dealer_discount_rate !== undefined && topManager.dealer_discount_rate !== "") {
+    return Number(topManager.dealer_discount_rate || 0);
+  }
+  const legacyAccount = dealerAccountsForCode.find((item) => item.dealer_discount_rate !== undefined && item.dealer_discount_rate !== "");
+  return Number(legacyAccount?.dealer_discount_rate || 0);
 }
 
 function dealerSalePrice(product, dealerCode) {
