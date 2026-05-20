@@ -2711,8 +2711,9 @@ async function cancelOrder(orderId) {
 }
 
 async function saveInventory() {
-  ensureInventoryForm();
-  const dealerCode = editableInventoryOwnerCode();
+  if (!state.forms.inventoryDealerCode) state.forms.inventoryDealerCode = editableInventoryOwnerCode();
+  if (!state.forms.inventorySku) state.forms.inventorySku = state.selectedSku || state.products[0]?.sku || "";
+  const dealerCode = state.forms.inventoryDealerCode;
   const payload = {
     dealer_code: dealerCode,
     sku: state.forms.inventorySku,
