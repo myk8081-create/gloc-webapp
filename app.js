@@ -2742,7 +2742,12 @@ async function saveInventory() {
       updated_at: nowText()
     });
   }
-  await refreshData(false);
+  state.selectedSku = payload.sku;
+  state.selectedColor = "전체";
+  state.filters.inventoryQuery = "";
+  state.filters.inventoryPage = 1;
+  state.filters.inventoryDealerCode = "전체";
+  state.filters.inventoryScope = state.session?.role === "admin" ? "headOffice" : "mine";
   state.screen = "inventory";
   render();
   scrollTop();
