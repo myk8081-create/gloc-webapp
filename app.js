@@ -168,6 +168,8 @@ const state = {
   products: mockProducts,
   inventory: createMockInventory(mockProducts),
   orders: createMockOrders(mockProducts),
+  retailSales: [],
+  reservations: [],
   selectedColor: "전체",
   selectedSku: mockProducts[0].sku,
   filters: {
@@ -208,6 +210,12 @@ const state = {
     inventoryLocation: "",
     orderQty: 10,
     orderMemo: "",
+    saleQty: 1,
+    saleMemo: "",
+    reservationCustomerName: "",
+    reservationCustomerPhone: "",
+    reservationQty: 1,
+    reservationMemo: "",
     productSku: "",
     productName: "",
     productCategory: "PPF",
@@ -256,6 +264,8 @@ function render() {
       ${renderOrders()}
       ${renderSales()}
       ${renderOrderCreate()}
+      ${renderDealerSale()}
+      ${renderReservations()}
       ${renderDealerLinks()}
       ${renderNotifications()}
       ${renderBottomNav()}
@@ -1184,6 +1194,146 @@ function renderOrderCreate() {
   `;
 }
 
+function renderDealerSale() {
+  if (state.session?.role !== "dealer") return "";
+  const product = selectedProduct();
+  const inventory = dealerInventoryForProduct(product?.sku);
+  const currentStock = Number(inventory?.stock_qty || 0);
+  const qty = Number(state.forms.saleQty || 0);
+  const isShort = qty > currentStock;
+  return `
+    <main class="screen ${state.screen === "dealerSale" ? "active" : ""}" data-screen="dealerSale">
+      <section class="page-head">
+        <p class="eyebrow">${escapeHtml(currentDealerName())}</p>
+        <h1>판매완료</h1>
+        <p class="lead">실제 판매가 완료된 제품을 등록하면 내 대리점 재고에서 자동 차감됩니다.</p>
+        <div class="page-actions">
+          <button class="secondary-button" type="button" data-nav="inventory">재고조회</button>
+          <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
+        </div>
+      </section>
+
+      <section class="work-layout">
+        <div class="panel list-panel">
+          <h3>판매 제품 선택</h3>
+          <input class="search-input" id="inventoryQuery" type="search" placeholder="제품명, SKU, 컬러 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
+          <div class="product-list" id="dealerSaleProductList">
+            ${filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`}
+          </div>
+        </div>
+
+        <div class="panel form-panel">
+          <h3>판매 등록</h3>
+          <div class="detail-card ${isShort ? "is-low" : ""}">
+            <h2>${escapeHtml(product?.product_name || "제품 선택")}</h2>
+            <p class="muted">${escapeHtml(product?.sku || "-")} · 현재 재고 ${roll(currentStock)}</p>
+            ${isShort ? `<p class="form-note danger-text">현재 재고보다 판매 수량이 많습니다.</p>` : `<p class="form-note">판매완료를 누르면 즉시 재고에서 차감됩니다.</p>`}
+          </div>
+          <div class="stock-grid">
+            <div class="stock-box">
+              <span>현재 재고</span>
+              <strong>${roll(currentStock)}</strong>
+            </div>
+            <div class="stock-box">
+              <span>판매 후</span>
+              <strong>${roll(Math.max(currentStock - qty, 0))}</strong>
+            </div>
+            <div class="stock-box">
+              <span>상태</span>
+              <strong>${isShort ? "재고부족" : "가능"}</strong>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>판매 수량</span>
+              <input id="saleQty" type="number" min="1" inputmode="numeric" value="${escapeAttr(state.forms.saleQty)}" />
+            </label>
+            <label class="field">
+              <span>메모</span>
+              <textarea id="saleMemo" placeholder="고객명, 차량정보 등">${escapeHtml(state.forms.saleMemo)}</textarea>
+            </label>
+            <button type="button" class="primary-button" data-action="createSale" ${isShort ? "disabled" : ""}>판매완료</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel list-panel">
+        <h3>최근 판매</h3>
+        <div class="order-list">
+          ${visibleRetailSales().slice(0, 8).map(renderSaleCard).join("") || `<div class="empty">판매 내역이 없습니다.</div>`}
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderReservations() {
+  if (state.session?.role !== "dealer") return "";
+  const product = selectedProduct();
+  const inventory = dealerInventoryForProduct(product?.sku);
+  const currentStock = Number(inventory?.stock_qty || 0);
+  const qty = Number(state.forms.reservationQty || 0);
+  const isShort = qty > currentStock;
+  return `
+    <main class="screen ${state.screen === "reservations" ? "active" : ""}" data-screen="reservations">
+      <section class="page-head">
+        <p class="eyebrow">${escapeHtml(currentDealerName())}</p>
+        <h1>예약관리</h1>
+        <p class="lead">예약 제품을 입력하면 현재 재고를 바로 확인하고, 부족 시 재고부족으로 표시합니다.</p>
+        <div class="page-actions">
+          <button class="secondary-button" type="button" data-nav="inventory">재고조회</button>
+          <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
+        </div>
+      </section>
+
+      <section class="work-layout">
+        <div class="panel list-panel">
+          <h3>예약 제품 선택</h3>
+          <input class="search-input" id="inventoryQuery" type="search" placeholder="제품명, SKU, 컬러 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
+          <div class="product-list" id="reservationProductList">
+            ${filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`}
+          </div>
+        </div>
+
+        <div class="panel form-panel">
+          <h3>예약 입력</h3>
+          <div class="detail-card ${isShort ? "is-low" : ""}">
+            <h2>${escapeHtml(product?.product_name || "제품 선택")}</h2>
+            <p class="muted">${escapeHtml(product?.sku || "-")} · 현재 재고 ${roll(currentStock)}</p>
+            ${isShort ? `<p class="form-note danger-text">재고가 부족합니다. 발주 또는 입고 확인이 필요합니다.</p>` : `<p class="form-note">현재 재고로 예약 대응이 가능합니다.</p>`}
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>고객명</span>
+              <input id="reservationCustomerName" type="text" value="${escapeAttr(state.forms.reservationCustomerName)}" placeholder="예: 홍길동" />
+            </label>
+            <label class="field">
+              <span>연락처</span>
+              <input id="reservationCustomerPhone" type="text" value="${escapeAttr(state.forms.reservationCustomerPhone)}" placeholder="예: 010-0000-0000" />
+            </label>
+            <label class="field">
+              <span>예약 수량</span>
+              <input id="reservationQty" type="number" min="1" inputmode="numeric" value="${escapeAttr(state.forms.reservationQty)}" />
+            </label>
+            <label class="field">
+              <span>메모</span>
+              <textarea id="reservationMemo" placeholder="시공일, 차량정보 등">${escapeHtml(state.forms.reservationMemo)}</textarea>
+            </label>
+            <button type="button" class="primary-button" data-action="createReservation">예약 저장</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel list-panel">
+        <h3>예약 내역</h3>
+        <div class="order-list">
+          ${visibleReservations().slice(0, 12).map(renderReservationCard).join("") || `<div class="empty">예약 내역이 없습니다.</div>`}
+        </div>
+      </section>
+    </main>
+  `;
+}
+
 function renderOrderDealerTabs() {
   const options = orderDealerOptions();
   const totalCount = state.orders.length;
@@ -1506,6 +1656,7 @@ function renderProductManageRow(product) {
 function renderOrderCard(order) {
   const canChange = state.session?.role === "admin";
   const canCancel = state.session?.role === "dealer" && order.dealer_code === state.session.dealer_code && order.status === "접수";
+  const canReceive = state.session?.role === "dealer" && order.dealer_code === state.session.dealer_code && ["출고", "완료"].includes(order.status) && !order.dealer_received_at;
   const hasShipping = order.shipping_company || order.tracking_number;
   const staffId = order.created_by_login_id || "";
   return `
@@ -1538,6 +1689,47 @@ function renderOrderCard(order) {
           <button type="button" class="danger-button" data-action="cancelOrder" data-order-id="${escapeAttr(order.order_id)}">발주 취소</button>
         </div>
       ` : ""}
+      ${canReceive ? `
+        <div class="order-actions">
+          <button type="button" class="primary-button" data-action="receiveOrder" data-order-id="${escapeAttr(order.order_id)}">입고완료</button>
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
+function renderSaleCard(sale) {
+  return `
+    <article class="order-card">
+      <div>
+        <span class="badge ok">판매완료</span>
+        <h3>${escapeHtml(sale.product_name)}</h3>
+        <p class="product-meta">${escapeHtml(sale.sale_id || "")} · ${escapeHtml(sale.sku)}</p>
+        <p class="product-meta">담당자 ID: ${escapeHtml(sale.created_by_login_id || "담당자 미기록")}</p>
+      </div>
+      <div class="order-side">
+        <strong>${roll(Number(sale.qty || 0))}</strong>
+        <span>${escapeHtml(sale.created_at || "")}</span>
+      </div>
+      <p class="order-memo">${escapeHtml(sale.memo || "메모 없음")}</p>
+    </article>
+  `;
+}
+
+function renderReservationCard(reservation) {
+  return `
+    <article class="order-card">
+      <div>
+        <span class="badge ${reservation.status === "재고부족" ? "danger" : "ok"}">${escapeHtml(reservation.status || "예약")}</span>
+        <h3>${escapeHtml(reservation.product_name)}</h3>
+        <p class="product-meta">${escapeHtml(reservation.reservation_id || "")} · ${escapeHtml(reservation.sku)}</p>
+        <p class="product-meta">${escapeHtml(reservation.customer_name || "고객명 미입력")} · ${escapeHtml(reservation.customer_phone || "연락처 미입력")}</p>
+      </div>
+      <div class="order-side">
+        <strong>${roll(Number(reservation.qty || 0))}</strong>
+        <span>${escapeHtml(reservation.created_at || "")}</span>
+      </div>
+      <p class="order-memo">${escapeHtml(reservation.memo || "메모 없음")}</p>
     </article>
   `;
 }
@@ -1655,6 +1847,8 @@ function renderBottomNav() {
         ["inventoryManage", "재고수정"],
         ["orderCreate", "발주신청"],
         ["orders", "내 발주"],
+        ["dealerSale", "판매"],
+        ["reservations", "예약"],
         ["dealers", "담당자"],
         ["notifications", "알림"]
       ];
@@ -1702,6 +1896,18 @@ function bindEvents() {
   bindInput("inventoryLocation", (value) => (state.forms.inventoryLocation = value));
   bindInput("orderQty", (value) => (state.forms.orderQty = Number(value || 0)));
   bindInput("orderMemo", (value) => (state.forms.orderMemo = value));
+  bindInput("saleQty", (value) => {
+    state.forms.saleQty = Number(value || 0);
+    refreshActiveSearchResults();
+  });
+  bindInput("saleMemo", (value) => (state.forms.saleMemo = value));
+  bindInput("reservationCustomerName", (value) => (state.forms.reservationCustomerName = value));
+  bindInput("reservationCustomerPhone", (value) => (state.forms.reservationCustomerPhone = value));
+  bindInput("reservationQty", (value) => {
+    state.forms.reservationQty = Number(value || 0);
+    refreshActiveSearchResults();
+  });
+  bindInput("reservationMemo", (value) => (state.forms.reservationMemo = value));
   bindInput("productSku", (value) => (state.forms.productSku = value.trim()));
   bindInput("productName", (value) => (state.forms.productName = value));
   bindInput("productUnit", (value) => (state.forms.productUnit = value));
@@ -2015,6 +2221,16 @@ function refreshActiveSearchResults() {
     return;
   }
 
+  if (state.screen === "dealerSale") {
+    replaceHtml("#dealerSaleProductList", filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`);
+    return;
+  }
+
+  if (state.screen === "reservations") {
+    replaceHtml("#reservationProductList", filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`);
+    return;
+  }
+
   if (state.screen === "orders") {
     const rows = visibleOrders();
     replaceHtml("#orderStats", renderOrderStatsCards(rows));
@@ -2201,6 +2417,9 @@ async function handleAction(action, button) {
   if (action === "sendTestPushNotification") return sendTestPushNotification();
   if (action === "createOrder") return createOrder();
   if (action === "clearTestOrders") return clearTestOrders();
+  if (action === "receiveOrder") return receiveOrder(button.dataset.orderId);
+  if (action === "createSale") return createSale();
+  if (action === "createReservation") return createReservation();
   if (action === "cancelOrder") return cancelOrder(button.dataset.orderId);
   if (action === "saveInventory") return saveInventory();
   if (action === "saveProduct") return saveProduct();
@@ -2256,6 +2475,8 @@ function applyRemoteSession(data) {
   if (Array.isArray(data.products)) state.products = data.products;
   if (Array.isArray(data.inventory)) state.inventory = data.inventory;
   if (Array.isArray(data.orders)) state.orders = data.orders;
+  if (Array.isArray(data.sales)) state.retailSales = data.sales;
+  if (Array.isArray(data.reservations)) state.reservations = data.reservations;
   syncAppBadgeFromOrders();
 }
 
@@ -2288,14 +2509,18 @@ async function changePassword() {
 
 async function refreshData(showDone = true) {
   if (window.FilmStockApi?.isEnabled() && state.session) {
-    const [inventoryData, orderData] = await Promise.all([
+    const [inventoryData, orderData, salesData, reservationData] = await Promise.all([
       window.FilmStockApi.getInventory({}),
-      window.FilmStockApi.getOrders({})
+      window.FilmStockApi.getOrders({}),
+      window.FilmStockApi.getSales({}),
+      window.FilmStockApi.getReservations({})
     ]);
     if (Array.isArray(inventoryData?.products)) state.products = inventoryData.products;
     if (Array.isArray(inventoryData?.inventory)) state.inventory = inventoryData.inventory;
     if (Array.isArray(orderData?.orders)) state.orders = orderData.orders;
     if (Array.isArray(orderData?.accounts)) state.accounts = orderData.accounts;
+    if (Array.isArray(salesData?.sales)) state.retailSales = salesData.sales;
+    if (Array.isArray(reservationData?.reservations)) state.reservations = reservationData.reservations;
     syncAppBadgeFromOrders();
   }
   render();
@@ -2371,14 +2596,19 @@ async function updateOrderStatus(orderId, status) {
     if (data?.order) {
       state.orders = state.orders.map((order) => (order.order_id === orderId ? data.order : order));
     }
+    if (data?.inventory) upsertInventory(data.inventory);
   } else {
     const order = state.orders.find((item) => item.order_id === orderId);
     if (order) {
+      if (["출고", "완료"].includes(status) && !order.hq_stock_deducted_at) {
+        adjustLocalInventory(headOfficeCode, order.sku, -Number(order.qty || 0), { requireEnoughStock: true });
+        order.hq_stock_deducted_at = nowText();
+      }
       order.status = status;
       if (payload.shippingCompany) {
         order.shipping_company = payload.shippingCompany;
         order.tracking_number = payload.trackingNumber;
-      } else {
+      } else if (["접수", "승인", "반려", "취소"].includes(status)) {
         order.shipping_company = "";
         order.tracking_number = "";
       }
@@ -2388,6 +2618,26 @@ async function updateOrderStatus(orderId, status) {
   render();
   syncAppBadgeFromOrders();
   showToast(`발주 상태를 ${status}(으)로 변경했습니다.`);
+}
+
+async function receiveOrder(orderId) {
+  const order = state.orders.find((item) => item.order_id === orderId);
+  if (!order) throw new Error("입고 처리할 발주를 찾을 수 없습니다.");
+  const confirmed = confirm(`${order.product_name} ${roll(Number(order.qty || 0))}을 입고완료 처리할까요?`);
+  if (!confirmed) return;
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.receiveOrder({ orderId });
+    if (data?.order) state.orders = state.orders.map((item) => (item.order_id === orderId ? data.order : item));
+    if (data?.inventory) upsertInventory(data.inventory);
+  } else {
+    adjustLocalInventory(order.dealer_code, order.sku, Number(order.qty || 0), { requireEnoughStock: false });
+    order.status = "완료";
+    order.dealer_received_at = nowText();
+    order.updated_at = nowText();
+  }
+  render();
+  showToast("입고완료 처리했습니다. 재고에 반영되었습니다.");
 }
 
 async function clearTestOrders() {
@@ -2411,6 +2661,89 @@ async function clearTestOrders() {
   }
   syncAppBadgeFromOrders();
   render();
+}
+
+async function createSale() {
+  const product = selectedProduct();
+  const qty = Number(state.forms.saleQty || 0);
+  if (state.session?.role !== "dealer") throw new Error("대리점 계정만 판매 등록할 수 있습니다.");
+  if (!product) throw new Error("판매할 제품을 선택해 주세요.");
+  if (!qty || qty < 1) throw new Error("판매 수량을 1개 이상 입력해 주세요.");
+  const inventory = dealerInventoryForProduct(product.sku);
+  if (Number(inventory?.stock_qty || 0) < qty) throw new Error("재고가 부족합니다. 재고 확인 또는 발주가 필요합니다.");
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.createSale({
+      sku: product.sku,
+      qty,
+      memo: state.forms.saleMemo
+    });
+    if (data?.sale) state.retailSales.unshift(data.sale);
+    if (data?.inventory) upsertInventory(data.inventory);
+  } else {
+    adjustLocalInventory(state.session.dealer_code, product.sku, -qty, { requireEnoughStock: true });
+    state.retailSales.unshift({
+      sale_id: `SAL-${Date.now().toString().slice(-9)}`,
+      dealer_code: state.session.dealer_code,
+      dealer_name: state.session.dealer_name,
+      created_by_login_id: state.session.login_id,
+      product_name: product.product_name,
+      sku: product.sku,
+      qty,
+      memo: state.forms.saleMemo,
+      created_at: nowText(),
+      updated_at: nowText()
+    });
+  }
+
+  state.forms.saleQty = 1;
+  state.forms.saleMemo = "";
+  render();
+  showToast("판매완료 처리했습니다. 재고에서 차감되었습니다.");
+}
+
+async function createReservation() {
+  const product = selectedProduct();
+  const qty = Number(state.forms.reservationQty || 0);
+  if (state.session?.role !== "dealer") throw new Error("대리점 계정만 예약 등록할 수 있습니다.");
+  if (!product) throw new Error("예약 제품을 선택해 주세요.");
+  if (!qty || qty < 1) throw new Error("예약 수량을 1개 이상 입력해 주세요.");
+  const inventory = dealerInventoryForProduct(product.sku);
+  const status = Number(inventory?.stock_qty || 0) < qty ? "재고부족" : "예약";
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.createReservation({
+      sku: product.sku,
+      qty,
+      customer_name: state.forms.reservationCustomerName,
+      customer_phone: state.forms.reservationCustomerPhone,
+      memo: state.forms.reservationMemo
+    });
+    if (data?.reservation) state.reservations.unshift(data.reservation);
+  } else {
+    state.reservations.unshift({
+      reservation_id: `RSV-${Date.now().toString().slice(-9)}`,
+      dealer_code: state.session.dealer_code,
+      dealer_name: state.session.dealer_name,
+      created_by_login_id: state.session.login_id,
+      customer_name: state.forms.reservationCustomerName,
+      customer_phone: state.forms.reservationCustomerPhone,
+      product_name: product.product_name,
+      sku: product.sku,
+      qty,
+      status,
+      memo: state.forms.reservationMemo,
+      created_at: nowText(),
+      updated_at: nowText()
+    });
+  }
+
+  state.forms.reservationCustomerName = "";
+  state.forms.reservationCustomerPhone = "";
+  state.forms.reservationQty = 1;
+  state.forms.reservationMemo = "";
+  render();
+  showToast(status === "재고부족" ? "예약 저장됨: 재고부족 상태입니다." : "예약을 저장했습니다.");
 }
 
 async function cancelOrder(orderId) {
@@ -2896,6 +3229,18 @@ function visibleOrders() {
   });
 }
 
+function visibleRetailSales() {
+  return state.retailSales
+    .filter((sale) => state.session?.role !== "dealer" || sale.dealer_code === state.session.dealer_code)
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+}
+
+function visibleReservations() {
+  return state.reservations
+    .filter((reservation) => state.session?.role !== "dealer" || reservation.dealer_code === state.session.dealer_code)
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+}
+
 function salesRowsBase() {
   return state.orders
     .filter((order) => order.status === "완료")
@@ -3169,6 +3514,40 @@ function upsertInventory(row) {
   const index = state.inventory.findIndex((item) => item.dealer_code === row.dealer_code && item.sku === row.sku);
   if (index >= 0) state.inventory[index] = { ...state.inventory[index], ...row };
   else state.inventory.push(row);
+}
+
+function dealerInventoryForProduct(sku) {
+  return state.inventory.find((row) => row.dealer_code === state.session?.dealer_code && row.sku === sku);
+}
+
+function adjustLocalInventory(dealerCode, sku, deltaQty, options = {}) {
+  const product = state.products.find((item) => item.sku === sku) || {};
+  const index = state.inventory.findIndex((item) => item.dealer_code === dealerCode && item.sku === sku);
+  const current = index >= 0 ? state.inventory[index] : {
+    dealer_code: dealerCode,
+    dealer_name: dealerNameByCode(dealerCode),
+    product_name: product.product_name || "",
+    sku,
+    category: product.category || "",
+    color: product.color || colorNameFromText(product.product_name),
+    stock_qty: 0,
+    safety_stock: 0,
+    location: `${dealerNameByCode(dealerCode)} 창고`,
+    updated_at: ""
+  };
+  const nextQty = Number(current.stock_qty || 0) + Number(deltaQty || 0);
+  if (options.requireEnoughStock && nextQty < 0) throw new Error(`${dealerNameByCode(dealerCode)} 재고가 부족합니다.`);
+  const next = {
+    ...current,
+    product_name: current.product_name || product.product_name || "",
+    category: current.category || product.category || "",
+    color: current.color || product.color || colorNameFromText(product.product_name),
+    stock_qty: nextQty,
+    updated_at: nowText()
+  };
+  if (index >= 0) state.inventory[index] = next;
+  else state.inventory.push(next);
+  return next;
 }
 
 function upsertProduct(product) {

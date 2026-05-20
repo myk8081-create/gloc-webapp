@@ -2,6 +2,8 @@ const SHEETS = {
   accounts: "대리점관리",
   inventory: "재고현황",
   orders: "발주현황",
+  sales: "판매현황",
+  reservations: "예약현황",
   products: "제품등록",
   settings: "settings",
   pushSubscriptions: "푸시구독"
@@ -10,7 +12,9 @@ const SHEETS = {
 const HEADERS = {
   accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "role", "is_first_login", "is_active", "updated_at"],
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
-  orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "shipping_company", "tracking_number", "created_at", "updated_at"],
+  orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
+  sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
+  reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "product_name", "sku", "qty", "status", "memo", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
@@ -40,8 +44,13 @@ function doPost(e) {
     if (action === "createOrder") return ok_(handleCreateOrder_(payload, user));
     if (action === "getOrders") return ok_(handleGetOrders_(payload, user));
     if (action === "updateOrderStatus") return ok_(handleUpdateOrderStatus_(payload, user));
+    if (action === "receiveOrder") return ok_(handleReceiveOrder_(payload, user));
     if (action === "cancelOrder") return ok_(handleCancelOrder_(payload, user));
     if (action === "clearOrders") return ok_(handleClearOrders_(payload, user));
+    if (action === "createSale") return ok_(handleCreateSale_(payload, user));
+    if (action === "getSales") return ok_(handleGetSales_(payload, user));
+    if (action === "createReservation") return ok_(handleCreateReservation_(payload, user));
+    if (action === "getReservations") return ok_(handleGetReservations_(payload, user));
     if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
     if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
     if (action === "updateDealerDiscount") return ok_(handleUpdateDealerDiscount_(payload, user));
@@ -158,13 +167,17 @@ function handleLogin_(payload) {
   const user = publicAccount_(account);
   const inventoryData = handleGetInventory_({}, user);
   const orderData = handleGetOrders_({}, user);
+  const salesData = handleGetSales_({}, user);
+  const reservationData = handleGetReservations_({}, user);
   return {
     session,
     user,
     accounts: listAccessibleAccounts_(user),
     products: inventoryData.products,
     inventory: inventoryData.inventory,
-    orders: orderData.orders
+    orders: orderData.orders,
+    sales: salesData.sales,
+    reservations: reservationData.reservations
   };
 }
 
@@ -246,6 +259,8 @@ function handleCreateOrder_(payload, user) {
     memo: payload.memo || "",
     shipping_company: "",
     tracking_number: "",
+    hq_stock_deducted_at: "",
+    dealer_received_at: "",
     created_at: isoNow_(),
     updated_at: isoNow_()
   };
@@ -272,16 +287,28 @@ function handleUpdateOrderStatus_(payload, user) {
   const orderId = required_(payload.order_id, "order_id");
   const status = required_(payload.status, "status");
   if (ORDER_STATUSES.indexOf(status) === -1) throw new Error("지원하지 않는 발주 상태입니다.");
+  const currentOrder = readRows_(SHEETS.orders).find((row) => row.order_id === orderId);
+  if (!currentOrder) throw new Error("발주를 찾을 수 없습니다.");
 
   const updates = {
     status: status,
     updated_at: isoNow_()
   };
+  let deductedInventory = null;
+
+  if (status === "출고" || status === "완료") {
+    if (!hasSnapshotValue_(currentOrder.hq_stock_deducted_at)) {
+      const deducted = deductHeadOfficeStockForOrder_(currentOrder);
+      updates.hq_stock_deducted_at = deducted.updated_at;
+      deductedInventory = deducted.inventory;
+      if (deducted.low_stock) notifyHeadOfficeLowStock_(deducted.inventory);
+    }
+  }
 
   if (status === "출고") {
     updates.shipping_company = required_(payload.shipping_company, "택배사");
     updates.tracking_number = required_(payload.tracking_number, "송장번호");
-  } else {
+  } else if (["접수", "승인", "반려", "취소"].indexOf(status) >= 0) {
     updates.shipping_company = "";
     updates.tracking_number = "";
   }
@@ -289,7 +316,37 @@ function handleUpdateOrderStatus_(payload, user) {
   const order = updateRowByKey_(SHEETS.orders, "order_id", orderId, updates);
   return {
     order: order,
+    inventory: deductedInventory ? publicInventoryRow_(deductedInventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_()) : null,
     notification: notifyDealerOrderUpdated_(order)
+  };
+}
+
+function handleReceiveOrder_(payload, user) {
+  if (user.role !== "dealer") throw new Error("대리점 계정만 입고완료 처리할 수 있습니다.");
+  const orderId = required_(payload.order_id, "order_id");
+  const order = readRows_(SHEETS.orders).find((row) => row.order_id === orderId);
+  if (!order) throw new Error("입고 처리할 발주를 찾을 수 없습니다.");
+  if (String(order.dealer_code).toUpperCase() !== String(user.dealer_code).toUpperCase()) {
+    throw new Error("본인 대리점 발주만 입고완료 처리할 수 있습니다.");
+  }
+  if (hasSnapshotValue_(order.dealer_received_at)) throw new Error("이미 입고완료 처리된 발주입니다.");
+  if (["출고", "완료"].indexOf(order.status) === -1) throw new Error("출고된 발주만 입고완료 처리할 수 있습니다.");
+
+  const product = readRows_(SHEETS.products).find((row) => row.sku === order.sku) || {
+    sku: order.sku,
+    product_name: order.product_name,
+    category: "",
+    unit: "롤"
+  };
+  const inventory = adjustInventoryStock_(user.dealer_code, user.dealer_name, product, Number(order.qty || 0), { requireEnoughStock: false });
+  const updated = updateRowByKey_(SHEETS.orders, "order_id", orderId, {
+    status: "완료",
+    dealer_received_at: isoNow_(),
+    updated_at: isoNow_()
+  });
+  return {
+    order: updated,
+    inventory: publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_())
   };
 }
 
@@ -321,6 +378,83 @@ function handleClearOrders_(payload, user) {
   return { deleted_count: deletedCount };
 }
 
+function handleCreateSale_(payload, user) {
+  if (user.role !== "dealer") throw new Error("대리점 계정만 판매완료를 등록할 수 있습니다.");
+  const sku = required_(payload.sku, "sku");
+  const qty = Number(required_(payload.qty, "qty"));
+  if (!qty || qty < 1) throw new Error("판매 수량은 1 이상이어야 합니다.");
+
+  const product = readRows_(SHEETS.products).find((row) => row.sku === sku && toBool_(row.is_active));
+  if (!product) throw new Error("제품을 찾을 수 없습니다.");
+  const inventory = adjustInventoryStock_(user.dealer_code, user.dealer_name, product, -qty, { requireEnoughStock: true });
+  const now = isoNow_();
+  const sale = {
+    sale_id: makeSaleId_(),
+    dealer_code: user.dealer_code,
+    dealer_name: user.dealer_name,
+    created_by_login_id: user.login_id,
+    product_name: product.product_name,
+    sku: product.sku,
+    qty: qty,
+    memo: payload.memo || "",
+    created_at: now,
+    updated_at: now
+  };
+  appendObject_(SHEETS.sales, sale);
+  return {
+    sale: sale,
+    inventory: publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_())
+  };
+}
+
+function handleGetSales_(payload, user) {
+  let sales = readRows_(SHEETS.sales);
+  if (user.role === "dealer") {
+    sales = sales.filter((sale) => String(sale.dealer_code).toUpperCase() === String(user.dealer_code).toUpperCase());
+  }
+  return { sales: sales.reverse() };
+}
+
+function handleCreateReservation_(payload, user) {
+  if (user.role !== "dealer") throw new Error("대리점 계정만 예약을 등록할 수 있습니다.");
+  const sku = required_(payload.sku, "sku");
+  const qty = Number(required_(payload.qty, "qty"));
+  if (!qty || qty < 1) throw new Error("예약 수량은 1 이상이어야 합니다.");
+
+  const product = readRows_(SHEETS.products).find((row) => row.sku === sku && toBool_(row.is_active));
+  if (!product) throw new Error("제품을 찾을 수 없습니다.");
+  const inventory = inventoryRowFor_(user.dealer_code, product.sku);
+  const now = isoNow_();
+  const reservation = {
+    reservation_id: makeReservationId_(),
+    dealer_code: user.dealer_code,
+    dealer_name: user.dealer_name,
+    created_by_login_id: user.login_id,
+    customer_name: payload.customer_name || "",
+    customer_phone: payload.customer_phone || "",
+    product_name: product.product_name,
+    sku: product.sku,
+    qty: qty,
+    status: Number(inventory.stock_qty || 0) < qty ? "재고부족" : "예약",
+    memo: payload.memo || "",
+    created_at: now,
+    updated_at: now
+  };
+  appendObject_(SHEETS.reservations, reservation);
+  return {
+    reservation: reservation,
+    inventory: publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_())
+  };
+}
+
+function handleGetReservations_(payload, user) {
+  let reservations = readRows_(SHEETS.reservations);
+  if (user.role === "dealer") {
+    reservations = reservations.filter((reservation) => String(reservation.dealer_code).toUpperCase() === String(user.dealer_code).toUpperCase());
+  }
+  return { reservations: reservations.reverse() };
+}
+
 function handleSaveInventory_(payload, user) {
   const dealerCode = user.role === "admin"
     ? HEAD_OFFICE_CODE
@@ -344,6 +478,9 @@ function handleSaveInventory_(payload, user) {
     location: location,
     updated_at: isoNow_()
   });
+  if (dealerCode === HEAD_OFFICE_CODE && Number(row.stock_qty || 0) <= Number(row.safety_stock || 0)) {
+    notifyHeadOfficeLowStock_(row);
+  }
   return { inventory: publicInventoryRow_(row, mapBy_(products, "sku"), dealerNameMap_()) };
 }
 
@@ -655,6 +792,15 @@ function notifyDealerOrderUpdated_(order) {
   }, { role: "dealer", dealer_code: order.dealer_code });
 }
 
+function notifyHeadOfficeLowStock_(inventory) {
+  return sendPushNotification_({
+    title: "GLOC 본사 안전재고 부족",
+    body: (inventory.product_name || inventory.sku) + " · 현재 " + Number(inventory.stock_qty || 0) + "롤 / 안전 " + Number(inventory.safety_stock || 0) + "롤",
+    url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
+    tag: "gloc-hq-low-stock-" + inventory.sku
+  }, { role: "admin" });
+}
+
 function pendingOrderCount_() {
   return readRows_(SHEETS.orders).filter((order) => order.status === "접수").length;
 }
@@ -831,6 +977,55 @@ function upsertInventoryRow_(dealerCode, sku, object) {
 
   appendObject_(SHEETS.inventory, object);
   return object;
+}
+
+function inventoryRowFor_(dealerCode, sku) {
+  return readRows_(SHEETS.inventory).find((row) => (
+    String(row.dealer_code).toUpperCase() === String(dealerCode).toUpperCase() &&
+    String(row.sku) === String(sku)
+  )) || {
+    dealer_code: dealerCode,
+    product_name: "",
+    sku: sku,
+    stock_qty: 0,
+    safety_stock: 0,
+    location: dealerNameMap_()[dealerCode] ? dealerNameMap_()[dealerCode] + " 창고" : "",
+    updated_at: ""
+  };
+}
+
+function adjustInventoryStock_(dealerCode, dealerName, product, deltaQty, options) {
+  const opts = options || {};
+  const current = inventoryRowFor_(dealerCode, product.sku);
+  const currentQty = Number(current.stock_qty || 0);
+  const nextQty = currentQty + Number(deltaQty || 0);
+  if (opts.requireEnoughStock && nextQty < 0) {
+    throw new Error((dealerName || dealerCode) + " 재고가 부족합니다. 현재 " + currentQty + "롤");
+  }
+  return upsertInventoryRow_(dealerCode, product.sku, {
+    dealer_code: dealerCode,
+    product_name: product.product_name || current.product_name || "",
+    sku: product.sku,
+    stock_qty: nextQty,
+    safety_stock: Number(current.safety_stock || 0),
+    location: current.location || (dealerName ? dealerName + " 창고" : ""),
+    updated_at: isoNow_()
+  });
+}
+
+function deductHeadOfficeStockForOrder_(order) {
+  const product = readRows_(SHEETS.products).find((row) => row.sku === order.sku) || {
+    sku: order.sku,
+    product_name: order.product_name,
+    category: "",
+    unit: "롤"
+  };
+  const inventory = adjustInventoryStock_(HEAD_OFFICE_CODE, HEAD_OFFICE_NAME, product, -Number(order.qty || 0), { requireEnoughStock: true });
+  return {
+    inventory: inventory,
+    updated_at: inventory.updated_at,
+    low_stock: Number(inventory.stock_qty || 0) <= Number(inventory.safety_stock || 0)
+  };
 }
 
 function upsertProductRow_(sku, object) {
@@ -1321,6 +1516,18 @@ function makeOrderId_() {
   const date = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyMMdd");
   const suffix = Utilities.getUuid().slice(0, 6).toUpperCase();
   return "ORD-" + date + "-" + suffix;
+}
+
+function makeSaleId_() {
+  const date = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyMMdd");
+  const suffix = Utilities.getUuid().slice(0, 6).toUpperCase();
+  return "SAL-" + date + "-" + suffix;
+}
+
+function makeReservationId_() {
+  const date = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyMMdd");
+  const suffix = Utilities.getUuid().slice(0, 6).toUpperCase();
+  return "RSV-" + date + "-" + suffix;
 }
 
 function parseBody_(e) {

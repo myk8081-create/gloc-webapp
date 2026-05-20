@@ -102,6 +102,10 @@
     });
   }
 
+  async function receiveOrder({ orderId }) {
+    return request("receiveOrder", { order_id: orderId });
+  }
+
   async function cancelOrder({ orderId }) {
     return request("cancelOrder", { order_id: orderId });
   }
@@ -116,6 +120,22 @@
 
   async function saveProduct(product) {
     return request("saveProduct", product);
+  }
+
+  async function createSale(sale) {
+    return request("createSale", sale);
+  }
+
+  async function getSales(filters = {}) {
+    return request("getSales", filters);
+  }
+
+  async function createReservation(reservation) {
+    return request("createReservation", reservation);
+  }
+
+  async function getReservations(filters = {}) {
+    return request("getReservations", filters);
   }
 
   async function updateDealerDiscount({ dealerCode, discountRate }) {
@@ -181,10 +201,15 @@
     getOrders,
     updateOrderStatus,
     updateOrderStatusWithShipping,
+    receiveOrder,
     cancelOrder,
     clearOrders,
     saveInventory,
     saveProduct,
+    createSale,
+    getSales,
+    createReservation,
+    getReservations,
     updateDealerDiscount,
     createDealerAccount,
     resetDealerPassword,

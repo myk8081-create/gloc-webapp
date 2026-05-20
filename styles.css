@@ -912,6 +912,10 @@ h3 {
   line-height: 1.45;
 }
 
+.danger-text {
+  color: var(--red) !important;
+}
+
 .product-manage-row {
   display: grid;
   grid-template-columns: 1fr auto;
