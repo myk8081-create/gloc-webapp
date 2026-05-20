@@ -14,7 +14,7 @@ const HEADERS = {
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
   orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
-  reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
+  reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "reservation_date", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
@@ -431,6 +431,8 @@ function handleCreateReservation_(payload, user) {
   const product = readRows_(SHEETS.products).find((row) => row.sku === sku && toBool_(row.is_active));
   if (!product) throw new Error("제품을 찾을 수 없습니다.");
   const inventory = inventoryRowFor_(user.dealer_code, product.sku);
+  const pendingQty = pendingReservationQty_(user.dealer_code, product.sku);
+  const availableQty = Math.max(Number(inventory.stock_qty || 0) - pendingQty, 0);
   const now = isoNow_();
   const reservation = {
     reservation_id: makeReservationId_(),
@@ -439,10 +441,11 @@ function handleCreateReservation_(payload, user) {
     created_by_login_id: user.login_id,
     customer_name: payload.customer_name || "",
     customer_phone: payload.customer_phone || "",
+    reservation_date: payload.reservation_date || "",
     product_name: product.product_name,
     sku: product.sku,
     qty: qty,
-    status: Number(inventory.stock_qty || 0) < qty ? "재고부족" : "예약",
+    status: availableQty < qty ? "재고부족" : "예약",
     memo: payload.memo || "",
     completed_at: "",
     created_at: now,
@@ -490,6 +493,16 @@ function handleGetReservations_(payload, user) {
     reservations = reservations.filter((reservation) => String(reservation.dealer_code).toUpperCase() === String(user.dealer_code).toUpperCase());
   }
   return { reservations: reservations.reverse() };
+}
+
+function pendingReservationQty_(dealerCode, sku) {
+  return readRows_(SHEETS.reservations)
+    .filter((reservation) => (
+      String(reservation.dealer_code).toUpperCase() === String(dealerCode).toUpperCase() &&
+      String(reservation.sku) === String(sku) &&
+      reservation.status !== "시공완료"
+    ))
+    .reduce((total, reservation) => total + Number(reservation.qty || 0), 0);
 }
 
 function handleSaveInventory_(payload, user) {

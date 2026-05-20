@@ -214,6 +214,7 @@ const state = {
     saleMemo: "",
     reservationCustomerName: "",
     reservationCustomerPhone: "",
+    reservationDate: dateInputValue(),
     reservationQty: 1,
     reservationMemo: "",
     productSku: "",
@@ -1196,10 +1197,6 @@ function renderOrderCreate() {
 function renderReservations() {
   if (state.session?.role !== "dealer") return "";
   const product = selectedProduct();
-  const inventory = dealerInventoryForProduct(product?.sku);
-  const currentStock = Number(inventory?.stock_qty || 0);
-  const qty = Number(state.forms.reservationQty || 0);
-  const isShort = qty > currentStock;
   return `
     <main class="screen ${state.screen === "reservations" ? "active" : ""}" data-screen="reservations">
       <section class="page-head">
@@ -1223,10 +1220,8 @@ function renderReservations() {
 
         <div class="panel form-panel">
           <h3>예약 입력</h3>
-          <div class="detail-card ${isShort ? "is-low" : ""}">
-            <h2>${escapeHtml(product?.product_name || "제품 선택")}</h2>
-            <p class="muted">${escapeHtml(product?.sku || "-")} · 현재 재고 ${roll(currentStock)}</p>
-            ${isShort ? `<p class="form-note danger-text">재고가 부족합니다. 발주 또는 입고 확인이 필요합니다.</p>` : `<p class="form-note">현재 재고로 예약 대응이 가능합니다.</p>`}
+          <div id="reservationStockPanel">
+            ${renderReservationStockPanel(product)}
           </div>
           <div class="form-grid">
             <label class="field">
@@ -1235,7 +1230,11 @@ function renderReservations() {
             </label>
             <label class="field">
               <span>연락처</span>
-              <input id="reservationCustomerPhone" type="text" value="${escapeAttr(state.forms.reservationCustomerPhone)}" placeholder="예: 010-0000-0000" />
+              <input id="reservationCustomerPhone" type="tel" inputmode="numeric" maxlength="13" value="${escapeAttr(state.forms.reservationCustomerPhone)}" placeholder="예: 010-0000-0000" />
+            </label>
+            <label class="field">
+              <span>예약 날짜</span>
+              <input id="reservationDate" type="date" value="${escapeAttr(state.forms.reservationDate || dateInputValue())}" />
             </label>
             <label class="field">
               <span>예약 수량</span>
@@ -1257,6 +1256,37 @@ function renderReservations() {
         </div>
       </section>
     </main>
+  `;
+}
+
+function renderReservationStockPanel(product, summary = reservationStockSummary(product?.sku)) {
+  const qty = Number(state.forms.reservationQty || 0);
+  const afterAvailable = Math.max(summary.availableStock - qty, 0);
+  const isShort = qty > summary.availableStock;
+  return `
+    <div class="detail-card ${isShort ? "is-low" : ""}">
+      <h2>${escapeHtml(product?.product_name || "제품 선택")}</h2>
+      <p class="muted">${escapeHtml(product?.sku || "-")} · 현재 재고 ${roll(summary.currentStock)} · 시공 전 예약 ${roll(summary.pendingQty)} · 예약 가능 ${roll(summary.availableStock)}</p>
+      <div class="stock-grid reservation-stock-grid">
+        <div class="stock-box">
+          <span>현재 재고</span>
+          <strong>${roll(summary.currentStock)}</strong>
+        </div>
+        <div class="stock-box warn-box">
+          <span>시공 전 예약</span>
+          <strong>${roll(summary.pendingQty)}</strong>
+        </div>
+        <div class="stock-box ${summary.availableStock <= 0 ? "danger-box" : ""}">
+          <span>예약 가능</span>
+          <strong>${roll(summary.availableStock)}</strong>
+        </div>
+        <div class="stock-box ${isShort ? "danger-box" : ""}">
+          <span>예약 후 가능</span>
+          <strong>${roll(afterAvailable)}</strong>
+        </div>
+      </div>
+      ${isShort ? `<p class="form-note danger-text">현재 재고에서 시공 전 예약을 제외하면 재고가 부족합니다. 발주 또는 입고 확인이 필요합니다.</p>` : `<p class="form-note">현재 재고와 시공 전 예약을 반영해 예약 대응이 가능합니다.</p>`}
+    </div>
   `;
 }
 
@@ -1643,6 +1673,7 @@ function renderReservationCard(reservation) {
         <h3>${escapeHtml(reservation.product_name)}</h3>
         <p class="product-meta">${escapeHtml(reservation.reservation_id || "")} · ${escapeHtml(reservation.sku)}</p>
         <p class="product-meta">${escapeHtml(reservation.customer_name || "고객명 미입력")} · ${escapeHtml(reservation.customer_phone || "연락처 미입력")}</p>
+        <p class="product-meta">예약일: ${escapeHtml(reservation.reservation_date || "미지정")}</p>
       </div>
       <div class="order-side">
         <strong>${roll(Number(reservation.qty || 0))}</strong>
@@ -1825,10 +1856,11 @@ function bindEvents() {
   });
   bindInput("saleMemo", (value) => (state.forms.saleMemo = value));
   bindInput("reservationCustomerName", (value) => (state.forms.reservationCustomerName = value));
-  bindInput("reservationCustomerPhone", (value) => (state.forms.reservationCustomerPhone = value));
+  bindPhoneInput("reservationCustomerPhone", (value) => (state.forms.reservationCustomerPhone = value));
+  bindInput("reservationDate", (value) => (state.forms.reservationDate = value || dateInputValue()));
   bindInput("reservationQty", (value) => {
     state.forms.reservationQty = Number(value || 0);
-    refreshActiveSearchResults();
+    refreshReservationStockPanel();
   });
   bindInput("reservationMemo", (value) => (state.forms.reservationMemo = value));
   bindInput("productSku", (value) => (state.forms.productSku = value.trim()));
@@ -2034,6 +2066,16 @@ function bindInput(id, update) {
   document.querySelector(`#${id}`)?.addEventListener("input", (event) => update(event.target.value));
 }
 
+function bindPhoneInput(id, update) {
+  const input = document.querySelector(`#${id}`);
+  if (!input) return;
+  input.addEventListener("input", (event) => {
+    const formatted = formatPhoneNumber(event.target.value);
+    event.target.value = formatted;
+    update(formatted);
+  });
+}
+
 function bindDynamicListEvents(root) {
   root.querySelectorAll("[data-sku]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2146,6 +2188,7 @@ function refreshActiveSearchResults() {
 
   if (state.screen === "reservations") {
     replaceHtml("#reservationProductList", filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`);
+    refreshReservationStockPanel();
     return;
   }
 
@@ -2168,6 +2211,11 @@ function replaceHtml(selector, html) {
   if (!target) return;
   target.innerHTML = html;
   bindDynamicListEvents(target);
+}
+
+function refreshReservationStockPanel() {
+  if (state.screen !== "reservations") return;
+  replaceHtml("#reservationStockPanel", renderReservationStockPanel(selectedProduct()));
 }
 
 function isPushFeatureSupported() {
@@ -2628,8 +2676,8 @@ async function createReservation() {
   if (state.session?.role !== "dealer") throw new Error("대리점 계정만 예약 등록할 수 있습니다.");
   if (!product) throw new Error("예약 제품을 선택해 주세요.");
   if (!qty || qty < 1) throw new Error("예약 수량을 1개 이상 입력해 주세요.");
-  const inventory = dealerInventoryForProduct(product.sku);
-  const status = Number(inventory?.stock_qty || 0) < qty ? "재고부족" : "예약";
+  const summary = reservationStockSummary(product.sku);
+  const status = qty > summary.availableStock ? "재고부족" : "예약";
 
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.createReservation({
@@ -2637,6 +2685,7 @@ async function createReservation() {
       qty,
       customer_name: state.forms.reservationCustomerName,
       customer_phone: state.forms.reservationCustomerPhone,
+      reservation_date: state.forms.reservationDate || dateInputValue(),
       memo: state.forms.reservationMemo
     });
     if (data?.reservation) state.reservations.unshift(data.reservation);
@@ -2648,6 +2697,7 @@ async function createReservation() {
       created_by_login_id: state.session.login_id,
       customer_name: state.forms.reservationCustomerName,
       customer_phone: state.forms.reservationCustomerPhone,
+      reservation_date: state.forms.reservationDate || dateInputValue(),
       product_name: product.product_name,
       sku: product.sku,
       qty,
@@ -2660,6 +2710,7 @@ async function createReservation() {
 
   state.forms.reservationCustomerName = "";
   state.forms.reservationCustomerPhone = "";
+  state.forms.reservationDate = dateInputValue();
   state.forms.reservationQty = 1;
   state.forms.reservationMemo = "";
   render();
@@ -3475,6 +3526,28 @@ function dealerInventoryForProduct(sku) {
   return state.inventory.find((row) => row.dealer_code === state.session?.dealer_code && row.sku === sku);
 }
 
+function reservationStockSummary(sku) {
+  const inventory = dealerInventoryForProduct(sku);
+  const currentStock = Number(inventory?.stock_qty || 0);
+  const pendingQty = pendingReservationQty(sku);
+  return {
+    currentStock,
+    pendingQty,
+    availableStock: Math.max(currentStock - pendingQty, 0)
+  };
+}
+
+function pendingReservationQty(sku) {
+  if (!sku || !state.session) return 0;
+  return state.reservations
+    .filter((reservation) => (
+      reservation.sku === sku &&
+      reservation.dealer_code === state.session.dealer_code &&
+      reservation.status !== "시공완료"
+    ))
+    .reduce((total, reservation) => total + Number(reservation.qty || 0), 0);
+}
+
 function adjustLocalInventory(dealerCode, sku, deltaQty, options = {}) {
   const product = state.products.find((item) => item.sku === sku) || {};
   const index = state.inventory.findIndex((item) => item.dealer_code === dealerCode && item.sku === sku);
@@ -3682,6 +3755,19 @@ function dateInputValue(date = new Date()) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatPhoneNumber(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 11);
+  if (digits.startsWith("02")) {
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`;
+    return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
 }
 
 function monthInputValue(date = new Date()) {

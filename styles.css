@@ -1047,6 +1047,20 @@ h3 {
   line-height: 1.1;
 }
 
+.reservation-stock-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stock-box.warn-box {
+  border-color: rgba(201, 151, 73, 0.55);
+  background: rgba(201, 151, 73, 0.12);
+}
+
+.stock-box.danger-box {
+  border-color: rgba(216, 78, 66, 0.7);
+  background: rgba(216, 78, 66, 0.13);
+}
+
 .dealer-list {
   display: grid;
   gap: 8px;
