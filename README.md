@@ -6,9 +6,21 @@ PPF/틴팅 제품을 판매하는 본사와 대리점용 재고조회 및 발주
 ## 구성
 
 - Frontend: HTML, CSS, JavaScript 정적 웹앱
-- Backend/DB: Google Sheets + Google Apps Script Web App API
+- Backend/DB: Vercel API Route + Repository/Provider 계층 + Google Sheets/Apps Script
 - Deploy: Vercel 정적 배포 + 발주 푸시 알림 API
 - 주요 화면: 로그인, 최초 비밀번호 변경, 관리자 대시보드, 대리점 관리, 본사/내 재고/전체 대리점·샵 재고조회, 재고수정, 제품등록/수정, 발주관리, 발주신청, 매출현황, QR/카카오톡 안내문 생성
+
+## 코드 구조
+
+기존 UI는 유지하면서 데이터 접근 구조를 분리했습니다.
+
+- 브라우저: `/api/gloc`만 호출
+- Vercel API: Apps Script Web App URL을 서버 환경변수에서 읽어 호출
+- Repository: `src/lib/repositories`
+- Provider: `src/lib/providers`
+- Next.js App Router 전환용 API Route 초안: `app/api`
+
+상세 구조와 고객별 Google Sheets 분리 방식은 [docs/repository-architecture.md](docs/repository-architecture.md)를 참고하세요.
 
 ## 최종 인수인계
 
@@ -151,6 +163,7 @@ npm run dev
 ```js
 window.FILM_STOCK_CONFIG = {
   dataMode: "appsScript",
+  apiBaseUrl: "/api/gloc",
   appsScriptUrl: "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec",
   appPublicUrl: "https://stock.example.com",
   vapidPublicKey: "VAPID_PUBLIC_KEY"
@@ -165,6 +178,7 @@ window.FILM_STOCK_CONFIG = {
 
 ```text
 DATA_MODE=appsScript
+API_BASE_URL=/api/gloc
 APPS_SCRIPT_API_URL=https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec
 APP_PUBLIC_URL=https://stock.example.com
 VAPID_PUBLIC_KEY=YOUR_VAPID_PUBLIC_KEY

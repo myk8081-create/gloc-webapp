@@ -50,11 +50,14 @@ const dataMode = process.env.DATA_MODE || "mock";
 const appsScriptUrl = process.env.APPS_SCRIPT_API_URL || "";
 const appPublicUrl = process.env.APP_PUBLIC_URL || "";
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
+const apiBaseUrl = process.env.API_BASE_URL || (appsScriptUrl ? "/api/gloc" : "");
+const exposeAppsScriptUrl = process.env.EXPOSE_APPS_SCRIPT_URL === "true";
 
 // 정적 배포 환경에서는 런타임 환경변수를 직접 읽을 수 없어서 빌드 시 config.js를 생성합니다.
 const config = `window.FILM_STOCK_CONFIG = {
   dataMode: ${JSON.stringify(dataMode)},
-  appsScriptUrl: ${JSON.stringify(appsScriptUrl)},
+  apiBaseUrl: ${JSON.stringify(apiBaseUrl)},
+  appsScriptUrl: ${JSON.stringify(exposeAppsScriptUrl ? appsScriptUrl : "")},
   appPublicUrl: ${JSON.stringify(appPublicUrl)},
   vapidPublicKey: ${JSON.stringify(vapidPublicKey)}
 };

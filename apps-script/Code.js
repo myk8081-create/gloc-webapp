@@ -20,6 +20,13 @@ const HEADERS = {
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
 };
 
+const REPOSITORY_SHEET_HEADERS = {
+  Orders: ["order_no", "agency_id", "product_name", "quantity", "status", "courier", "tracking_no", "shipping_receipt_no", "print_status", "printed_at", "print_count", "shipping_error", "approved_at", "created_at"],
+  Agencies: ["id", "dealer_id", "agency_name", "contact_name", "phone", "zipcode", "address", "address_detail", "default_courier", "shipping_memo", "is_active", "is_first_login", "password_changed_at", "profile_completed_at", "updated_at"],
+  Settings: ["key", "value"],
+  Logs: ["created_at", "level", "message"]
+};
+
 const ORDER_STATUSES = ["접수", "승인", "출고", "완료", "반려", "취소"];
 const SESSION_SECONDS = 21600;
 const HEAD_OFFICE_CODE = "ADMIN";
@@ -64,6 +71,7 @@ function doPost(e) {
     if (action === "savePushSubscription") return ok_(handleSavePushSubscription_(payload, user));
     if (action === "deletePushSubscription") return ok_(handleDeletePushSubscription_(payload, user));
     if (action === "sendTestPushNotification") return ok_(handleSendTestPushNotification_(payload, user));
+    if (action === "setupRepositorySheets") return ok_(handleSetupRepositorySheets_(payload, user));
 
     throw new Error("지원하지 않는 action입니다: " + action);
   } catch (error) {
@@ -809,6 +817,15 @@ function handleSendTestPushNotification_(payload, user) {
   };
 }
 
+function handleSetupRepositorySheets_(payload, user) {
+  requireAdmin_(user);
+  ensureRepositorySheets_();
+  return {
+    sheets: Object.keys(REPOSITORY_SHEET_HEADERS),
+    customer_id: payload.customer_id || ""
+  };
+}
+
 function notifyOrderCreated_(order) {
   return sendPushNotification_({
     title: "GLOC 발주 접수",
@@ -921,6 +938,10 @@ function ensureSheets_() {
   ensureProductDefaultPrices_();
   ensureOrderPriceSnapshots_();
   ensurePasswordSalt_();
+}
+
+function ensureRepositorySheets_() {
+  Object.keys(REPOSITORY_SHEET_HEADERS).forEach((name) => ensureSheet_(name, REPOSITORY_SHEET_HEADERS[name]));
 }
 
 function ensureSheet_(name, headers) {

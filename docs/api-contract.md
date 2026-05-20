@@ -1,6 +1,8 @@
 # Apps Script API 계약
 
-프론트엔드는 Apps Script Web App URL 하나로 `POST` 요청을 보냅니다.
+프론트엔드는 Vercel API Route `/api/gloc`로 `POST` 요청을 보냅니다.
+`/api/gloc`는 서버 환경변수 `APPS_SCRIPT_API_URL`을 사용해 Apps Script Web App URL을 호출합니다.
+따라서 브라우저에는 Google Sheets 원본 URL이나 Apps Script URL을 노출하지 않는 구조로 운영할 수 있습니다.
 
 ```json
 {

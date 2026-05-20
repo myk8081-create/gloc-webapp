@@ -3,7 +3,7 @@
   const storageKey = "film_stock_apps_script_session";
 
   function apiUrl() {
-    return String(config.appsScriptUrl || "").trim();
+    return String(config.apiBaseUrl || config.appsScriptUrl || "").trim();
   }
 
   function isEnabled() {
