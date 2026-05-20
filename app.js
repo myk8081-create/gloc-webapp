@@ -1582,7 +1582,10 @@ function renderProductManageRow(product) {
 function renderOrderCard(order) {
   const canChange = state.session?.role === "admin";
   const canCancel = state.session?.role === "dealer" && order.dealer_code === state.session.dealer_code && order.status === "접수";
-  const canReceive = state.session?.role === "dealer" && order.dealer_code === state.session.dealer_code && ["출고", "완료"].includes(order.status) && !order.dealer_received_at;
+  const canReceive = state.session?.role === "dealer" &&
+    order.dealer_code === state.session.dealer_code &&
+    ["출고", "완료"].includes(order.status) &&
+    !order.dealer_received_at;
   const hasShipping = order.shipping_company || order.tracking_number;
   const staffId = order.created_by_login_id || "";
   return `
@@ -2511,6 +2514,7 @@ async function updateOrderStatus(orderId, status) {
     if (data?.order) {
       state.orders = state.orders.map((order) => (order.order_id === orderId ? data.order : order));
     }
+    upsertInventoryRows(data?.inventory_rows);
     if (data?.inventory) upsertInventory(data.inventory);
   } else {
     const order = state.orders.find((item) => item.order_id === orderId);
@@ -2538,12 +2542,13 @@ async function updateOrderStatus(orderId, status) {
 async function receiveOrder(orderId) {
   const order = state.orders.find((item) => item.order_id === orderId);
   if (!order) throw new Error("입고 처리할 발주를 찾을 수 없습니다.");
-  const confirmed = confirm(`${order.product_name} ${roll(Number(order.qty || 0))}을 입고완료 처리할까요?`);
+  const confirmed = confirm(`${order.dealer_name} ${order.product_name} ${roll(Number(order.qty || 0))}을 입고완료 처리할까요? 대리점 재고에 반영됩니다.`);
   if (!confirmed) return;
 
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.receiveOrder({ orderId });
     if (data?.order) state.orders = state.orders.map((item) => (item.order_id === orderId ? data.order : item));
+    upsertInventoryRows(data?.inventory_rows);
     if (data?.inventory) upsertInventory(data.inventory);
   } else {
     adjustLocalInventory(order.dealer_code, order.sku, Number(order.qty || 0), { requireEnoughStock: false });
@@ -3453,6 +3458,11 @@ function upsertInventory(row) {
   const index = state.inventory.findIndex((item) => item.dealer_code === row.dealer_code && item.sku === row.sku);
   if (index >= 0) state.inventory[index] = { ...state.inventory[index], ...row };
   else state.inventory.push(row);
+}
+
+function upsertInventoryRows(rows) {
+  if (!Array.isArray(rows)) return;
+  rows.filter(Boolean).forEach(upsertInventory);
 }
 
 function dealerInventoryForProduct(sku) {

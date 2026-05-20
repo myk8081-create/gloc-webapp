@@ -295,13 +295,13 @@ function handleUpdateOrderStatus_(payload, user) {
     status: status,
     updated_at: isoNow_()
   };
-  let deductedInventory = null;
+  const changedInventories = [];
 
   if (status === "출고" || status === "완료") {
     if (!hasSnapshotValue_(currentOrder.hq_stock_deducted_at)) {
       const deducted = deductHeadOfficeStockForOrder_(currentOrder);
       updates.hq_stock_deducted_at = deducted.updated_at;
-      deductedInventory = deducted.inventory;
+      changedInventories.push(deducted.inventory);
       if (deducted.low_stock) notifyHeadOfficeLowStock_(deducted.inventory);
     }
   }
@@ -315,9 +315,13 @@ function handleUpdateOrderStatus_(payload, user) {
   }
 
   const order = updateRowByKey_(SHEETS.orders, "order_id", orderId, updates);
+  const productMap = mapBy_(readRows_(SHEETS.products), "sku");
+  const accountMap = dealerNameMap_();
+  const publicInventories = changedInventories.map((row) => publicInventoryRow_(row, productMap, accountMap));
   return {
     order: order,
-    inventory: deductedInventory ? publicInventoryRow_(deductedInventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_()) : null,
+    inventory: publicInventories.length ? publicInventories[publicInventories.length - 1] : null,
+    inventory_rows: publicInventories,
     notification: notifyDealerOrderUpdated_(order)
   };
 }
@@ -339,15 +343,17 @@ function handleReceiveOrder_(payload, user) {
     category: "",
     unit: "롤"
   };
-  const inventory = adjustInventoryStock_(user.dealer_code, user.dealer_name, product, Number(order.qty || 0), { requireEnoughStock: false });
+  const inventory = adjustInventoryStock_(order.dealer_code, order.dealer_name, product, Number(order.qty || 0), { requireEnoughStock: false });
   const updated = updateRowByKey_(SHEETS.orders, "order_id", orderId, {
     status: "완료",
     dealer_received_at: isoNow_(),
     updated_at: isoNow_()
   });
+  const publicInventory = publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_());
   return {
     order: updated,
-    inventory: publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_())
+    inventory: publicInventory,
+    inventory_rows: [publicInventory]
   };
 }
 
