@@ -134,6 +134,10 @@
     return request("createReservation", reservation);
   }
 
+  async function completeReservation({ reservationId }) {
+    return request("completeReservation", { reservation_id: reservationId });
+  }
+
   async function getReservations(filters = {}) {
     return request("getReservations", filters);
   }
@@ -209,6 +213,7 @@
     createSale,
     getSales,
     createReservation,
+    completeReservation,
     getReservations,
     updateDealerDiscount,
     createDealerAccount,

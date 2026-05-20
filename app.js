@@ -264,7 +264,6 @@ function render() {
       ${renderOrders()}
       ${renderSales()}
       ${renderOrderCreate()}
-      ${renderDealerSale()}
       ${renderReservations()}
       ${renderDealerLinks()}
       ${renderNotifications()}
@@ -1194,79 +1193,6 @@ function renderOrderCreate() {
   `;
 }
 
-function renderDealerSale() {
-  if (state.session?.role !== "dealer") return "";
-  const product = selectedProduct();
-  const inventory = dealerInventoryForProduct(product?.sku);
-  const currentStock = Number(inventory?.stock_qty || 0);
-  const qty = Number(state.forms.saleQty || 0);
-  const isShort = qty > currentStock;
-  return `
-    <main class="screen ${state.screen === "dealerSale" ? "active" : ""}" data-screen="dealerSale">
-      <section class="page-head">
-        <p class="eyebrow">${escapeHtml(currentDealerName())}</p>
-        <h1>판매완료</h1>
-        <p class="lead">실제 판매가 완료된 제품을 등록하면 내 대리점 재고에서 자동 차감됩니다.</p>
-        <div class="page-actions">
-          <button class="secondary-button" type="button" data-nav="inventory">재고조회</button>
-          <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
-        </div>
-      </section>
-
-      <section class="work-layout">
-        <div class="panel list-panel">
-          <h3>판매 제품 선택</h3>
-          <input class="search-input" id="inventoryQuery" type="search" placeholder="제품명, SKU, 컬러 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
-          <div class="product-list" id="dealerSaleProductList">
-            ${filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`}
-          </div>
-        </div>
-
-        <div class="panel form-panel">
-          <h3>판매 등록</h3>
-          <div class="detail-card ${isShort ? "is-low" : ""}">
-            <h2>${escapeHtml(product?.product_name || "제품 선택")}</h2>
-            <p class="muted">${escapeHtml(product?.sku || "-")} · 현재 재고 ${roll(currentStock)}</p>
-            ${isShort ? `<p class="form-note danger-text">현재 재고보다 판매 수량이 많습니다.</p>` : `<p class="form-note">판매완료를 누르면 즉시 재고에서 차감됩니다.</p>`}
-          </div>
-          <div class="stock-grid">
-            <div class="stock-box">
-              <span>현재 재고</span>
-              <strong>${roll(currentStock)}</strong>
-            </div>
-            <div class="stock-box">
-              <span>판매 후</span>
-              <strong>${roll(Math.max(currentStock - qty, 0))}</strong>
-            </div>
-            <div class="stock-box">
-              <span>상태</span>
-              <strong>${isShort ? "재고부족" : "가능"}</strong>
-            </div>
-          </div>
-          <div class="form-grid">
-            <label class="field">
-              <span>판매 수량</span>
-              <input id="saleQty" type="number" min="1" inputmode="numeric" value="${escapeAttr(state.forms.saleQty)}" />
-            </label>
-            <label class="field">
-              <span>메모</span>
-              <textarea id="saleMemo" placeholder="고객명, 차량정보 등">${escapeHtml(state.forms.saleMemo)}</textarea>
-            </label>
-            <button type="button" class="primary-button" data-action="createSale" ${isShort ? "disabled" : ""}>판매완료</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel list-panel">
-        <h3>최근 판매</h3>
-        <div class="order-list">
-          ${visibleRetailSales().slice(0, 8).map(renderSaleCard).join("") || `<div class="empty">판매 내역이 없습니다.</div>`}
-        </div>
-      </section>
-    </main>
-  `;
-}
-
 function renderReservations() {
   if (state.session?.role !== "dealer") return "";
   const product = selectedProduct();
@@ -1698,29 +1624,19 @@ function renderOrderCard(order) {
   `;
 }
 
-function renderSaleCard(sale) {
-  return `
-    <article class="order-card">
-      <div>
-        <span class="badge ok">판매완료</span>
-        <h3>${escapeHtml(sale.product_name)}</h3>
-        <p class="product-meta">${escapeHtml(sale.sale_id || "")} · ${escapeHtml(sale.sku)}</p>
-        <p class="product-meta">담당자 ID: ${escapeHtml(sale.created_by_login_id || "담당자 미기록")}</p>
-      </div>
-      <div class="order-side">
-        <strong>${roll(Number(sale.qty || 0))}</strong>
-        <span>${escapeHtml(sale.created_at || "")}</span>
-      </div>
-      <p class="order-memo">${escapeHtml(sale.memo || "메모 없음")}</p>
-    </article>
-  `;
-}
-
 function renderReservationCard(reservation) {
+  const canComplete = state.session?.role === "dealer" &&
+    reservation.dealer_code === state.session.dealer_code &&
+    reservation.status !== "시공완료";
+  const tone = reservation.status === "재고부족"
+    ? "danger"
+    : reservation.status === "시공완료"
+      ? "ok"
+      : "warn";
   return `
     <article class="order-card">
       <div>
-        <span class="badge ${reservation.status === "재고부족" ? "danger" : "ok"}">${escapeHtml(reservation.status || "예약")}</span>
+        <span class="badge ${tone}">${escapeHtml(reservation.status || "예약")}</span>
         <h3>${escapeHtml(reservation.product_name)}</h3>
         <p class="product-meta">${escapeHtml(reservation.reservation_id || "")} · ${escapeHtml(reservation.sku)}</p>
         <p class="product-meta">${escapeHtml(reservation.customer_name || "고객명 미입력")} · ${escapeHtml(reservation.customer_phone || "연락처 미입력")}</p>
@@ -1730,6 +1646,11 @@ function renderReservationCard(reservation) {
         <span>${escapeHtml(reservation.created_at || "")}</span>
       </div>
       <p class="order-memo">${escapeHtml(reservation.memo || "메모 없음")}</p>
+      ${canComplete ? `
+        <div class="order-actions">
+          <button type="button" class="primary-button" data-action="completeReservation" data-reservation-id="${escapeAttr(reservation.reservation_id)}">시공완료</button>
+        </div>
+      ` : ""}
     </article>
   `;
 }
@@ -1847,7 +1768,6 @@ function renderBottomNav() {
         ["inventoryManage", "재고수정"],
         ["orderCreate", "발주신청"],
         ["orders", "내 발주"],
-        ["dealerSale", "판매"],
         ["reservations", "예약"],
         ["dealers", "담당자"],
         ["notifications", "알림"]
@@ -2221,11 +2141,6 @@ function refreshActiveSearchResults() {
     return;
   }
 
-  if (state.screen === "dealerSale") {
-    replaceHtml("#dealerSaleProductList", filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`);
-    return;
-  }
-
   if (state.screen === "reservations") {
     replaceHtml("#reservationProductList", filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`);
     return;
@@ -2418,8 +2333,8 @@ async function handleAction(action, button) {
   if (action === "createOrder") return createOrder();
   if (action === "clearTestOrders") return clearTestOrders();
   if (action === "receiveOrder") return receiveOrder(button.dataset.orderId);
-  if (action === "createSale") return createSale();
   if (action === "createReservation") return createReservation();
+  if (action === "completeReservation") return completeReservation(button.dataset.reservationId);
   if (action === "cancelOrder") return cancelOrder(button.dataset.orderId);
   if (action === "saveInventory") return saveInventory();
   if (action === "saveProduct") return saveProduct();
@@ -2744,6 +2659,30 @@ async function createReservation() {
   state.forms.reservationMemo = "";
   render();
   showToast(status === "재고부족" ? "예약 저장됨: 재고부족 상태입니다." : "예약을 저장했습니다.");
+}
+
+async function completeReservation(reservationId) {
+  const reservation = state.reservations.find((item) => item.reservation_id === reservationId);
+  if (!reservation) throw new Error("시공완료 처리할 예약을 찾을 수 없습니다.");
+  const confirmed = confirm(`${reservation.product_name} ${roll(Number(reservation.qty || 0))}을 시공완료 처리할까요? 재고에서 자동 차감됩니다.`);
+  if (!confirmed) return;
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.completeReservation({ reservationId });
+    if (data?.reservation) {
+      state.reservations = state.reservations.map((item) => (item.reservation_id === reservationId ? data.reservation : item));
+    }
+    if (data?.inventory) upsertInventory(data.inventory);
+  } else {
+    adjustLocalInventory(reservation.dealer_code, reservation.sku, -Number(reservation.qty || 0), { requireEnoughStock: true });
+    state.reservations = state.reservations.map((item) => (
+      item.reservation_id === reservationId
+        ? { ...item, status: "시공완료", completed_at: nowText(), updated_at: nowText() }
+        : item
+    ));
+  }
+  render();
+  showToast("시공완료 처리했습니다. 재고에서 차감되었습니다.");
 }
 
 async function cancelOrder(orderId) {

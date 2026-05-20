@@ -14,7 +14,7 @@ const HEADERS = {
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
   orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
-  reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "product_name", "sku", "qty", "status", "memo", "created_at", "updated_at"],
+  reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
@@ -50,6 +50,7 @@ function doPost(e) {
     if (action === "createSale") return ok_(handleCreateSale_(payload, user));
     if (action === "getSales") return ok_(handleGetSales_(payload, user));
     if (action === "createReservation") return ok_(handleCreateReservation_(payload, user));
+    if (action === "completeReservation") return ok_(handleCompleteReservation_(payload, user));
     if (action === "getReservations") return ok_(handleGetReservations_(payload, user));
     if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
     if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
@@ -437,12 +438,42 @@ function handleCreateReservation_(payload, user) {
     qty: qty,
     status: Number(inventory.stock_qty || 0) < qty ? "재고부족" : "예약",
     memo: payload.memo || "",
+    completed_at: "",
     created_at: now,
     updated_at: now
   };
   appendObject_(SHEETS.reservations, reservation);
   return {
     reservation: reservation,
+    inventory: publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_())
+  };
+}
+
+function handleCompleteReservation_(payload, user) {
+  if (user.role !== "dealer") throw new Error("대리점 계정만 시공완료 처리할 수 있습니다.");
+  const reservationId = required_(payload.reservation_id, "reservation_id");
+  const reservation = readRows_(SHEETS.reservations).find((row) => row.reservation_id === reservationId);
+  if (!reservation) throw new Error("예약을 찾을 수 없습니다.");
+  if (String(reservation.dealer_code).toUpperCase() !== String(user.dealer_code).toUpperCase()) {
+    throw new Error("본인 대리점 예약만 시공완료 처리할 수 있습니다.");
+  }
+  if (reservation.status === "시공완료") throw new Error("이미 시공완료 처리된 예약입니다.");
+
+  const product = readRows_(SHEETS.products).find((row) => row.sku === reservation.sku) || {
+    sku: reservation.sku,
+    product_name: reservation.product_name,
+    category: "",
+    unit: "롤"
+  };
+  const inventory = adjustInventoryStock_(user.dealer_code, user.dealer_name, product, -Number(reservation.qty || 0), { requireEnoughStock: true });
+  const now = isoNow_();
+  const updated = updateRowByKey_(SHEETS.reservations, "reservation_id", reservationId, {
+    status: "시공완료",
+    completed_at: now,
+    updated_at: now
+  });
+  return {
+    reservation: updated,
     inventory: publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_())
   };
 }
