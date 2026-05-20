@@ -78,6 +78,13 @@ function createMockAccounts() {
       dealer_discount_rate: 0,
       is_first_login: false,
       is_active: true,
+      contact_name: "본사",
+      phone: "",
+      zipcode: "",
+      address: "",
+      address_detail: "",
+      password_changed_at: nowText(),
+      profile_completed_at: nowText(),
       updated_at: nowText()
     },
     ...mockDealers.map((dealer, index) => ({
@@ -88,6 +95,13 @@ function createMockAccounts() {
       dealer_discount_rate: 20,
       is_first_login: index === 1,
       is_active: true,
+      contact_name: index === 0 ? "서울 담당자" : "",
+      phone: index === 0 ? "010-0000-0000" : "",
+      zipcode: index === 0 ? "00000" : "",
+      address: index === 0 ? "서울시" : "",
+      address_detail: index === 0 ? "본점" : "",
+      password_changed_at: index === 0 ? nowText() : "",
+      profile_completed_at: index === 0 ? nowText() : "",
       updated_at: nowText()
     }))
   ];
@@ -197,6 +211,13 @@ const state = {
     currentPassword: "",
     newPassword: "",
     newPasswordConfirm: "",
+    onboardingPassword: "",
+    onboardingPasswordConfirm: "",
+    onboardingContactName: "",
+    onboardingPhone: "",
+    onboardingZipcode: "",
+    onboardingAddress: "",
+    onboardingAddressDetail: "",
     accountLoginId: "",
     accountRole: "dealer",
     accountDealerCode: "",
@@ -239,6 +260,7 @@ const state = {
 
 let searchRefreshTimer = null;
 let accountFormRefreshTimer = null;
+let daumPostcodeLoading = null;
 
 function initFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -257,6 +279,7 @@ function render() {
       ${renderTopbar()}
       ${renderLogin()}
       ${renderPasswordChange()}
+      ${renderOnboarding()}
       ${renderAdminDashboard()}
       ${renderDealerManagement()}
       ${renderInventory()}
@@ -356,6 +379,62 @@ function renderPasswordChange() {
               <input id="newPasswordConfirm" type="password" value="${escapeAttr(state.forms.newPasswordConfirm)}" autocomplete="new-password" />
             </label>
             <button type="button" class="primary-button" data-action="changePassword">비밀번호 변경 후 시작</button>
+            <button type="button" class="secondary-button" data-action="logout">로그아웃</button>
+          </div>
+        </section>
+      </section>
+    </main>
+  `;
+}
+
+function renderOnboarding() {
+  return `
+    <main class="screen ${state.screen === "onboarding" ? "active" : ""}" data-screen="onboarding">
+      <section class="login-direct onboarding-direct">
+        <section class="panel login-card onboarding-card">
+          <img class="login-logo" src="gloc-logo-banner.png" alt="GLOC" />
+          <div class="login-intro">
+            <p class="eyebrow">최초 설정</p>
+            <h1>비밀번호와 배송정보 입력</h1>
+            <p class="lead">처음 로그인한 대리점 계정은 새 비밀번호와 배송 받을 주소를 먼저 저장해야 재고관리 화면으로 이동합니다.</p>
+          </div>
+          <div class="form-grid">
+            <div class="two-col">
+              <label class="field">
+                <span>새 비밀번호</span>
+                <input id="onboardingPassword" type="password" value="${escapeAttr(state.forms.onboardingPassword)}" autocomplete="new-password" placeholder="8자 이상" />
+              </label>
+              <label class="field">
+                <span>새 비밀번호 확인</span>
+                <input id="onboardingPasswordConfirm" type="password" value="${escapeAttr(state.forms.onboardingPasswordConfirm)}" autocomplete="new-password" placeholder="새 비밀번호 재입력" />
+              </label>
+            </div>
+            <div class="two-col">
+              <label class="field">
+                <span>담당자 이름</span>
+                <input id="onboardingContactName" type="text" value="${escapeAttr(state.forms.onboardingContactName)}" autocomplete="name" placeholder="예: 홍길동" />
+              </label>
+              <label class="field">
+                <span>전화번호</span>
+                <input id="onboardingPhone" type="tel" inputmode="numeric" maxlength="13" value="${escapeAttr(state.forms.onboardingPhone)}" autocomplete="tel" placeholder="예: 010-0000-0000" />
+              </label>
+            </div>
+            <div class="address-search-row">
+              <label class="field">
+                <span>우편번호</span>
+                <input id="onboardingZipcode" type="text" value="${escapeAttr(state.forms.onboardingZipcode)}" readonly placeholder="주소찾기로 입력" />
+              </label>
+              <button type="button" class="secondary-button" data-action="openPostcode">주소찾기</button>
+            </div>
+            <label class="field">
+              <span>주소</span>
+              <input id="onboardingAddress" type="text" value="${escapeAttr(state.forms.onboardingAddress)}" readonly placeholder="주소찾기로 입력" />
+            </label>
+            <label class="field">
+              <span>상세주소</span>
+              <input id="onboardingAddressDetail" type="text" value="${escapeAttr(state.forms.onboardingAddressDetail)}" autocomplete="address-line2" placeholder="예: 101호, 창고명" />
+            </label>
+            <button type="button" class="primary-button" data-action="completeOnboarding">저장 후 시작</button>
             <button type="button" class="secondary-button" data-action="logout">로그아웃</button>
           </div>
         </section>
@@ -1783,7 +1862,7 @@ function renderDealerLinkCard(account) {
 }
 
 function renderBottomNav() {
-  if (!state.session || state.screen === "passwordChange") return "";
+  if (!state.session || state.screen === "passwordChange" || state.screen === "onboarding") return "";
   const admin = state.session.role === "admin";
   const items = admin
     ? [
@@ -1835,6 +1914,13 @@ function bindEvents() {
   bindInput("currentPassword", (value) => (state.forms.currentPassword = value));
   bindInput("newPassword", (value) => (state.forms.newPassword = value));
   bindInput("newPasswordConfirm", (value) => (state.forms.newPasswordConfirm = value));
+  bindInput("onboardingPassword", (value) => (state.forms.onboardingPassword = value));
+  bindInput("onboardingPasswordConfirm", (value) => (state.forms.onboardingPasswordConfirm = value));
+  bindInput("onboardingContactName", (value) => (state.forms.onboardingContactName = value));
+  bindPhoneInput("onboardingPhone", (value) => (state.forms.onboardingPhone = value));
+  bindInput("onboardingZipcode", (value) => (state.forms.onboardingZipcode = value));
+  bindInput("onboardingAddress", (value) => (state.forms.onboardingAddress = value));
+  bindInput("onboardingAddressDetail", (value) => (state.forms.onboardingAddressDetail = value));
   bindInput("accountDealerCode", (value) => {
     state.forms.accountDealerCode = value.toUpperCase();
     syncAccountDealerNameFromCode();
@@ -2375,6 +2461,8 @@ function urlBase64ToUint8Array(base64String) {
 async function handleAction(action, button) {
   if (action === "login") return login();
   if (action === "changePassword") return changePassword();
+  if (action === "completeOnboarding") return completeOnboarding();
+  if (action === "openPostcode") return openPostcode();
   if (action === "logout") return logout();
   if (action === "refresh") return refreshData();
   if (action === "refreshLinks") return refreshLinks();
@@ -2415,12 +2503,13 @@ async function login() {
   }
 
   state.forms.password = "";
-  state.screen = toBool(state.session.is_first_login) ? "passwordChange" : defaultScreen();
+  prepareOnboardingForm();
+  state.screen = nextScreenAfterLogin();
   render();
   syncAppBadgeFromOrders();
   if (state.session) updatePushState(false);
   scrollTop();
-  showToast(toBool(state.session.is_first_login) ? "비밀번호 변경이 필요합니다." : "로그인되었습니다.");
+  showToast(state.screen === "onboarding" ? "최초 설정을 완료해 주세요." : state.screen === "passwordChange" ? "비밀번호 변경이 필요합니다." : "로그인되었습니다.");
 }
 
 function mockLogin(loginId, dealerCode) {
@@ -2444,6 +2533,28 @@ function applyRemoteSession(data) {
   if (Array.isArray(data.sales)) state.retailSales = data.sales;
   if (Array.isArray(data.reservations)) state.reservations = data.reservations;
   syncAppBadgeFromOrders();
+}
+
+function nextScreenAfterLogin() {
+  if (needsDealerOnboarding(state.session)) return "onboarding";
+  if (toBool(state.session?.is_first_login)) return "passwordChange";
+  return defaultScreen();
+}
+
+function needsDealerOnboarding(account) {
+  if (!account || account.role !== "dealer") return false;
+  return toBool(account.is_first_login) || !String(account.profile_completed_at || "").trim();
+}
+
+function prepareOnboardingForm() {
+  if (!state.session) return;
+  state.forms.onboardingPassword = "";
+  state.forms.onboardingPasswordConfirm = "";
+  state.forms.onboardingContactName = state.session.contact_name || "";
+  state.forms.onboardingPhone = state.session.phone || "";
+  state.forms.onboardingZipcode = state.session.zipcode || "";
+  state.forms.onboardingAddress = state.session.address || "";
+  state.forms.onboardingAddressDetail = state.session.address_detail || "";
 }
 
 async function changePassword() {
@@ -2471,6 +2582,94 @@ async function changePassword() {
   render();
   scrollTop();
   showToast("비밀번호가 변경되었습니다.");
+}
+
+async function completeOnboarding() {
+  if (!state.session || state.session.role !== "dealer") throw new Error("대리점 계정으로 다시 로그인해 주세요.");
+  const payload = onboardingPayload();
+
+  if (!payload.new_password || !payload.new_password_confirm) throw new Error("새 비밀번호를 입력해 주세요.");
+  if (payload.new_password.length < 8) throw new Error("새 비밀번호는 8자 이상으로 입력해 주세요.");
+  if (payload.new_password !== payload.new_password_confirm) throw new Error("새 비밀번호 확인이 일치하지 않습니다.");
+  if (!payload.contact_name) throw new Error("담당자 이름을 입력해 주세요.");
+  if (!payload.phone) throw new Error("전화번호를 입력해 주세요.");
+  if (!payload.zipcode || !payload.address) throw new Error("주소찾기로 배송 주소를 입력해 주세요.");
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.completeOnboarding(payload);
+    if (data?.user) state.session = data.user;
+    if (Array.isArray(data?.accounts)) state.accounts = data.accounts;
+  } else {
+    const account = state.accounts.find((item) => item.login_id === state.session.login_id);
+    if (account) {
+      account.contact_name = payload.contact_name;
+      account.phone = payload.phone;
+      account.zipcode = payload.zipcode;
+      account.address = payload.address;
+      account.address_detail = payload.address_detail;
+      account.is_first_login = false;
+      account.password_changed_at = nowText();
+      account.profile_completed_at = nowText();
+      account.updated_at = nowText();
+      state.session = accountToSession(account);
+    }
+  }
+
+  state.forms.onboardingPassword = "";
+  state.forms.onboardingPasswordConfirm = "";
+  state.screen = defaultScreen();
+  render();
+  scrollTop();
+  showToast("최초 설정이 완료되었습니다.");
+}
+
+function onboardingPayload() {
+  return {
+    new_password: state.forms.onboardingPassword.trim(),
+    new_password_confirm: state.forms.onboardingPasswordConfirm.trim(),
+    contact_name: state.forms.onboardingContactName.trim(),
+    phone: state.forms.onboardingPhone.trim(),
+    zipcode: state.forms.onboardingZipcode.trim(),
+    address: state.forms.onboardingAddress.trim(),
+    address_detail: state.forms.onboardingAddressDetail.trim()
+  };
+}
+
+async function openPostcode() {
+  await loadDaumPostcode();
+  if (!window.daum?.Postcode) throw new Error("주소찾기 서비스를 시작할 수 없습니다.");
+  await new Promise((resolve) => {
+    new window.daum.Postcode({
+      oncomplete(data) {
+        state.forms.onboardingZipcode = data.zonecode || "";
+        state.forms.onboardingAddress = data.roadAddress || data.jibunAddress || "";
+        render();
+        window.setTimeout(() => document.querySelector("#onboardingAddressDetail")?.focus(), 0);
+        resolve();
+      },
+      onclose() {
+        resolve();
+      }
+    }).open();
+  });
+}
+
+function loadDaumPostcode() {
+  if (window.daum?.Postcode) return Promise.resolve();
+  if (daumPostcodeLoading) return daumPostcodeLoading;
+  daumPostcodeLoading = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+    script.async = true;
+    script.dataset.daumPostcode = "true";
+    script.onload = () => resolve();
+    script.onerror = () => {
+      daumPostcodeLoading = null;
+      reject(new Error("주소찾기 서비스를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."));
+    };
+    document.head.appendChild(script);
+  });
+  return daumPostcodeLoading;
 }
 
 async function refreshData(showDone = true) {
@@ -3501,7 +3700,15 @@ function accountToSession(account) {
     dealer_name: account.dealer_name,
     role: account.role,
     dealer_discount_rate: account.dealer_discount_rate || 0,
-    is_first_login: account.is_first_login
+    is_first_login: account.is_first_login,
+    contact_name: account.contact_name || "",
+    phone: account.phone || "",
+    zipcode: account.zipcode || "",
+    address: account.address || "",
+    address_detail: account.address_detail || "",
+    password_changed_at: account.password_changed_at || "",
+    profile_completed_at: account.profile_completed_at || "",
+    updated_at: account.updated_at || ""
   };
 }
 

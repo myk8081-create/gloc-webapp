@@ -10,7 +10,7 @@ const SHEETS = {
 };
 
 const HEADERS = {
-  accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "role", "is_first_login", "is_active", "updated_at"],
+  accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "role", "is_first_login", "is_active", "contact_name", "phone", "zipcode", "address", "address_detail", "password_changed_at", "profile_completed_at", "updated_at"],
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
   orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
@@ -47,6 +47,7 @@ function doPost(e) {
 
     const user = requireSession_(token);
     if (action === "changePassword") return ok_(handleChangePassword_(payload, user, token));
+    if (action === "completeOnboarding") return ok_(handleCompleteOnboarding_(payload, user, token));
     if (action === "getInventory") return ok_(handleGetInventory_(payload, user));
     if (action === "createOrder") return ok_(handleCreateOrder_(payload, user));
     if (action === "getOrders") return ok_(handleGetOrders_(payload, user));
@@ -199,15 +200,54 @@ function handleChangePassword_(payload, user, token) {
   if (!account) throw new Error("계정을 찾을 수 없습니다.");
   if (!verifyPassword_(currentPassword, account.password_hash)) throw new Error("현재 비밀번호가 일치하지 않습니다.");
 
+  const now = isoNow_();
   updateAccount_(account.login_id, {
     password_hash: hashPassword_(newPassword),
     is_first_login: false,
-    updated_at: isoNow_()
+    password_changed_at: now,
+    updated_at: now
   });
 
   const updated = publicAccount_(findAccountByLoginId_(user.login_id));
   refreshSession_(token, updated);
   return { session: { token: token, expires_in: SESSION_SECONDS }, user: updated };
+}
+
+function handleCompleteOnboarding_(payload, user, token) {
+  if (user.role !== "dealer") throw new Error("대리점 계정만 최초 설정을 완료할 수 있습니다.");
+
+  const newPassword = required_(payload.new_password, "new_password");
+  const contactName = required_(payload.contact_name, "contact_name");
+  const phone = required_(payload.phone, "phone");
+  const zipcode = required_(payload.zipcode, "zipcode");
+  const address = required_(payload.address, "address");
+  if (newPassword.length < 8) throw new Error("새 비밀번호는 8자 이상이어야 합니다.");
+
+  const account = findAccountByLoginId_(user.login_id);
+  if (!account) throw new Error("계정을 찾을 수 없습니다.");
+
+  const now = isoNow_();
+  updateAccount_(account.login_id, {
+    password_hash: hashPassword_(newPassword),
+    contact_name: contactName,
+    phone: phone,
+    zipcode: zipcode,
+    address: address,
+    address_detail: payload.address_detail || "",
+    is_first_login: false,
+    password_changed_at: now,
+    profile_completed_at: now,
+    updated_at: now
+  });
+
+  const updated = publicAccount_(findAccountByLoginId_(user.login_id));
+  refreshSession_(token, updated);
+  return {
+    session: { token: token, expires_in: SESSION_SECONDS },
+    user: updated,
+    account: updated,
+    accounts: listAccessibleAccounts_(updated)
+  };
 }
 
 function handleGetInventory_(payload, user) {
@@ -656,6 +696,13 @@ function handleCreateDealerAccount_(payload, user) {
     role: role,
     is_first_login: true,
     is_active: true,
+    contact_name: "",
+    phone: "",
+    zipcode: "",
+    address: "",
+    address_detail: "",
+    password_changed_at: "",
+    profile_completed_at: "",
     updated_at: isoNow_()
   };
   appendObject_(SHEETS.accounts, account);
@@ -1233,6 +1280,13 @@ function publicAccount_(account) {
     role: account.role,
     is_first_login: toBool_(account.is_first_login),
     is_active: toBool_(account.is_active),
+    contact_name: account.contact_name || "",
+    phone: account.phone || "",
+    zipcode: account.zipcode || "",
+    address: account.address || "",
+    address_detail: account.address_detail || "",
+    password_changed_at: account.password_changed_at || "",
+    profile_completed_at: account.profile_completed_at || "",
     updated_at: account.updated_at || ""
   };
 }

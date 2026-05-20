@@ -77,6 +77,12 @@
     return data;
   }
 
+  async function completeOnboarding(profile) {
+    const data = await request("completeOnboarding", profile);
+    if (data?.session) setSession(data.session);
+    return data;
+  }
+
   async function getInventory(filters = {}) {
     return request("getInventory", filters);
   }
@@ -200,6 +206,7 @@
     getSession,
     login,
     changePassword,
+    completeOnboarding,
     getInventory,
     createOrder,
     getOrders,

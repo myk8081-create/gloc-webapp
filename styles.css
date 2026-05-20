@@ -202,6 +202,14 @@ button.is-loading {
   max-width: 500px;
 }
 
+.login-direct.onboarding-direct {
+  width: min(680px, 100%);
+}
+
+.onboarding-card {
+  max-width: 680px;
+}
+
 .login-intro {
   margin-bottom: 22px;
 }
@@ -400,6 +408,13 @@ h3 {
 .field {
   display: grid;
   gap: 7px;
+}
+
+.address-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
 }
 
 .field span {
@@ -1635,8 +1650,16 @@ h3 {
     padding: 18px 0 26px;
   }
 
+  .login-direct.onboarding-direct {
+    width: 100%;
+  }
+
   .login-card {
     padding: 18px;
+  }
+
+  .address-search-row {
+    grid-template-columns: 1fr;
   }
 
   .login-logo {
