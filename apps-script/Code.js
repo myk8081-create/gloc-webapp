@@ -403,8 +403,10 @@ function handleUpdateOrderStatus_(payload, user) {
   }
 
   if (status === "출고") {
-    updates.courier = required_(payload.shipping_company, "택배사");
-    updates.tracking_no = required_(payload.tracking_number, "송장번호");
+    const existingCourier = currentOrder.courier || currentOrder.shipping_company || currentOrder.default_courier || "";
+    const existingTrackingNo = currentOrder.tracking_no || currentOrder.tracking_number || "";
+    updates.courier = existingCourier;
+    updates.tracking_no = existingTrackingNo;
     updates.shipping_company = updates.courier;
     updates.tracking_number = updates.tracking_no;
     updates.shipping_error = "";

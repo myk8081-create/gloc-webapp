@@ -1901,6 +1901,7 @@ function renderOrderCard(order) {
   const printCount = Number(order.print_count || 0);
   const hasShipping = order.courier || order.tracking_no || order.shipping_receipt_no || order.shipping_company || order.tracking_number;
   const hasRecipient = order.recipient_name || order.recipient_phone || order.recipient_address || order.shipping_memo;
+  const hasRecipientOrShipping = hasRecipient || hasShipping;
   const staffId = order.created_by_login_id || "";
   const recipientAddress = [order.recipient_zipcode ? `(${order.recipient_zipcode})` : "", order.recipient_address, order.recipient_address_detail].filter(Boolean).join(" ");
   return `
@@ -1917,28 +1918,23 @@ function renderOrderCard(order) {
         <span>${escapeHtml(order.created_at || "")}</span>
       </div>
       <p class="order-memo">${escapeHtml(order.memo || "메모 없음")}</p>
-      ${hasRecipient ? `
+      ${hasRecipientOrShipping ? `
         <div class="shipping-info">
-          <strong>수령 정보</strong>
+          <strong>수령/배송 정보</strong>
           <span>${escapeHtml(order.recipient_name || "담당자 미입력")} · ${escapeHtml(order.recipient_phone || "전화번호 미입력")}</span>
           <span>${escapeHtml(recipientAddress || "주소 미입력")}</span>
           ${order.shipping_memo ? `<span>메모: ${escapeHtml(order.shipping_memo)}</span>` : ""}
+          ${hasShipping ? `<span>배송: ${escapeHtml(order.courier || order.shipping_company || "택배사 미입력")} · ${escapeHtml(order.tracking_no || order.tracking_number || "송장번호 미입력")}</span>` : ""}
+          ${order.shipping_receipt_no ? `<span>접수번호: ${escapeHtml(order.shipping_receipt_no)}</span>` : ""}
+          ${order.approved_at ? `<span>승인일: ${escapeHtml(order.approved_at)}</span>` : ""}
+          ${order.print_status ? `<span>출력상태: ${escapeHtml(printStatusLabel(order.print_status))}${printCount ? ` · ${printCount}회` : ""}</span>` : ""}
+          ${order.printed_at ? `<span>마지막 출력: ${escapeHtml(order.printed_at)}</span>` : ""}
         </div>
       ` : ""}
       ${order.shipping_error ? `
         <div class="shipping-info shipping-error">
           <strong>송장 생성 오류</strong>
           <span>${escapeHtml(order.shipping_error)}</span>
-        </div>
-      ` : ""}
-      ${hasShipping ? `
-        <div class="shipping-info">
-          <strong>배송정보</strong>
-          <span>${escapeHtml(order.courier || order.shipping_company || "택배사 미입력")} · ${escapeHtml(order.tracking_no || order.tracking_number || "송장번호 미입력")}</span>
-          ${order.shipping_receipt_no ? `<span>접수번호: ${escapeHtml(order.shipping_receipt_no)}</span>` : ""}
-          ${order.approved_at ? `<span>승인일: ${escapeHtml(order.approved_at)}</span>` : ""}
-          ${order.print_status ? `<span>출력상태: ${escapeHtml(printStatusLabel(order.print_status))}${printCount ? ` · ${printCount}회` : ""}</span>` : ""}
-          ${order.printed_at ? `<span>마지막 출력: ${escapeHtml(order.printed_at)}</span>` : ""}
         </div>
       ` : ""}
       ${canChange ? `
@@ -3085,20 +3081,9 @@ async function updateOrderStatus(orderId, status) {
   const orderForProfile = state.orders.find((item) => item.order_id === orderId);
   const dealerProfile = dealerProfileByCode(orderForProfile?.dealer_code);
   let toastMessage = `발주 상태를 ${status}(으)로 변경했습니다.`;
-  if (status === "출고") {
-    const defaultCourier = orderForProfile?.courier || orderForProfile?.shipping_company || dealerProfile.default_courier || "CJ대한통운";
-    const shippingCompany = prompt("택배사를 입력해 주세요. 예: CJ대한통운", defaultCourier);
-    if (!shippingCompany) return;
-    const trackingNumber = prompt("송장번호를 입력해 주세요.", orderForProfile?.tracking_no || orderForProfile?.tracking_number || "");
-    if (!trackingNumber) return;
-    payload.shippingCompany = shippingCompany.trim();
-    payload.trackingNumber = trackingNumber.trim();
-  }
 
   if (window.FilmStockApi?.isEnabled()) {
-    const data = payload.shippingCompany
-      ? await window.FilmStockApi.updateOrderStatusWithShipping(payload)
-      : await window.FilmStockApi.updateOrderStatus(payload);
+    const data = await window.FilmStockApi.updateOrderStatus(payload);
     if (data?.order) {
       state.orders = state.orders.map((order) => (order.order_id === orderId ? data.order : order));
       if (data.order.shipping_error) {
@@ -3138,13 +3123,7 @@ async function updateOrderStatus(orderId, status) {
         order.hq_stock_deducted_at = nowText();
       }
       order.status = status;
-      if (payload.shippingCompany) {
-        order.courier = payload.shippingCompany;
-        order.tracking_no = payload.trackingNumber;
-        order.shipping_company = payload.shippingCompany;
-        order.tracking_number = payload.trackingNumber;
-        order.shipping_error = "";
-      } else if (["접수", "반려", "취소"].includes(status)) {
+      if (["접수", "반려", "취소"].includes(status)) {
         clearLocalShippingRegistration(order);
       }
       if (status === "출고") {
