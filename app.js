@@ -83,6 +83,8 @@ function createMockAccounts() {
       zipcode: "",
       address: "",
       address_detail: "",
+      default_courier: "",
+      shipping_memo: "",
       password_changed_at: nowText(),
       profile_completed_at: nowText(),
       updated_at: nowText()
@@ -100,6 +102,8 @@ function createMockAccounts() {
       zipcode: index === 0 ? "00000" : "",
       address: index === 0 ? "서울시" : "",
       address_detail: index === 0 ? "본점" : "",
+      default_courier: index === 0 ? "CJ대한통운" : "",
+      shipping_memo: "",
       password_changed_at: index === 0 ? nowText() : "",
       profile_completed_at: index === 0 ? nowText() : "",
       updated_at: nowText()
@@ -218,6 +222,13 @@ const state = {
     onboardingZipcode: "",
     onboardingAddress: "",
     onboardingAddressDetail: "",
+    dealerInfoContactName: "",
+    dealerInfoPhone: "",
+    dealerInfoZipcode: "",
+    dealerInfoAddress: "",
+    dealerInfoAddressDetail: "",
+    dealerInfoDefaultCourier: "",
+    dealerInfoShippingMemo: "",
     accountLoginId: "",
     accountRole: "dealer",
     accountDealerCode: "",
@@ -282,6 +293,7 @@ function render() {
       ${renderOnboarding()}
       ${renderAdminDashboard()}
       ${renderDealerManagement()}
+      ${renderDealerInfo()}
       ${renderInventory()}
       ${renderInventoryManage()}
       ${renderProductManage()}
@@ -511,6 +523,10 @@ function renderAdminDashboard() {
               <strong>계정관리</strong>
               <span>대리점 생성, 초기화, 사용중지</span>
             </button>
+            <button class="quick-card" type="button" data-nav="dealerInfo">
+              <strong>대리점 정보</strong>
+              <span>배송지, 담당자, 기본 택배사 조회</span>
+            </button>
             <button class="quick-card" type="button" data-nav="links">
               <strong>QR/안내문</strong>
               <span>공통 QR과 대리점별 안내문 생성</span>
@@ -669,6 +685,107 @@ function renderDealerManagement() {
         </div>
       </section>
     </main>
+  `;
+}
+
+function renderDealerInfo() {
+  if (!state.session) return "";
+  if (state.session.role === "admin") return renderDealerInfoAdmin();
+  const profile = currentDealerProfile();
+  return `
+    <main class="screen ${state.screen === "dealerInfo" ? "active" : ""}" data-screen="dealerInfo">
+      <section class="page-head">
+        <p class="eyebrow">${escapeHtml(currentDealerName())}</p>
+        <h1>대리점 정보</h1>
+        <p class="lead">발주 승인과 출고 처리 시 사용할 담당자, 배송지, 기본 택배사 정보를 관리합니다.</p>
+      </section>
+
+      <section class="panel form-panel dealer-info-panel">
+        <div class="form-grid">
+          <label class="field">
+            <span>대리점명</span>
+            <input type="text" value="${escapeAttr(profile.dealer_name || state.session.dealer_name)}" readonly />
+          </label>
+          <div class="two-col">
+            <label class="field">
+              <span>담당자 이름</span>
+              <input id="dealerInfoContactName" type="text" value="${escapeAttr(state.forms.dealerInfoContactName)}" autocomplete="name" placeholder="예: 홍길동" />
+            </label>
+            <label class="field">
+              <span>전화번호</span>
+              <input id="dealerInfoPhone" type="tel" inputmode="numeric" maxlength="13" value="${escapeAttr(state.forms.dealerInfoPhone)}" autocomplete="tel" placeholder="예: 010-0000-0000" />
+            </label>
+          </div>
+          <div class="address-search-row">
+            <label class="field">
+              <span>우편번호</span>
+              <input id="dealerInfoZipcode" type="text" inputmode="numeric" maxlength="5" value="${escapeAttr(state.forms.dealerInfoZipcode)}" placeholder="주소찾기로 입력" />
+            </label>
+            <button type="button" class="secondary-button" data-action="openDealerInfoPostcode">주소찾기</button>
+          </div>
+          <label class="field">
+            <span>주소</span>
+            <input id="dealerInfoAddress" type="text" value="${escapeAttr(state.forms.dealerInfoAddress)}" placeholder="주소찾기로 입력" />
+          </label>
+          <label class="field">
+            <span>상세주소</span>
+            <input id="dealerInfoAddressDetail" type="text" value="${escapeAttr(state.forms.dealerInfoAddressDetail)}" autocomplete="address-line2" placeholder="예: 101호, 창고명" />
+          </label>
+          <label class="field">
+            <span>기본 택배사</span>
+            <input id="dealerInfoDefaultCourier" type="text" value="${escapeAttr(state.forms.dealerInfoDefaultCourier)}" placeholder="예: CJ대한통운" />
+          </label>
+          <label class="field">
+            <span>배송 메모</span>
+            <textarea id="dealerInfoShippingMemo" placeholder="예: 출고 전 연락, 지게차 하차 가능 등">${escapeHtml(state.forms.dealerInfoShippingMemo)}</textarea>
+          </label>
+          <button type="button" class="primary-button" data-action="saveDealerInfo">대리점 정보 저장</button>
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderDealerInfoAdmin() {
+  const profiles = uniqueDealerProfiles();
+  return `
+    <main class="screen ${state.screen === "dealerInfo" ? "active" : ""}" data-screen="dealerInfo">
+      <section class="page-head">
+        <p class="eyebrow">관리자 조회</p>
+        <h1>전체 대리점 정보</h1>
+        <p class="lead">대리점별 담당자, 배송지, 기본 택배사, 배송 메모를 조회합니다. 정보 수정은 각 대리점 계정에서 진행합니다.</p>
+        <div class="page-actions">
+          <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
+        </div>
+      </section>
+
+      <section class="dealer-info-grid">
+        ${profiles.map(renderDealerInfoCard).join("") || `<article class="panel summary-panel"><div class="empty">등록된 대리점 정보가 없습니다.</div></article>`}
+      </section>
+    </main>
+  `;
+}
+
+function renderDealerInfoCard(account) {
+  const address = [account.zipcode ? `(${account.zipcode})` : "", account.address, account.address_detail].filter(Boolean).join(" ");
+  return `
+    <article class="panel dealer-info-card">
+      <div class="panel-head-row">
+        <div>
+          <p class="eyebrow">${escapeHtml(account.dealer_code)}</p>
+          <h3>${escapeHtml(account.dealer_name || account.dealer_code)}</h3>
+        </div>
+        <span class="badge ${toBool(account.is_active) ? "" : "danger"}">${toBool(account.is_active) ? "사용중" : "중지"}</span>
+      </div>
+      <dl class="info-list">
+        <div><dt>담당자</dt><dd>${escapeHtml(account.contact_name || "-")}</dd></div>
+        <div><dt>전화번호</dt><dd>${escapeHtml(account.phone || "-")}</dd></div>
+        <div><dt>주소</dt><dd>${escapeHtml(address || "-")}</dd></div>
+        <div><dt>기본 택배사</dt><dd>${escapeHtml(account.default_courier || "-")}</dd></div>
+        <div><dt>배송 메모</dt><dd>${escapeHtml(account.shipping_memo || "-")}</dd></div>
+        <div><dt>수정일</dt><dd>${escapeHtml(account.updated_at || "-")}</dd></div>
+      </dl>
+    </article>
   `;
 }
 
@@ -1696,7 +1813,9 @@ function renderOrderCard(order) {
     ["출고", "완료"].includes(order.status) &&
     !order.dealer_received_at;
   const hasShipping = order.shipping_company || order.tracking_number;
+  const hasRecipient = order.recipient_name || order.recipient_phone || order.recipient_address || order.shipping_memo;
   const staffId = order.created_by_login_id || "";
+  const recipientAddress = [order.recipient_zipcode ? `(${order.recipient_zipcode})` : "", order.recipient_address, order.recipient_address_detail].filter(Boolean).join(" ");
   return `
     <article class="order-card">
       <div>
@@ -1711,6 +1830,14 @@ function renderOrderCard(order) {
         <span>${escapeHtml(order.created_at || "")}</span>
       </div>
       <p class="order-memo">${escapeHtml(order.memo || "메모 없음")}</p>
+      ${hasRecipient ? `
+        <div class="shipping-info">
+          <strong>수령 정보</strong>
+          <span>${escapeHtml(order.recipient_name || "담당자 미입력")} · ${escapeHtml(order.recipient_phone || "전화번호 미입력")}</span>
+          <span>${escapeHtml(recipientAddress || "주소 미입력")}</span>
+          ${order.shipping_memo ? `<span>메모: ${escapeHtml(order.shipping_memo)}</span>` : ""}
+        </div>
+      ` : ""}
       ${hasShipping ? `
         <div class="shipping-info">
           <strong>배송정보</strong>
@@ -1873,6 +2000,7 @@ function renderBottomNav() {
         ["orders", "발주"],
         ["sales", "매출"],
         ["dealers", "대리점"],
+        ["dealerInfo", "정보"],
         ["links", "QR"],
         ["notifications", "알림"]
       ]
@@ -1883,6 +2011,7 @@ function renderBottomNav() {
         ["orders", "내 발주"],
         ["reservations", "예약"],
         ["dealers", "담당자"],
+        ["dealerInfo", "대리점 정보"],
         ["notifications", "알림"]
       ];
   return `
@@ -1921,6 +2050,13 @@ function bindEvents() {
   bindInput("onboardingZipcode", (value) => (state.forms.onboardingZipcode = value));
   bindInput("onboardingAddress", (value) => (state.forms.onboardingAddress = value));
   bindInput("onboardingAddressDetail", (value) => (state.forms.onboardingAddressDetail = value));
+  bindInput("dealerInfoContactName", (value) => (state.forms.dealerInfoContactName = value));
+  bindPhoneInput("dealerInfoPhone", (value) => (state.forms.dealerInfoPhone = value));
+  bindInput("dealerInfoZipcode", (value) => (state.forms.dealerInfoZipcode = value.replace(/\D/g, "").slice(0, 5)));
+  bindInput("dealerInfoAddress", (value) => (state.forms.dealerInfoAddress = value));
+  bindInput("dealerInfoAddressDetail", (value) => (state.forms.dealerInfoAddressDetail = value));
+  bindInput("dealerInfoDefaultCourier", (value) => (state.forms.dealerInfoDefaultCourier = value));
+  bindInput("dealerInfoShippingMemo", (value) => (state.forms.dealerInfoShippingMemo = value));
   bindInput("accountDealerCode", (value) => {
     state.forms.accountDealerCode = value.toUpperCase();
     syncAccountDealerNameFromCode();
@@ -2463,6 +2599,8 @@ async function handleAction(action, button) {
   if (action === "changePassword") return changePassword();
   if (action === "completeOnboarding") return completeOnboarding();
   if (action === "openPostcode") return openPostcode();
+  if (action === "openDealerInfoPostcode") return openPostcodeFor("dealerInfo");
+  if (action === "saveDealerInfo") return saveDealerInfo();
   if (action === "logout") return logout();
   if (action === "refresh") return refreshData();
   if (action === "refreshLinks") return refreshLinks();
@@ -2504,6 +2642,7 @@ async function login() {
 
   state.forms.password = "";
   prepareOnboardingForm();
+  prepareDealerInfoForm();
   state.screen = nextScreenAfterLogin();
   render();
   syncAppBadgeFromOrders();
@@ -2555,6 +2694,17 @@ function prepareOnboardingForm() {
   state.forms.onboardingZipcode = state.session.zipcode || "";
   state.forms.onboardingAddress = state.session.address || "";
   state.forms.onboardingAddressDetail = state.session.address_detail || "";
+}
+
+function prepareDealerInfoForm() {
+  const profile = currentDealerProfile();
+  state.forms.dealerInfoContactName = profile.contact_name || "";
+  state.forms.dealerInfoPhone = profile.phone || "";
+  state.forms.dealerInfoZipcode = profile.zipcode || "";
+  state.forms.dealerInfoAddress = profile.address || "";
+  state.forms.dealerInfoAddressDetail = profile.address_detail || "";
+  state.forms.dealerInfoDefaultCourier = profile.default_courier || "";
+  state.forms.dealerInfoShippingMemo = profile.shipping_memo || "";
 }
 
 async function changePassword() {
@@ -2623,6 +2773,33 @@ async function completeOnboarding() {
   showToast("최초 설정이 완료되었습니다.");
 }
 
+async function saveDealerInfo() {
+  if (!state.session || state.session.role !== "dealer") throw new Error("대리점 계정만 대리점 정보를 수정할 수 있습니다.");
+  const payload = dealerInfoPayload();
+  validateDealerInfoPayload(payload);
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.updateDealerProfile(payload);
+    if (data?.user) state.session = data.user;
+    if (Array.isArray(data?.accounts)) state.accounts = data.accounts;
+  } else {
+    const now = nowText();
+    state.accounts = state.accounts.map((account) => {
+      if (account.role !== "dealer" || !sameDealerCode(account.dealer_code, state.session.dealer_code)) return account;
+      return { ...account, ...payload, updated_at: now };
+    });
+    state.session = {
+      ...state.session,
+      ...payload,
+      updated_at: now
+    };
+  }
+
+  prepareDealerInfoForm();
+  render();
+  showToast("대리점 정보가 저장되었습니다.");
+}
+
 function onboardingPayload() {
   return {
     new_password: state.forms.onboardingPassword.trim(),
@@ -2635,16 +2812,49 @@ function onboardingPayload() {
   };
 }
 
+function dealerInfoPayload() {
+  return {
+    contact_name: state.forms.dealerInfoContactName.trim(),
+    phone: state.forms.dealerInfoPhone.trim(),
+    zipcode: state.forms.dealerInfoZipcode.trim(),
+    address: state.forms.dealerInfoAddress.trim(),
+    address_detail: state.forms.dealerInfoAddressDetail.trim(),
+    default_courier: state.forms.dealerInfoDefaultCourier.trim(),
+    shipping_memo: state.forms.dealerInfoShippingMemo.trim()
+  };
+}
+
+function validateDealerInfoPayload(payload) {
+  if (!payload.contact_name) throw new Error("담당자 이름을 입력해 주세요.");
+  if (!payload.phone) throw new Error("전화번호를 입력해 주세요.");
+  if (!/^\d{5}$/.test(payload.zipcode)) throw new Error("우편번호는 숫자 5자리로 입력해 주세요.");
+  if (!payload.address) throw new Error("주소를 입력해 주세요.");
+}
+
 async function openPostcode() {
+  return openPostcodeFor("onboarding");
+}
+
+async function openPostcodeFor(target) {
   await loadDaumPostcode();
   if (!window.daum?.Postcode) throw new Error("주소찾기 서비스를 시작할 수 없습니다.");
   await new Promise((resolve) => {
     new window.daum.Postcode({
       oncomplete(data) {
-        state.forms.onboardingZipcode = data.zonecode || "";
-        state.forms.onboardingAddress = data.roadAddress || data.jibunAddress || "";
+        const zipcode = data.zonecode || "";
+        const address = data.roadAddress || data.jibunAddress || "";
+        if (target === "dealerInfo") {
+          state.forms.dealerInfoZipcode = zipcode;
+          state.forms.dealerInfoAddress = address;
+        } else {
+          state.forms.onboardingZipcode = zipcode;
+          state.forms.onboardingAddress = address;
+        }
         render();
-        window.setTimeout(() => document.querySelector("#onboardingAddressDetail")?.focus(), 0);
+        window.setTimeout(() => {
+          const detailId = target === "dealerInfo" ? "#dealerInfoAddressDetail" : "#onboardingAddressDetail";
+          document.querySelector(detailId)?.focus();
+        }, 0);
         resolve();
       },
       onclose() {
@@ -2686,6 +2896,7 @@ async function refreshData(showDone = true) {
     if (Array.isArray(orderData?.accounts)) state.accounts = orderData.accounts;
     if (Array.isArray(salesData?.sales)) state.retailSales = salesData.sales;
     if (Array.isArray(reservationData?.reservations)) state.reservations = reservationData.reservations;
+    if (state.screen === "dealerInfo" && state.session?.role === "dealer") prepareDealerInfoForm();
     syncAppBadgeFromOrders();
   }
   render();
@@ -2745,8 +2956,11 @@ async function createOrder() {
 async function updateOrderStatus(orderId, status) {
   if (state.session?.role !== "admin") throw new Error("관리자만 발주 상태를 변경할 수 있습니다.");
   const payload = { orderId, status };
+  const orderForProfile = state.orders.find((item) => item.order_id === orderId);
+  const dealerProfile = dealerProfileByCode(orderForProfile?.dealer_code);
   if (status === "출고") {
-    const shippingCompany = prompt("택배사를 입력해 주세요. 예: CJ대한통운");
+    const defaultCourier = dealerProfile.default_courier || "CJ대한통운";
+    const shippingCompany = prompt("택배사를 입력해 주세요. 예: CJ대한통운", defaultCourier);
     if (!shippingCompany) return;
     const trackingNumber = prompt("송장번호를 입력해 주세요.");
     if (!trackingNumber) return;
@@ -2778,12 +2992,33 @@ async function updateOrderStatus(orderId, status) {
         order.shipping_company = "";
         order.tracking_number = "";
       }
+      if (["승인", "출고"].includes(status)) {
+        Object.assign(order, orderShippingProfile(dealerProfile));
+      } else if (["접수", "반려", "취소"].includes(status)) {
+        Object.assign(order, emptyOrderShippingProfile());
+      }
       order.updated_at = nowText();
     }
   }
   render();
   syncAppBadgeFromOrders();
   showToast(`발주 상태를 ${status}(으)로 변경했습니다.`);
+}
+
+function orderShippingProfile(profile) {
+  return {
+    recipient_name: profile.contact_name || "",
+    recipient_phone: profile.phone || "",
+    recipient_zipcode: profile.zipcode || "",
+    recipient_address: profile.address || "",
+    recipient_address_detail: profile.address_detail || "",
+    default_courier: profile.default_courier || "",
+    shipping_memo: profile.shipping_memo || ""
+  };
+}
+
+function emptyOrderShippingProfile() {
+  return orderShippingProfile({});
 }
 
 async function receiveOrder(orderId) {
@@ -3096,6 +3331,13 @@ async function createDealerAccount() {
       dealer_discount_rate: account.dealer_discount_rate,
       is_first_login: true,
       is_active: true,
+      contact_name: "",
+      phone: "",
+      zipcode: "",
+      address: "",
+      address_detail: "",
+      default_courier: "",
+      shipping_memo: "",
       updated_at: nowText()
     };
     state.accounts.push(newAccount);
@@ -3247,6 +3489,9 @@ function navigate(screen) {
   }
   if (screen === "productManage") {
     ensureProductForm();
+  }
+  if (screen === "dealerInfo" && state.session?.role === "dealer") {
+    prepareDealerInfoForm();
   }
   state.screen = screen;
   render();
@@ -3424,7 +3669,7 @@ function visibleOrders() {
     if (state.filters.orderPeriod === "일별" && orderDatePart(order.created_at) !== state.filters.orderDate) return false;
     if (state.filters.orderPeriod === "월별" && !orderDatePart(order.created_at).startsWith(state.filters.orderMonth)) return false;
     if (!query) return true;
-    return [order.order_id, order.product_name, order.sku, order.dealer_name, order.dealer_code, order.created_by_login_id, order.memo, order.status, order.shipping_company, order.tracking_number]
+    return [order.order_id, order.product_name, order.sku, order.dealer_name, order.dealer_code, order.created_by_login_id, order.memo, order.status, order.shipping_company, order.tracking_number, order.recipient_name, order.recipient_phone, order.recipient_address]
       .some((value) => normalize(value).includes(query));
   });
 }
@@ -3647,6 +3892,45 @@ function uniqueDealerAccounts() {
   return Array.from(map.values());
 }
 
+function uniqueDealerProfiles() {
+  const map = new Map();
+  dealerAccounts().forEach((account) => {
+    if (!account.dealer_code || map.has(account.dealer_code)) return;
+    map.set(account.dealer_code, dealerProfileByCode(account.dealer_code));
+  });
+  return Array.from(map.values())
+    .filter(Boolean)
+    .sort((a, b) => String(a.dealer_name || "").localeCompare(String(b.dealer_name || ""), "ko"));
+}
+
+function dealerProfileByCode(dealerCode) {
+  const accounts = dealerAccounts().filter((account) => sameDealerCode(account.dealer_code, dealerCode));
+  return accounts.find(hasDealerProfileInfo) || accounts[0] || {};
+}
+
+function currentDealerProfile() {
+  if (!state.session) return {};
+  const profile = dealerProfileByCode(state.session.dealer_code);
+  return {
+    ...state.session,
+    ...profile,
+    dealer_name: profile.dealer_name || state.session.dealer_name,
+    dealer_code: profile.dealer_code || state.session.dealer_code
+  };
+}
+
+function hasDealerProfileInfo(account) {
+  return Boolean(account && (
+    account.contact_name ||
+    account.phone ||
+    account.zipcode ||
+    account.address ||
+    account.address_detail ||
+    account.default_courier ||
+    account.shipping_memo
+  ));
+}
+
 function managedAccounts() {
   if (state.session?.role === "admin") {
     return state.accounts.filter((account) => account.role === "dealer" || account.role === "admin");
@@ -3706,6 +3990,8 @@ function accountToSession(account) {
     zipcode: account.zipcode || "",
     address: account.address || "",
     address_detail: account.address_detail || "",
+    default_courier: account.default_courier || "",
+    shipping_memo: account.shipping_memo || "",
     password_changed_at: account.password_changed_at || "",
     profile_completed_at: account.profile_completed_at || "",
     updated_at: account.updated_at || ""

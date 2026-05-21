@@ -155,6 +155,10 @@
     });
   }
 
+  async function updateDealerProfile(profile) {
+    return request("updateDealerProfile", profile);
+  }
+
   async function createDealerAccount(account) {
     return request("createDealerAccount", account);
   }
@@ -223,6 +227,7 @@
     completeReservation,
     getReservations,
     updateDealerDiscount,
+    updateDealerProfile,
     createDealerAccount,
     resetDealerPassword,
     deactivateDealerAccount,

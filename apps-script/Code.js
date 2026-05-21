@@ -10,9 +10,9 @@ const SHEETS = {
 };
 
 const HEADERS = {
-  accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "role", "is_first_login", "is_active", "contact_name", "phone", "zipcode", "address", "address_detail", "password_changed_at", "profile_completed_at", "updated_at"],
+  accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "role", "is_first_login", "is_active", "contact_name", "phone", "zipcode", "address", "address_detail", "default_courier", "shipping_memo", "password_changed_at", "profile_completed_at", "updated_at"],
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
-  orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
+  orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
   reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "reservation_date", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
@@ -63,6 +63,7 @@ function doPost(e) {
     if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
     if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
     if (action === "updateDealerDiscount") return ok_(handleUpdateDealerDiscount_(payload, user));
+    if (action === "updateDealerProfile") return ok_(handleUpdateDealerProfile_(payload, user, token));
     if (action === "createDealerAccount") return ok_(handleCreateDealerAccount_(payload, user));
     if (action === "resetDealerPassword") return ok_(handleResetDealerPassword_(payload, user));
     if (action === "deactivateDealerAccount") return ok_(handleDeactivateDealerAccount_(payload, user));
@@ -306,6 +307,13 @@ function handleCreateOrder_(payload, user) {
     unit_purchase_price: unitPurchasePrice,
     status: "접수",
     memo: payload.memo || "",
+    recipient_name: "",
+    recipient_phone: "",
+    recipient_zipcode: "",
+    recipient_address: "",
+    recipient_address_detail: "",
+    default_courier: "",
+    shipping_memo: "",
     shipping_company: "",
     tracking_number: "",
     hq_stock_deducted_at: "",
@@ -345,6 +353,10 @@ function handleUpdateOrderStatus_(payload, user) {
   };
   const changedInventories = [];
 
+  if (status === "승인" || status === "출고") {
+    applyDealerProfileToOrderUpdates_(currentOrder, updates);
+  }
+
   if (status === "출고" || status === "완료") {
     if (!hasSnapshotValue_(currentOrder.hq_stock_deducted_at)) {
       const deducted = deductHeadOfficeStockForOrder_(currentOrder);
@@ -360,6 +372,9 @@ function handleUpdateOrderStatus_(payload, user) {
   } else if (["접수", "승인", "반려", "취소"].indexOf(status) >= 0) {
     updates.shipping_company = "";
     updates.tracking_number = "";
+  }
+  if (["접수", "반려", "취소"].indexOf(status) >= 0) {
+    clearDealerProfileFromOrderUpdates_(updates);
   }
 
   const order = updateRowByKey_(SHEETS.orders, "order_id", orderId, updates);
@@ -657,6 +672,32 @@ function handleDeleteProduct_(payload, user) {
   };
 }
 
+function handleUpdateDealerProfile_(payload, user, token) {
+  if (user.role !== "dealer") throw new Error("대리점 계정만 대리점 정보를 수정할 수 있습니다.");
+
+  const profile = {
+    contact_name: required_(payload.contact_name, "담당자 이름"),
+    phone: required_(payload.phone, "전화번호"),
+    zipcode: required_(payload.zipcode, "우편번호"),
+    address: required_(payload.address, "주소"),
+    address_detail: payload.address_detail || "",
+    default_courier: payload.default_courier || "",
+    shipping_memo: payload.shipping_memo || "",
+    updated_at: isoNow_()
+  };
+  if (!/^\d{5}$/.test(String(profile.zipcode))) throw new Error("우편번호는 숫자 5자리여야 합니다.");
+
+  const updatedAccounts = updateDealerProfileRows_(user.dealer_code, profile);
+  const updatedUser = publicAccount_(findAccountByLoginId_(user.login_id));
+  refreshSession_(token, updatedUser);
+  return {
+    session: { token: token, expires_in: SESSION_SECONDS },
+    user: updatedUser,
+    accounts: listAccessibleAccounts_(updatedUser),
+    updated_count: updatedAccounts.length
+  };
+}
+
 function handleCreateDealerAccount_(payload, user) {
   if (!canManageDealerStaff_(user)) throw new Error("담당자 추가는 본사 관리자 또는 대리점 최상위 관리자만 가능합니다.");
   const loginId = required_(payload.login_id, "login_id");
@@ -701,6 +742,8 @@ function handleCreateDealerAccount_(payload, user) {
     zipcode: "",
     address: "",
     address_detail: "",
+    default_courier: "",
+    shipping_memo: "",
     password_changed_at: "",
     profile_completed_at: "",
     updated_at: isoNow_()
@@ -1234,6 +1277,30 @@ function updateAccount_(loginId, updates) {
   return updateRowByKey_(SHEETS.accounts, "login_id", loginId, updates);
 }
 
+function updateDealerProfileRows_(dealerCode, updates) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.accounts);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const codeIndex = headers.indexOf("dealer_code");
+  const roleIndex = headers.indexOf("role");
+  if (codeIndex === -1 || roleIndex === -1) throw new Error("대리점관리 시트에 dealer_code 또는 role 컬럼이 없습니다.");
+
+  const updatedLogins = [];
+  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    const sameDealer = String(values[rowIndex][codeIndex]).toUpperCase() === String(dealerCode).toUpperCase();
+    const isDealer = String(values[rowIndex][roleIndex]) === "dealer";
+    if (!sameDealer || !isDealer) continue;
+    Object.keys(updates).forEach((field) => {
+      const colIndex = headers.indexOf(field);
+      if (colIndex >= 0) sheet.getRange(rowIndex + 1, colIndex + 1).setValue(updates[field]);
+    });
+    const loginIndex = headers.indexOf("login_id");
+    if (loginIndex >= 0) updatedLogins.push(String(values[rowIndex][loginIndex]));
+  }
+  if (!updatedLogins.length) throw new Error("수정할 대리점 계정을 찾을 수 없습니다.");
+  return readRows_(SHEETS.accounts).filter((account) => updatedLogins.indexOf(String(account.login_id)) >= 0);
+}
+
 function listPublicAccounts_() {
   return readRows_(SHEETS.accounts).map(publicAccount_);
 }
@@ -1285,6 +1352,8 @@ function publicAccount_(account) {
     zipcode: account.zipcode || "",
     address: account.address || "",
     address_detail: account.address_detail || "",
+    default_courier: account.default_courier || "",
+    shipping_memo: account.shipping_memo || "",
     password_changed_at: account.password_changed_at || "",
     profile_completed_at: account.profile_completed_at || "",
     updated_at: account.updated_at || ""
@@ -1526,6 +1595,43 @@ function dealerNameMap_() {
     });
   map[HEAD_OFFICE_CODE] = HEAD_OFFICE_NAME;
   return map;
+}
+
+function dealerProfileForCode_(dealerCode) {
+  const accounts = readRows_(SHEETS.accounts).filter((account) => (
+    account.role === "dealer" &&
+    String(account.dealer_code).toUpperCase() === String(dealerCode).toUpperCase()
+  ));
+  return accounts.find((account) => (
+    account.contact_name ||
+    account.phone ||
+    account.zipcode ||
+    account.address ||
+    account.address_detail ||
+    account.default_courier ||
+    account.shipping_memo
+  )) || accounts[0] || {};
+}
+
+function applyDealerProfileToOrderUpdates_(order, updates) {
+  const profile = dealerProfileForCode_(order.dealer_code);
+  updates.recipient_name = profile.contact_name || "";
+  updates.recipient_phone = profile.phone || "";
+  updates.recipient_zipcode = profile.zipcode || "";
+  updates.recipient_address = profile.address || "";
+  updates.recipient_address_detail = profile.address_detail || "";
+  updates.default_courier = profile.default_courier || "";
+  updates.shipping_memo = profile.shipping_memo || "";
+}
+
+function clearDealerProfileFromOrderUpdates_(updates) {
+  updates.recipient_name = "";
+  updates.recipient_phone = "";
+  updates.recipient_zipcode = "";
+  updates.recipient_address = "";
+  updates.recipient_address_detail = "";
+  updates.default_courier = "";
+  updates.shipping_memo = "";
 }
 
 function mapBy_(rows, key) {
