@@ -50,6 +50,7 @@ const dataMode = process.env.DATA_MODE || "mock";
 const appsScriptUrl = process.env.APPS_SCRIPT_API_URL || "";
 const appPublicUrl = process.env.APP_PUBLIC_URL || "";
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
+const labelMode = process.env.LABEL_PRINT_MODE || "test";
 const apiBaseUrl = process.env.API_BASE_URL || (appsScriptUrl ? "/api/gloc" : "");
 const exposeAppsScriptUrl = process.env.EXPOSE_APPS_SCRIPT_URL === "true";
 
@@ -59,7 +60,8 @@ const config = `window.FILM_STOCK_CONFIG = {
   apiBaseUrl: ${JSON.stringify(apiBaseUrl)},
   appsScriptUrl: ${JSON.stringify(exposeAppsScriptUrl ? appsScriptUrl : "")},
   appPublicUrl: ${JSON.stringify(appPublicUrl)},
-  vapidPublicKey: ${JSON.stringify(vapidPublicKey)}
+  vapidPublicKey: ${JSON.stringify(vapidPublicKey)},
+  labelMode: ${JSON.stringify(labelMode)}
 };
 `;
 

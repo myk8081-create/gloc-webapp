@@ -1414,8 +1414,8 @@ h3 {
 
 .shipping-info {
   display: grid;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 7px;
+  padding: 14px 16px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--amber-soft);
@@ -1424,12 +1424,12 @@ h3 {
 
 .shipping-info strong {
   color: var(--amber);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .shipping-info span {
   color: var(--text);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 800;
   overflow-wrap: anywhere;
 }

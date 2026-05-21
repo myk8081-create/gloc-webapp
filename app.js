@@ -9,6 +9,44 @@ const defaultRetailPrice = 1000000;
 const defaultPurchasePrice = 500000;
 const defaultLegacyOrderDiscountRate = 20;
 const inventoryPageSize = 10;
+const koreaPostOverlay = {
+  PAGE_WIDTH_MM: 150,
+  PAGE_HEIGHT_MM: 100,
+  OFFSET_X_MM: 0,
+  OFFSET_Y_MM: 0,
+  SCALE: 1,
+  SMALL_BARCODE_X_MM: 48,
+  SMALL_BARCODE_Y_MM: 5,
+  SMALL_BARCODE_WIDTH_MM: 13,
+  SMALL_BARCODE_HEIGHT_MM: 13,
+  BARCODE_X_MM: 18,
+  BARCODE_Y_MM: 39,
+  BARCODE_WIDTH_MM: 31,
+  BARCODE_HEIGHT_MM: 19,
+  TRACKING_X_MM: 6,
+  TRACKING_Y_MM: 12,
+  WEIGHT_X_MM: 6,
+  WEIGHT_Y_MM: 31,
+  FEE_X_MM: 39,
+  FEE_Y_MM: 31,
+  CONTENT_X_MM: 6,
+  CONTENT_Y_MM: 71,
+  CONTENT_WIDTH_MM: 48,
+  SENDER_X_MM: 70,
+  SENDER_Y_MM: 18,
+  SENDER_WIDTH_MM: 57,
+  RECIPIENT_X_MM: 70,
+  RECIPIENT_Y_MM: 45,
+  RECIPIENT_WIDTH_MM: 60,
+  REGISTRATION_X_MM: 70,
+  REGISTRATION_Y_MM: 78,
+  BOTTOM_BARCODE_X_MM: 72,
+  BOTTOM_BARCODE_Y_MM: 84,
+  BOTTOM_BARCODE_WIDTH_MM: 47,
+  BOTTOM_BARCODE_HEIGHT_MM: 13,
+  WATERMARK_X_MM: 55,
+  WATERMARK_Y_MM: 40
+};
 
 const colorOptions = [
   { name: "전체", value: "전체", hex: "#cf4e42" },
@@ -282,7 +320,7 @@ const state = {
     reservationDate: dateInputValue(),
     reservationQty: 1,
     reservationMemo: "",
-    labelSize: "post-100x150",
+    labelSize: "post-overlay-150x100",
     productSku: "",
     productName: "",
     productCategory: "PPF",
@@ -1105,9 +1143,11 @@ function renderOrders() {
         <select class="search-input compact-select" id="orderStatus">
           ${["전체", ...orderStatuses].map((status) => `<option value="${status}" ${state.filters.orderStatus === status ? "selected" : ""}>${status}</option>`).join("")}
         </select>
-        <select class="search-input compact-select label-size-select" id="labelSize" aria-label="송장 라벨 크기">
-          ${labelSizeOptions().map((option) => `<option value="${option.value}" ${state.forms.labelSize === option.value ? "selected" : ""}>${option.label}</option>`).join("")}
-        </select>
+        ${state.session?.role === "admin" ? `
+          <select class="search-input compact-select label-size-select" id="labelSize" aria-label="송장 라벨 크기">
+            ${labelSizeOptions().map((option) => `<option value="${option.value}" ${state.forms.labelSize === option.value ? "selected" : ""}>${option.label}</option>`).join("")}
+          </select>
+        ` : ""}
       </section>
 
       <section class="stats-grid order-report-grid" id="orderStats">
@@ -1850,7 +1890,7 @@ function renderOrderCard(order) {
     ["출고", "완료"].includes(order.status) &&
     !order.dealer_received_at;
   const trackingNo = orderTrackingNo(order);
-  const canPrintLabel = Boolean(trackingNo);
+  const canPrintLabel = canChange && Boolean(trackingNo);
   const printCount = Number(order.print_count || 0);
   const hasShipping = order.courier || order.tracking_no || order.shipping_receipt_no || order.shipping_company || order.tracking_number;
   const hasRecipient = order.recipient_name || order.recipient_phone || order.recipient_address || order.shipping_memo;
@@ -1894,9 +1934,9 @@ function renderOrderCard(order) {
           ${order.printed_at ? `<span>마지막 출력: ${escapeHtml(order.printed_at)}</span>` : ""}
         </div>
       ` : ""}
-      ${canChange || canPrintLabel ? `
+      ${canChange ? `
         <div class="order-actions">
-          ${canChange ? orderStatuses.map((status) => `<button type="button" class="${isOrderStatusActive(order.status, status) ? "active" : ""}" data-order-status="${status}" data-order-id="${escapeAttr(order.order_id)}">${status}</button>`).join("") : ""}
+          ${orderStatuses.map((status) => `<button type="button" class="${isOrderStatusActive(order.status, status) ? "active" : ""}" data-order-status="${status}" data-order-id="${escapeAttr(order.order_id)}">${status}</button>`).join("")}
           ${canPrintLabel ? `<button type="button" class="label-print-button" data-order-label-print="${escapeAttr(order.order_id)}">${printCount > 0 ? "재출력" : "송장출력"}</button>` : ""}
         </div>
       ` : ""}
@@ -3246,8 +3286,12 @@ function buildShippingLabelHtml(order, labelSizeValue) {
   const label = labelSizeMeta(labelSizeValue);
   const trackingNo = orderTrackingNo(order);
   const sender = labelSenderInfo();
-  const recipientAddress = orderRecipientAddress(order);
+  const registrationNo = labelRegistrationNo(order);
+  const safeRegistrationNo = escapeHtml(registrationNo);
   const safeTrackingNo = escapeHtml(trackingNo);
+  const testWatermark = shouldShowTestWatermark(order)
+    ? `<div class="test-watermark">TEST / 실제 접수 아님</div>`
+    : "";
   return `<!doctype html>
 <html lang="ko">
   <head>
@@ -3256,191 +3300,215 @@ function buildShippingLabelHtml(order, labelSizeValue) {
     <style>
       @page { size: ${label.pageSize}; margin: 0; }
       * { box-sizing: border-box; }
+      html,
       body {
         margin: 0;
-        background: #e8e4dc;
-        color: #111;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        width: ${label.widthMm}mm;
+        height: ${label.heightMm}mm;
+        background: transparent;
+        color: #000;
+        font-family: Arial, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        text-rendering: geometricPrecision;
       }
       .print-shell {
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        padding: 18px;
-      }
-      .label {
-        position: relative;
         width: ${label.widthMm}mm;
         min-height: ${label.heightMm}mm;
+        position: relative;
+      }
+      .label-overlay {
+        position: relative;
+        width: ${label.widthMm}mm;
+        height: ${label.heightMm}mm;
         overflow: hidden;
-        background: #fff;
-        border: 1px solid #111;
-        padding: ${label.paddingMm}mm;
-        display: grid;
-        grid-template-rows: auto auto 1fr auto;
-        gap: 3mm;
+        background: transparent;
+        color: #000;
+        transform-origin: 0 0;
       }
-      .watermark {
+      .field,
+      .barcode-slot,
+      .test-watermark {
         position: absolute;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        transform: rotate(-24deg);
-        color: rgba(207, 78, 66, 0.14);
-        font-size: ${label.watermarkSize}px;
-        font-weight: 950;
-        letter-spacing: 2px;
-        pointer-events: none;
-        white-space: nowrap;
+        color: #000;
       }
-      .top {
-        position: relative;
-        display: flex;
-        justify-content: space-between;
-        gap: 8mm;
-        border-bottom: 2px solid #111;
-        padding-bottom: 3mm;
-        z-index: 1;
-      }
-      .brand strong {
-        display: block;
-        font-size: ${label.titleSize}px;
-        letter-spacing: 0;
-      }
-      .brand span,
-      .meta span {
-        display: block;
-        margin-top: 1mm;
-        color: #333;
-        font-size: ${label.smallSize}px;
+      .field {
+        font-size: 3.1mm;
         font-weight: 700;
+        line-height: 1.18;
+        letter-spacing: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: keep-all;
       }
-      .meta {
-        text-align: right;
+      .field-small {
+        font-size: 2.45mm;
+        font-weight: 700;
+        line-height: 1.2;
       }
-      .tracking {
-        position: relative;
-        z-index: 1;
-        display: grid;
-        gap: 2mm;
-        border: 2px solid #111;
-        padding: 3mm;
+      .field-large {
+        font-size: 5.6mm;
+        font-weight: 900;
+        line-height: 1.05;
       }
-      .tracking strong {
-        font-size: ${label.headingSize}px;
+      .tracking-no {
+        left: ${overlayX(koreaPostOverlay.TRACKING_X_MM)};
+        top: ${overlayY(koreaPostOverlay.TRACKING_Y_MM)};
+        width: 46mm;
       }
-      .barcode svg {
+      .small-barcode {
+        left: ${overlayX(koreaPostOverlay.SMALL_BARCODE_X_MM)};
+        top: ${overlayY(koreaPostOverlay.SMALL_BARCODE_Y_MM)};
+        width: ${overlaySize(koreaPostOverlay.SMALL_BARCODE_WIDTH_MM)};
+        height: ${overlaySize(koreaPostOverlay.SMALL_BARCODE_HEIGHT_MM)};
+      }
+      .weight {
+        left: ${overlayX(koreaPostOverlay.WEIGHT_X_MM)};
+        top: ${overlayY(koreaPostOverlay.WEIGHT_Y_MM)};
+        width: 29mm;
+      }
+      .fee {
+        left: ${overlayX(koreaPostOverlay.FEE_X_MM)};
+        top: ${overlayY(koreaPostOverlay.FEE_Y_MM)};
+        width: 22mm;
+      }
+      .main-barcode {
+        left: ${overlayX(koreaPostOverlay.BARCODE_X_MM)};
+        top: ${overlayY(koreaPostOverlay.BARCODE_Y_MM)};
+        width: ${overlaySize(koreaPostOverlay.BARCODE_WIDTH_MM)};
+        height: ${overlaySize(koreaPostOverlay.BARCODE_HEIGHT_MM)};
+      }
+      .content-name {
+        left: ${overlayX(koreaPostOverlay.CONTENT_X_MM)};
+        top: ${overlayY(koreaPostOverlay.CONTENT_Y_MM)};
+        width: ${overlaySize(koreaPostOverlay.CONTENT_WIDTH_MM)};
+      }
+      .sender {
+        left: ${overlayX(koreaPostOverlay.SENDER_X_MM)};
+        top: ${overlayY(koreaPostOverlay.SENDER_Y_MM)};
+        width: ${overlaySize(koreaPostOverlay.SENDER_WIDTH_MM)};
+      }
+      .recipient {
+        left: ${overlayX(koreaPostOverlay.RECIPIENT_X_MM)};
+        top: ${overlayY(koreaPostOverlay.RECIPIENT_Y_MM)};
+        width: ${overlaySize(koreaPostOverlay.RECIPIENT_WIDTH_MM)};
+      }
+      .registration {
+        left: ${overlayX(koreaPostOverlay.REGISTRATION_X_MM)};
+        top: ${overlayY(koreaPostOverlay.REGISTRATION_Y_MM)};
+        width: 70mm;
+      }
+      .bottom-barcode {
+        left: ${overlayX(koreaPostOverlay.BOTTOM_BARCODE_X_MM)};
+        top: ${overlayY(koreaPostOverlay.BOTTOM_BARCODE_Y_MM)};
+        width: ${overlaySize(koreaPostOverlay.BOTTOM_BARCODE_WIDTH_MM)};
+        height: ${overlaySize(koreaPostOverlay.BOTTOM_BARCODE_HEIGHT_MM)};
+      }
+      .barcode-slot svg {
         display: block;
         width: 100%;
-        height: ${label.barcodeHeight}px;
+        height: 100%;
+        fill: #000;
+        shape-rendering: crispEdges;
       }
-      .grid {
-        position: relative;
-        z-index: 1;
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 3mm;
+      .recipient-name {
+        display: block;
+        margin: 1.4mm 0 1mm;
+        font-size: 6.8mm;
+        font-weight: 900;
+        line-height: 1;
       }
-      .box {
-        border: 1px solid #222;
-        padding: 3mm;
+      .address-line {
+        display: block;
+        margin-top: 1.1mm;
       }
-      .box h2 {
-        margin: 0 0 2mm;
-        font-size: ${label.headingSize}px;
+      .test-watermark {
+        left: ${overlayX(koreaPostOverlay.WATERMARK_X_MM)};
+        top: ${overlayY(koreaPostOverlay.WATERMARK_Y_MM)};
+        transform: translate(-50%, -50%) rotate(-20deg);
+        color: rgba(0, 0, 0, 0.12);
+        font-size: 9mm;
+        font-weight: 700;
+        white-space: nowrap;
+        pointer-events: none;
       }
-      .row {
-        display: grid;
-        grid-template-columns: 24mm 1fr;
-        gap: 2mm;
-        margin-top: 1.5mm;
-        font-size: ${label.bodySize}px;
-        line-height: 1.35;
-      }
-      .row b {
-        color: #555;
-      }
-      .test-copy {
-        position: relative;
-        z-index: 1;
-        border: 2px solid #cf4e42;
-        color: #cf4e42;
-        padding: 2.5mm;
-        text-align: center;
-        font-size: ${label.headingSize}px;
-        font-weight: 950;
-      }
+      .print-instructions,
       .actions {
-        margin-top: 16px;
+        position: fixed;
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
         display: flex;
+        align-items: center;
         justify-content: center;
         gap: 8px;
+        color: #111;
+        font-size: 13px;
+      }
+      .print-instructions {
+        bottom: 70px;
+        text-align: center;
       }
       .actions button {
         min-height: 42px;
         padding: 0 18px;
-        border: 1px solid #9f7b38;
+        border: 0;
         border-radius: 8px;
-        background: #cf4e42;
+        background: #111;
         color: #fff;
         font-weight: 850;
         cursor: pointer;
       }
       @media print {
-        body { background: #fff; }
-        .print-shell { display: block; padding: 0; }
-        .label { border-color: #000; }
-        .actions { display: none; }
+        html,
+        body {
+          width: ${label.widthMm}mm;
+          height: ${label.heightMm}mm;
+          margin: 0;
+          padding: 0;
+          background: transparent;
+        }
+        .print-shell {
+          width: ${label.widthMm}mm;
+          height: ${label.heightMm}mm;
+          margin: 0;
+          padding: 0;
+        }
+        .print-instructions,
+        .actions {
+          display: none;
+        }
       }
     </style>
   </head>
   <body>
     <main class="print-shell">
-      <section class="label" aria-label="송장 라벨">
-        <div class="watermark">TEST / 실제 접수 아님</div>
-        <header class="top">
-          <div class="brand">
-            <strong>GLOC</strong>
-            <span>${escapeHtml(label.label)} 송장 라벨</span>
-          </div>
-          <div class="meta">
-            <strong>${escapeHtml(order.courier || order.shipping_company || "우체국택배")}</strong>
-            <span>${escapeHtml(order.order_id || "")}</span>
-            <span>${escapeHtml(order.shipping_receipt_no || "테스트 접수번호")}</span>
-          </div>
-        </header>
-
-        <section class="tracking">
-          <strong>${safeTrackingNo}</strong>
-          <div class="barcode">${code39BarcodeSvg(trackingNo)}</div>
-        </section>
-
-        <section class="grid">
-          <div class="box">
-            <h2>받는 분</h2>
-            <div class="row"><b>대리점</b><span>${escapeHtml(order.dealer_name || order.dealer_code || "")}</span></div>
-            <div class="row"><b>수령인</b><span>${escapeHtml(order.recipient_name || "담당자 미입력")}</span></div>
-            <div class="row"><b>연락처</b><span>${escapeHtml(order.recipient_phone || "전화번호 미입력")}</span></div>
-            <div class="row"><b>주소</b><span>${escapeHtml(recipientAddress || "주소 미입력")}</span></div>
-          </div>
-          <div class="box">
-            <h2>상품 정보</h2>
-            <div class="row"><b>제품명</b><span>${escapeHtml(order.product_name || "")}</span></div>
-            <div class="row"><b>SKU</b><span>${escapeHtml(order.sku || "")}</span></div>
-            <div class="row"><b>수량</b><span>${roll(Number(order.qty || 0))}</span></div>
-          </div>
-          <div class="box">
-            <h2>보내는 분</h2>
-            <div class="row"><b>발송인</b><span>${escapeHtml(sender.name)}</span></div>
-            <div class="row"><b>연락처</b><span>${escapeHtml(sender.phone)}</span></div>
-            <div class="row"><b>주소</b><span>${escapeHtml(sender.address)}</span></div>
-          </div>
-        </section>
-
-        <div class="test-copy">TEST / 실제 접수 아님</div>
+      <section class="label-overlay" aria-label="우체국 소포 라벨 오버레이">
+        ${testWatermark}
+        <div class="field field-small tracking-no">${safeTrackingNo}</div>
+        <div class="barcode-slot small-barcode">${code39BarcodeSvg(trackingNo.slice(-10) || trackingNo)}</div>
+        <div class="field field-small weight">중량: ${escapeHtml(labelWeightText(order))}</div>
+        <div class="field field-small fee">요금: ${escapeHtml(labelFeeText(order))}</div>
+        <div class="barcode-slot main-barcode">${code39BarcodeSvg(trackingNo)}</div>
+        <div class="field field-small content-name">내용품명: ${escapeHtml(labelContentName(order))}</div>
+        <div class="field field-small sender">
+          <span class="address-line">${escapeHtml(sender.name)}</span>
+          <span class="address-line">T: ${escapeHtml(sender.phone)}</span>
+          <span class="address-line">${escapeHtml(sender.address)}</span>
+        </div>
+        <div class="field recipient">
+          <span class="address-line">${escapeHtml(order.recipient_zipcode || "")}</span>
+          <span class="address-line">${escapeHtml(order.recipient_address || "")}</span>
+          ${order.recipient_address_detail ? `<span class="address-line">${escapeHtml(order.recipient_address_detail)}</span>` : ""}
+          <strong class="recipient-name">${escapeHtml(order.recipient_name || order.dealer_name || "수령인 미입력")}</strong>
+          <span class="address-line">T: ${escapeHtml(order.recipient_phone || "전화번호 미입력")}</span>
+        </div>
+        <div class="field field-small registration">등기번호 : ${safeRegistrationNo}</div>
+        <div class="barcode-slot bottom-barcode">${code39BarcodeSvg(registrationNo)}</div>
       </section>
+      <p class="print-instructions">프린터 설정: 배율 100%, 여백 없음, 가로 방향, 머리글/바닥글 제거</p>
       <div class="actions">
-        <button type="button" onclick="window.print()">PDF 출력 / 프린트</button>
+        <button type="button" onclick="window.print()">오버레이 출력</button>
         <button type="button" onclick="window.close()">닫기</button>
       </div>
     </main>
@@ -3458,14 +3526,52 @@ function buildShippingLabelHtml(order, labelSizeValue) {
 
 function labelSizeOptions() {
   return [
-    { value: "post-100x150", label: "우체국 100x150mm", pageSize: "100mm 150mm", widthMm: 100, heightMm: 150, paddingMm: 5, titleSize: 24, headingSize: 17, bodySize: 13, smallSize: 11, barcodeHeight: 58, watermarkSize: 42 },
-    { value: "a6", label: "A6 105x148mm", pageSize: "105mm 148mm", widthMm: 105, heightMm: 148, paddingMm: 5, titleSize: 24, headingSize: 17, bodySize: 13, smallSize: 11, barcodeHeight: 56, watermarkSize: 42 },
-    { value: "four-by-six", label: "4x6 inch", pageSize: "101.6mm 152.4mm", widthMm: 101.6, heightMm: 152.4, paddingMm: 5, titleSize: 24, headingSize: 17, bodySize: 13, smallSize: 11, barcodeHeight: 60, watermarkSize: 42 }
+    { value: "post-overlay-150x100", label: "우체국 소포 오버레이 150x100mm", pageSize: "150mm 100mm", widthMm: 150, heightMm: 100 }
   ];
 }
 
 function labelSizeMeta(value) {
   return labelSizeOptions().find((option) => option.value === value) || labelSizeOptions()[0];
+}
+
+function overlayMm(value) {
+  return `${Number(value || 0).toFixed(2)}mm`;
+}
+
+function overlayX(value) {
+  return overlayMm(koreaPostOverlay.OFFSET_X_MM + Number(value || 0) * koreaPostOverlay.SCALE);
+}
+
+function overlayY(value) {
+  return overlayMm(koreaPostOverlay.OFFSET_Y_MM + Number(value || 0) * koreaPostOverlay.SCALE);
+}
+
+function overlaySize(value) {
+  return overlayMm(Number(value || 0) * koreaPostOverlay.SCALE);
+}
+
+function labelPrintMode() {
+  return String(config.labelMode || "test").toLowerCase() === "production" ? "production" : "test";
+}
+
+function shouldShowTestWatermark() {
+  return labelPrintMode() !== "production";
+}
+
+function labelRegistrationNo(order) {
+  return String(order.shipping_receipt_no || order.tracking_no || order.order_id || "").trim();
+}
+
+function labelWeightText(order) {
+  return String(order.shipping_weight || order.weight || "1190g").trim();
+}
+
+function labelFeeText(order) {
+  return String(order.shipping_fee || order.fee || "착불").trim();
+}
+
+function labelContentName(order) {
+  return String(order.shipping_content_name || order.product_name || "필름 제품").trim();
 }
 
 function labelSenderInfo() {
@@ -3523,7 +3629,7 @@ function code39BarcodeSvg(value) {
     x += narrow;
   });
 
-  return `<svg viewBox="0 0 ${x} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="송장번호 바코드"><rect width="${x}" height="${height}" fill="#fff" />${rects.join("")}</svg>`;
+  return `<svg viewBox="0 0 ${x} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="송장번호 바코드" fill="#000" shape-rendering="crispEdges">${rects.join("")}</svg>`;
 }
 
 async function receiveOrder(orderId) {
