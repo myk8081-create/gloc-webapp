@@ -12,7 +12,7 @@ const SHEETS = {
 const HEADERS = {
   accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "role", "is_first_login", "is_active", "contact_name", "phone", "zipcode", "address", "address_detail", "default_courier", "shipping_memo", "password_changed_at", "profile_completed_at", "updated_at"],
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
-  orders: ["order_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
+  orders: ["order_id", "agency_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "courier", "tracking_no", "shipping_receipt_no", "shipping_error", "approved_at", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
   reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "reservation_date", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
@@ -28,6 +28,7 @@ const REPOSITORY_SHEET_HEADERS = {
 };
 
 const ORDER_STATUSES = ["접수", "승인", "출고", "완료", "반려", "취소"];
+const SHIPPING_REGISTERED_TEST_STATUS = "shipping_registered_test";
 const SESSION_SECONDS = 21600;
 const HEAD_OFFICE_CODE = "ADMIN";
 const HEAD_OFFICE_NAME = "본사";
@@ -240,6 +241,20 @@ function handleCompleteOnboarding_(payload, user, token) {
     profile_completed_at: now,
     updated_at: now
   });
+  upsertAgencyFromDealerProfile_(user.dealer_code, user.dealer_name, {
+    contact_name: contactName,
+    phone: phone,
+    zipcode: zipcode,
+    address: address,
+    address_detail: payload.address_detail || "",
+    default_courier: payload.default_courier || "",
+    shipping_memo: payload.shipping_memo || "",
+    is_active: true,
+    is_first_login: false,
+    password_changed_at: now,
+    profile_completed_at: now,
+    updated_at: now
+  });
 
   const updated = publicAccount_(findAccountByLoginId_(user.login_id));
   refreshSession_(token, updated);
@@ -295,6 +310,7 @@ function handleCreateOrder_(payload, user) {
 
   const order = {
     order_id: makeOrderId_(),
+    agency_id: user.dealer_code,
     dealer_code: user.dealer_code,
     dealer_name: user.dealer_name,
     created_by_login_id: user.login_id,
@@ -314,6 +330,11 @@ function handleCreateOrder_(payload, user) {
     recipient_address_detail: "",
     default_courier: "",
     shipping_memo: "",
+    courier: "",
+    tracking_no: "",
+    shipping_receipt_no: "",
+    shipping_error: "",
+    approved_at: "",
     shipping_company: "",
     tracking_number: "",
     hq_stock_deducted_at: "",
@@ -331,7 +352,10 @@ function handleGetOrders_(payload, user) {
     orders = orders.filter((order) => order.dealer_code === user.dealer_code);
   }
   if (payload.status && payload.status !== "전체") {
-    orders = orders.filter((order) => order.status === payload.status);
+    orders = orders.filter((order) => {
+      if (payload.status === "승인") return order.status === "승인" || order.status === SHIPPING_REGISTERED_TEST_STATUS;
+      return order.status === payload.status;
+    });
   }
   return {
     orders: orders.reverse(),
@@ -343,7 +367,7 @@ function handleUpdateOrderStatus_(payload, user) {
   requireAdmin_(user);
   const orderId = required_(payload.order_id, "order_id");
   const status = required_(payload.status, "status");
-  if (ORDER_STATUSES.indexOf(status) === -1) throw new Error("지원하지 않는 발주 상태입니다.");
+  if (ORDER_STATUSES.indexOf(status) === -1 && status !== SHIPPING_REGISTERED_TEST_STATUS) throw new Error("지원하지 않는 발주 상태입니다.");
   const currentOrder = readRows_(SHEETS.orders).find((row) => row.order_id === orderId);
   if (!currentOrder) throw new Error("발주를 찾을 수 없습니다.");
 
@@ -353,7 +377,15 @@ function handleUpdateOrderStatus_(payload, user) {
   };
   const changedInventories = [];
 
-  if (status === "승인" || status === "출고") {
+  if (status === "승인") {
+    try {
+      registerTestShippingForOrder_(currentOrder, updates);
+    } catch (error) {
+      updates.status = "승인";
+      clearTestShippingFromOrderUpdates_(updates);
+      updates.shipping_error = error.message || "배송정보 검증에 실패했습니다.";
+    }
+  } else if (status === "출고") {
     applyDealerProfileToOrderUpdates_(currentOrder, updates);
   }
 
@@ -367,11 +399,13 @@ function handleUpdateOrderStatus_(payload, user) {
   }
 
   if (status === "출고") {
-    updates.shipping_company = required_(payload.shipping_company, "택배사");
-    updates.tracking_number = required_(payload.tracking_number, "송장번호");
-  } else if (["접수", "승인", "반려", "취소"].indexOf(status) >= 0) {
-    updates.shipping_company = "";
-    updates.tracking_number = "";
+    updates.courier = required_(payload.shipping_company, "택배사");
+    updates.tracking_no = required_(payload.tracking_number, "송장번호");
+    updates.shipping_company = updates.courier;
+    updates.tracking_number = updates.tracking_no;
+    updates.shipping_error = "";
+  } else if (["접수", "반려", "취소"].indexOf(status) >= 0) {
+    clearTestShippingFromOrderUpdates_(updates);
   }
   if (["접수", "반려", "취소"].indexOf(status) >= 0) {
     clearDealerProfileFromOrderUpdates_(updates);
@@ -688,6 +722,20 @@ function handleUpdateDealerProfile_(payload, user, token) {
   if (!/^\d{5}$/.test(String(profile.zipcode))) throw new Error("우편번호는 숫자 5자리여야 합니다.");
 
   const updatedAccounts = updateDealerProfileRows_(user.dealer_code, profile);
+  upsertAgencyFromDealerProfile_(user.dealer_code, user.dealer_name, {
+    contact_name: profile.contact_name,
+    phone: profile.phone,
+    zipcode: profile.zipcode,
+    address: profile.address,
+    address_detail: profile.address_detail,
+    default_courier: profile.default_courier,
+    shipping_memo: profile.shipping_memo,
+    is_active: true,
+    is_first_login: false,
+    password_changed_at: user.password_changed_at || "",
+    profile_completed_at: user.profile_completed_at || profile.updated_at,
+    updated_at: profile.updated_at
+  });
   const updatedUser = publicAccount_(findAccountByLoginId_(user.login_id));
   refreshSession_(token, updatedUser);
   return {
@@ -937,9 +985,9 @@ function notifyOrderCanceled_(order) {
 }
 
 function notifyDealerOrderUpdated_(order) {
-  let body = order.product_name + " · " + order.status;
-  if (order.status === "출고") {
-    body += " · " + (order.shipping_company || "택배사") + " " + (order.tracking_number || "");
+  let body = order.product_name + " · " + orderStatusLabel_(order.status);
+  if (order.status === "출고" || order.status === SHIPPING_REGISTERED_TEST_STATUS) {
+    body += " · " + (order.courier || order.shipping_company || "택배사") + " " + (order.tracking_no || order.tracking_number || "");
   }
   return sendPushNotification_({
     title: "GLOC 발주 상태 변경",
@@ -947,6 +995,11 @@ function notifyDealerOrderUpdated_(order) {
     url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
     tag: "gloc-order-update-" + order.order_id
   }, { role: "dealer", dealer_code: order.dealer_code });
+}
+
+function orderStatusLabel_(status) {
+  if (status === SHIPPING_REGISTERED_TEST_STATUS) return "승인 · 테스트송장";
+  return status || "";
 }
 
 function notifyHeadOfficeLowStock_(inventory) {
@@ -1613,8 +1666,70 @@ function dealerProfileForCode_(dealerCode) {
   )) || accounts[0] || {};
 }
 
+function agencyForOrder_(order) {
+  ensureSheet_("Agencies", REPOSITORY_SHEET_HEADERS.Agencies);
+  const agencyId = String(order.agency_id || order.dealer_code || "").toUpperCase();
+  const dealerCode = String(order.dealer_code || agencyId).toUpperCase();
+  const agency = readRows_("Agencies").find((row) => {
+    if (row.is_active !== "" && !toBool_(row.is_active)) return false;
+    return (
+      String(row.id || "").toUpperCase() === agencyId ||
+      String(row.dealer_id || "").toUpperCase() === agencyId ||
+      String(row.dealer_id || "").toUpperCase() === dealerCode
+    );
+  }) || {};
+  const profile = dealerProfileForCode_(dealerCode);
+  return {
+    id: agency.id || agencyId || dealerCode,
+    dealer_id: agency.dealer_id || dealerCode,
+    agency_name: agency.agency_name || profile.dealer_name || order.dealer_name || dealerCode,
+    contact_name: agency.contact_name || profile.contact_name || "",
+    phone: agency.phone || profile.phone || "",
+    zipcode: agency.zipcode || profile.zipcode || "",
+    address: agency.address || profile.address || "",
+    address_detail: agency.address_detail || profile.address_detail || "",
+    default_courier: agency.default_courier || profile.default_courier || "",
+    shipping_memo: agency.shipping_memo || profile.shipping_memo || "",
+    is_active: agency.is_active === "" ? true : toBool_(agency.is_active),
+    is_first_login: agency.is_first_login || profile.is_first_login || "",
+    password_changed_at: agency.password_changed_at || profile.password_changed_at || "",
+    profile_completed_at: agency.profile_completed_at || profile.profile_completed_at || "",
+    updated_at: agency.updated_at || profile.updated_at || ""
+  };
+}
+
+function upsertAgencyFromDealerProfile_(dealerCode, dealerName, profile) {
+  ensureSheet_("Agencies", REPOSITORY_SHEET_HEADERS.Agencies);
+  const normalizedCode = String(dealerCode || "").toUpperCase();
+  const agency = {
+    id: normalizedCode,
+    dealer_id: normalizedCode,
+    agency_name: dealerName || normalizedCode,
+    contact_name: profile.contact_name || "",
+    phone: profile.phone || "",
+    zipcode: profile.zipcode || "",
+    address: profile.address || "",
+    address_detail: profile.address_detail || "",
+    default_courier: profile.default_courier || "",
+    shipping_memo: profile.shipping_memo || "",
+    is_active: profile.is_active === undefined ? true : profile.is_active,
+    is_first_login: profile.is_first_login === undefined ? false : profile.is_first_login,
+    password_changed_at: profile.password_changed_at || "",
+    profile_completed_at: profile.profile_completed_at || "",
+    updated_at: profile.updated_at || isoNow_()
+  };
+  const existing = readRows_("Agencies").find((row) => (
+    String(row.id || "").toUpperCase() === normalizedCode ||
+    String(row.dealer_id || "").toUpperCase() === normalizedCode
+  ));
+  if (existing && existing.id) return updateRowByKey_("Agencies", "id", existing.id, agency);
+  if (existing && existing.dealer_id) return updateRowByKey_("Agencies", "dealer_id", existing.dealer_id, agency);
+  appendObject_("Agencies", agency);
+  return agency;
+}
+
 function applyDealerProfileToOrderUpdates_(order, updates) {
-  const profile = dealerProfileForCode_(order.dealer_code);
+  const profile = agencyForOrder_(order);
   updates.recipient_name = profile.contact_name || "";
   updates.recipient_phone = profile.phone || "";
   updates.recipient_zipcode = profile.zipcode || "";
@@ -1622,6 +1737,63 @@ function applyDealerProfileToOrderUpdates_(order, updates) {
   updates.recipient_address_detail = profile.address_detail || "";
   updates.default_courier = profile.default_courier || "";
   updates.shipping_memo = profile.shipping_memo || "";
+}
+
+function registerTestShippingForOrder_(order, updates) {
+  const agency = agencyForOrder_(order);
+  validateAgencyShippingInfo_(agency);
+  applyDealerProfileToOrderUpdates_(order, updates);
+
+  const existingTrackingNo = order.tracking_no || order.tracking_number;
+  const shipment = existingTrackingNo
+    ? {
+        courier: order.courier || order.shipping_company || "우체국택배",
+        tracking_no: existingTrackingNo,
+        shipping_receipt_no: order.shipping_receipt_no || "MOCK-RCPT-" + compactDateValue_() + "-" + randomDigits_(6)
+      }
+    : mockKoreaPostAdapter_(order, agency);
+
+  updates.status = SHIPPING_REGISTERED_TEST_STATUS;
+  updates.courier = shipment.courier;
+  updates.tracking_no = shipment.tracking_no;
+  updates.shipping_receipt_no = shipment.shipping_receipt_no;
+  updates.approved_at = order.approved_at || isoNow_();
+  updates.shipping_error = "";
+  updates.shipping_company = shipment.courier;
+  updates.tracking_number = shipment.tracking_no;
+}
+
+function mockKoreaPostAdapter_(order, agency) {
+  validateAgencyShippingInfo_(agency);
+  // 테스트 모드 전용: 실제 우체국 API를 호출하지 않고 송장 형식만 생성합니다.
+  const date = compactDateValue_();
+  const random = randomDigits_(6);
+  return {
+    courier: "우체국택배",
+    tracking_no: "TEST-KP-" + date + "-" + random,
+    shipping_receipt_no: "MOCK-RCPT-" + date + "-" + random,
+    order_id: order.order_id
+  };
+}
+
+function validateAgencyShippingInfo_(agency) {
+  const missing = [];
+  if (!String(agency.contact_name || "").trim()) missing.push("담당자 이름");
+  if (!String(agency.phone || "").trim()) missing.push("전화번호");
+  if (!String(agency.zipcode || "").trim()) missing.push("우편번호");
+  if (!String(agency.address || "").trim()) missing.push("주소");
+  if (missing.length) throw new Error("배송정보가 부족합니다: " + missing.join(", "));
+  if (!/^\d{5}$/.test(String(agency.zipcode))) throw new Error("우편번호는 숫자 5자리여야 합니다.");
+}
+
+function clearTestShippingFromOrderUpdates_(updates) {
+  updates.courier = "";
+  updates.tracking_no = "";
+  updates.shipping_receipt_no = "";
+  updates.shipping_error = "";
+  updates.approved_at = "";
+  updates.shipping_company = "";
+  updates.tracking_number = "";
 }
 
 function clearDealerProfileFromOrderUpdates_(updates) {
@@ -1785,6 +1957,16 @@ function formatCell_(value) {
 
 function isoNow_() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+}
+
+function compactDateValue_() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd");
+}
+
+function randomDigits_(length) {
+  const digits = Number(length || 6);
+  const max = Math.pow(10, digits);
+  return String(Math.floor(Math.random() * max)).padStart(digits, "0");
 }
 
 function ok_(data) {

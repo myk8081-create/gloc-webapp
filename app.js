@@ -2,6 +2,7 @@ const app = document.querySelector("#app");
 const config = window.FILM_STOCK_CONFIG || {};
 
 const orderStatuses = ["접수", "승인", "출고", "완료", "반려", "취소"];
+const shippingRegisteredTestStatus = "shipping_registered_test";
 const headOfficeCode = "ADMIN";
 const headOfficeName = "본사";
 const defaultRetailPrice = 1000000;
@@ -141,6 +142,7 @@ function createMockOrders(products) {
   return [
     {
       order_id: "ORD-260511-001",
+      agency_id: "D001",
       dealer_code: "D001",
       dealer_name: "서울 총판",
       created_by_login_id: "dealer01",
@@ -153,11 +155,24 @@ function createMockOrders(products) {
       unit_purchase_price: Number(products[0].purchase_price || 0),
       status: "접수",
       memo: "이번 주 내 출고 요청",
+      recipient_name: "",
+      recipient_phone: "",
+      recipient_zipcode: "",
+      recipient_address: "",
+      recipient_address_detail: "",
+      courier: "",
+      tracking_no: "",
+      shipping_receipt_no: "",
+      shipping_error: "",
+      approved_at: "",
+      shipping_company: "",
+      tracking_number: "",
       created_at: nowText(),
       updated_at: nowText()
     },
     {
       order_id: "ORD-260511-000",
+      agency_id: "D001",
       dealer_code: "D001",
       dealer_name: "서울 총판",
       created_by_login_id: "dealer01",
@@ -170,6 +185,18 @@ function createMockOrders(products) {
       unit_purchase_price: Number(products[1].purchase_price || 0),
       status: "완료",
       memo: "샘플 매출 데이터",
+      recipient_name: "서울 담당자",
+      recipient_phone: "010-0000-0000",
+      recipient_zipcode: "00000",
+      recipient_address: "서울시",
+      recipient_address_detail: "본점",
+      courier: "우체국택배",
+      tracking_no: "TEST-KP-20260511-123456",
+      shipping_receipt_no: "TEST-RCPT-20260511-123456",
+      shipping_error: "",
+      approved_at: nowText(),
+      shipping_company: "우체국택배",
+      tracking_number: "TEST-KP-20260511-123456",
       created_at: nowText(),
       updated_at: nowText()
     }
@@ -1812,14 +1839,14 @@ function renderOrderCard(order) {
     order.dealer_code === state.session.dealer_code &&
     ["출고", "완료"].includes(order.status) &&
     !order.dealer_received_at;
-  const hasShipping = order.shipping_company || order.tracking_number;
+  const hasShipping = order.courier || order.tracking_no || order.shipping_receipt_no || order.shipping_company || order.tracking_number;
   const hasRecipient = order.recipient_name || order.recipient_phone || order.recipient_address || order.shipping_memo;
   const staffId = order.created_by_login_id || "";
   const recipientAddress = [order.recipient_zipcode ? `(${order.recipient_zipcode})` : "", order.recipient_address, order.recipient_address_detail].filter(Boolean).join(" ");
   return `
     <article class="order-card">
       <div>
-        <span class="badge ${statusTone(order.status)}">${escapeHtml(order.status)}</span>
+        <span class="badge ${statusTone(order.status)}">${escapeHtml(orderStatusLabel(order.status))}</span>
         <h3>${escapeHtml(order.product_name)}</h3>
         <p class="product-meta">${escapeHtml(order.order_id)} · ${escapeHtml(order.sku)}</p>
         <p class="product-meta">${escapeHtml(order.dealer_name)} · ${escapeHtml(order.dealer_code)}</p>
@@ -1838,15 +1865,23 @@ function renderOrderCard(order) {
           ${order.shipping_memo ? `<span>메모: ${escapeHtml(order.shipping_memo)}</span>` : ""}
         </div>
       ` : ""}
+      ${order.shipping_error ? `
+        <div class="shipping-info shipping-error">
+          <strong>송장 생성 오류</strong>
+          <span>${escapeHtml(order.shipping_error)}</span>
+        </div>
+      ` : ""}
       ${hasShipping ? `
         <div class="shipping-info">
           <strong>배송정보</strong>
-          <span>${escapeHtml(order.shipping_company || "택배사 미입력")} · ${escapeHtml(order.tracking_number || "송장번호 미입력")}</span>
+          <span>${escapeHtml(order.courier || order.shipping_company || "택배사 미입력")} · ${escapeHtml(order.tracking_no || order.tracking_number || "송장번호 미입력")}</span>
+          ${order.shipping_receipt_no ? `<span>접수번호: ${escapeHtml(order.shipping_receipt_no)}</span>` : ""}
+          ${order.approved_at ? `<span>승인일: ${escapeHtml(order.approved_at)}</span>` : ""}
         </div>
       ` : ""}
       ${canChange ? `
         <div class="order-actions">
-          ${orderStatuses.map((status) => `<button type="button" class="${order.status === status ? "active" : ""}" data-order-status="${status}" data-order-id="${escapeAttr(order.order_id)}">${status}</button>`).join("")}
+          ${orderStatuses.map((status) => `<button type="button" class="${isOrderStatusActive(order.status, status) ? "active" : ""}" data-order-status="${status}" data-order-id="${escapeAttr(order.order_id)}">${status}</button>`).join("")}
         </div>
       ` : ""}
       ${canCancel ? `
@@ -2928,6 +2963,7 @@ async function createOrder() {
   } else {
     state.orders.unshift({
       order_id: `ORD-${Date.now().toString().slice(-9)}`,
+      agency_id: state.session.dealer_code,
       dealer_code: state.session.dealer_code,
       dealer_name: state.session.dealer_name,
       created_by_login_id: state.session.login_id,
@@ -2940,6 +2976,20 @@ async function createOrder() {
       unit_purchase_price: productPurchasePrice(product),
       status: "접수",
       memo: state.forms.orderMemo,
+      recipient_name: "",
+      recipient_phone: "",
+      recipient_zipcode: "",
+      recipient_address: "",
+      recipient_address_detail: "",
+      default_courier: "",
+      shipping_memo: "",
+      courier: "",
+      tracking_no: "",
+      shipping_receipt_no: "",
+      shipping_error: "",
+      approved_at: "",
+      shipping_company: "",
+      tracking_number: "",
       created_at: nowText(),
       updated_at: nowText()
     });
@@ -2958,11 +3008,12 @@ async function updateOrderStatus(orderId, status) {
   const payload = { orderId, status };
   const orderForProfile = state.orders.find((item) => item.order_id === orderId);
   const dealerProfile = dealerProfileByCode(orderForProfile?.dealer_code);
+  let toastMessage = `발주 상태를 ${status}(으)로 변경했습니다.`;
   if (status === "출고") {
-    const defaultCourier = dealerProfile.default_courier || "CJ대한통운";
+    const defaultCourier = orderForProfile?.courier || orderForProfile?.shipping_company || dealerProfile.default_courier || "CJ대한통운";
     const shippingCompany = prompt("택배사를 입력해 주세요. 예: CJ대한통운", defaultCourier);
     if (!shippingCompany) return;
-    const trackingNumber = prompt("송장번호를 입력해 주세요.");
+    const trackingNumber = prompt("송장번호를 입력해 주세요.", orderForProfile?.tracking_no || orderForProfile?.tracking_number || "");
     if (!trackingNumber) return;
     payload.shippingCompany = shippingCompany.trim();
     payload.trackingNumber = trackingNumber.trim();
@@ -2974,25 +3025,53 @@ async function updateOrderStatus(orderId, status) {
       : await window.FilmStockApi.updateOrderStatus(payload);
     if (data?.order) {
       state.orders = state.orders.map((order) => (order.order_id === orderId ? data.order : order));
+      if (data.order.shipping_error) {
+        toastMessage = `송장 생성 오류: ${data.order.shipping_error}`;
+      } else if (status === "승인") {
+        toastMessage = "승인 처리와 테스트 송장번호를 등록했습니다.";
+      }
     }
     upsertInventoryRows(data?.inventory_rows);
     if (data?.inventory) upsertInventory(data.inventory);
   } else {
     const order = state.orders.find((item) => item.order_id === orderId);
     if (order) {
+      if (status === "승인") {
+        Object.assign(order, orderShippingProfile(dealerProfile));
+        try {
+          Object.assign(order, registerMockKoreaPostShipment(order, dealerProfile));
+          toastMessage = "승인 처리와 테스트 송장번호를 등록했습니다.";
+        } catch (error) {
+          order.status = "승인";
+          clearLocalShippingRegistration(order);
+          order.shipping_error = error.message || "배송정보 검증에 실패했습니다.";
+          order.updated_at = nowText();
+          render();
+          syncAppBadgeFromOrders();
+          throw error;
+        }
+        order.updated_at = nowText();
+        render();
+        syncAppBadgeFromOrders();
+        showToast(toastMessage);
+        return;
+      }
+
       if (["출고", "완료"].includes(status) && !order.hq_stock_deducted_at) {
         adjustLocalInventory(headOfficeCode, order.sku, -Number(order.qty || 0), { requireEnoughStock: true });
         order.hq_stock_deducted_at = nowText();
       }
       order.status = status;
       if (payload.shippingCompany) {
+        order.courier = payload.shippingCompany;
+        order.tracking_no = payload.trackingNumber;
         order.shipping_company = payload.shippingCompany;
         order.tracking_number = payload.trackingNumber;
-      } else if (["접수", "승인", "반려", "취소"].includes(status)) {
-        order.shipping_company = "";
-        order.tracking_number = "";
+        order.shipping_error = "";
+      } else if (["접수", "반려", "취소"].includes(status)) {
+        clearLocalShippingRegistration(order);
       }
-      if (["승인", "출고"].includes(status)) {
+      if (status === "출고") {
         Object.assign(order, orderShippingProfile(dealerProfile));
       } else if (["접수", "반려", "취소"].includes(status)) {
         Object.assign(order, emptyOrderShippingProfile());
@@ -3002,7 +3081,7 @@ async function updateOrderStatus(orderId, status) {
   }
   render();
   syncAppBadgeFromOrders();
-  showToast(`발주 상태를 ${status}(으)로 변경했습니다.`);
+  showToast(toastMessage);
 }
 
 function orderShippingProfile(profile) {
@@ -3019,6 +3098,71 @@ function orderShippingProfile(profile) {
 
 function emptyOrderShippingProfile() {
   return orderShippingProfile({});
+}
+
+function registerMockKoreaPostShipment(order, dealerProfile) {
+  const agency = {
+    agency_id: order.agency_id || order.dealer_code,
+    dealer_code: order.dealer_code,
+    dealer_name: order.dealer_name,
+    ...dealerProfile
+  };
+  validateMockShippingAgencyInfo(agency);
+
+  const existingTrackingNo = order.tracking_no || order.tracking_number;
+  const courier = order.courier || order.shipping_company || agency.default_courier || "우체국택배";
+  const shipment = existingTrackingNo
+    ? {
+        courier,
+        tracking_no: existingTrackingNo,
+        shipping_receipt_no: order.shipping_receipt_no || `MOCK-RCPT-${compactDateValue()}-${randomDigits(6)}`
+      }
+    : mockKoreaPostAdapter(order, agency);
+
+  return {
+    status: shippingRegisteredTestStatus,
+    ...orderShippingProfile(agency),
+    courier: shipment.courier,
+    tracking_no: shipment.tracking_no,
+    shipping_receipt_no: shipment.shipping_receipt_no,
+    shipping_error: "",
+    approved_at: order.approved_at || nowText(),
+    shipping_company: shipment.courier,
+    tracking_number: shipment.tracking_no
+  };
+}
+
+function mockKoreaPostAdapter(order, agency) {
+  validateMockShippingAgencyInfo(agency);
+  // 테스트 모드 전용: 실제 우체국 API를 호출하지 않고 송장 형식만 생성합니다.
+  const date = compactDateValue();
+  const random = randomDigits(6);
+  return {
+    courier: "우체국택배",
+    tracking_no: `TEST-KP-${date}-${random}`,
+    shipping_receipt_no: `MOCK-RCPT-${date}-${random}`,
+    order_id: order.order_id
+  };
+}
+
+function validateMockShippingAgencyInfo(agency) {
+  const missingFields = [];
+  if (!String(agency.contact_name || "").trim()) missingFields.push("담당자 이름");
+  if (!String(agency.phone || "").trim()) missingFields.push("전화번호");
+  if (!String(agency.zipcode || "").trim()) missingFields.push("우편번호");
+  if (!String(agency.address || "").trim()) missingFields.push("주소");
+  if (missingFields.length) throw new Error(`배송정보가 부족합니다: ${missingFields.join(", ")}`);
+  if (!/^\d{5}$/.test(String(agency.zipcode))) throw new Error("우편번호는 숫자 5자리여야 합니다.");
+}
+
+function clearLocalShippingRegistration(order) {
+  order.courier = "";
+  order.tracking_no = "";
+  order.shipping_receipt_no = "";
+  order.shipping_error = "";
+  order.approved_at = "";
+  order.shipping_company = "";
+  order.tracking_number = "";
 }
 
 async function receiveOrder(orderId) {
@@ -3665,11 +3809,11 @@ function visibleOrders() {
   return state.orders.filter((order) => {
     if (state.session?.role === "dealer" && order.dealer_code !== state.session.dealer_code) return false;
     if (state.session?.role === "admin" && state.filters.dealerCode !== "전체" && order.dealer_code !== state.filters.dealerCode) return false;
-    if (state.filters.orderStatus !== "전체" && order.status !== state.filters.orderStatus) return false;
+    if (state.filters.orderStatus !== "전체" && !hasOrderStatusMatch(order.status, state.filters.orderStatus)) return false;
     if (state.filters.orderPeriod === "일별" && orderDatePart(order.created_at) !== state.filters.orderDate) return false;
     if (state.filters.orderPeriod === "월별" && !orderDatePart(order.created_at).startsWith(state.filters.orderMonth)) return false;
     if (!query) return true;
-    return [order.order_id, order.product_name, order.sku, order.dealer_name, order.dealer_code, order.created_by_login_id, order.memo, order.status, order.shipping_company, order.tracking_number, order.recipient_name, order.recipient_phone, order.recipient_address]
+    return [order.order_id, order.product_name, order.sku, order.dealer_name, order.dealer_code, order.created_by_login_id, order.memo, order.status, orderStatusLabel(order.status), order.courier, order.tracking_no, order.shipping_receipt_no, order.shipping_company, order.tracking_number, order.recipient_name, order.recipient_phone, order.recipient_address]
       .some((value) => normalize(value).includes(query));
   });
 }
@@ -3793,7 +3937,7 @@ function orderReportStats(rows) {
       stats.count += 1;
       stats.qty += Number(order.qty || 0);
       if (order.status === "접수") stats.received += 1;
-      if (["접수", "승인", "출고"].includes(order.status)) stats.inProgress += 1;
+      if (["접수", "승인", shippingRegisteredTestStatus, "출고"].includes(order.status)) stats.inProgress += 1;
       if (order.status === "완료") stats.done += 1;
       return stats;
     },
@@ -4180,8 +4324,25 @@ function roleLabel(role) {
 
 function statusTone(status) {
   if (status === "반려" || status === "취소") return "danger";
-  if (status === "접수" || status === "승인") return "warn";
+  if (status === "접수" || status === "승인" || status === shippingRegisteredTestStatus) return "warn";
   return "";
+}
+
+function isApprovedLikeStatus(status) {
+  return status === "승인" || status === shippingRegisteredTestStatus;
+}
+
+function orderStatusLabel(status) {
+  if (status === shippingRegisteredTestStatus) return "승인 · 테스트송장";
+  return status || "";
+}
+
+function isOrderStatusActive(actualStatus, buttonStatus) {
+  return buttonStatus === "승인" ? isApprovedLikeStatus(actualStatus) : actualStatus === buttonStatus;
+}
+
+function hasOrderStatusMatch(actualStatus, filterStatus) {
+  return filterStatus === "승인" ? isApprovedLikeStatus(actualStatus) : actualStatus === filterStatus;
 }
 
 function colorHex(value) {
@@ -4248,6 +4409,15 @@ function dateInputValue(date = new Date()) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function compactDateValue(date = new Date()) {
+  return dateInputValue(date).replaceAll("-", "");
+}
+
+function randomDigits(length) {
+  const max = 10 ** Number(length || 6);
+  return String(Math.floor(Math.random() * max)).padStart(Number(length || 6), "0");
 }
 
 function formatPhoneNumber(value) {

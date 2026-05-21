@@ -1423,6 +1423,15 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.shipping-info.shipping-error {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
+.shipping-info.shipping-error strong {
+  color: var(--red);
+}
+
 .dealer-info-panel {
   max-width: 760px;
   margin: 0 auto;

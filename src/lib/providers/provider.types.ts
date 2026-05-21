@@ -1,4 +1,4 @@
-export type OrderStatus = "접수" | "승인" | "출고" | "완료" | "반려" | "취소";
+export type OrderStatus = "접수" | "승인" | "shipping_registered_test" | "출고" | "완료" | "반려" | "취소";
 
 export type PrintStatus = "대기" | "완료" | "오류";
 

@@ -1,6 +1,6 @@
 import { createDataProvider, type DataProvider, type OrderRecord, type OrderStatus, type RepositoryContext } from "../providers";
 
-export const ORDER_STATUSES: OrderStatus[] = ["접수", "승인", "출고", "완료", "반려", "취소"];
+export const ORDER_STATUSES: OrderStatus[] = ["접수", "승인", "shipping_registered_test", "출고", "완료", "반려", "취소"];
 
 export interface OrderListFilters {
   status?: OrderStatus | "전체";
