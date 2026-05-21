@@ -15,6 +15,9 @@ export interface ShippingLabelOrder {
   quantity: number;
   weight?: string;
   fee?: string;
+  memo?: string;
+  shipping_memo?: string;
+  promotion_text?: string;
   sender_name: string;
   sender_phone: string;
   sender_address: string;
@@ -36,42 +39,52 @@ export const KOREA_POST_OVERLAY = {
   OFFSET_X_MM: 0,
   OFFSET_Y_MM: 0,
   SCALE: 1,
-  SMALL_BARCODE_X_MM: 48,
-  SMALL_BARCODE_Y_MM: 5,
-  SMALL_BARCODE_WIDTH_MM: 13,
-  SMALL_BARCODE_HEIGHT_MM: 13,
-  BARCODE_X_MM: 18,
+  PRINT_ROTATION_DEG: 180,
+  CUSTOMER_ORDER_X_MM: 7,
+  CUSTOMER_ORDER_Y_MM: 15,
+  CUSTOMER_ORDER_WIDTH_MM: 61,
+  PAYMENT_X_MM: 36,
+  PAYMENT_Y_MM: 25,
+  BARCODE_X_MM: 7,
   BARCODE_Y_MM: 39,
-  BARCODE_WIDTH_MM: 31,
-  BARCODE_HEIGHT_MM: 19,
-  TRACKING_X_MM: 6,
-  TRACKING_Y_MM: 12,
-  WEIGHT_X_MM: 6,
-  WEIGHT_Y_MM: 31,
-  FEE_X_MM: 39,
-  FEE_Y_MM: 31,
-  CONTENT_X_MM: 6,
+  BARCODE_WIDTH_MM: 58,
+  BARCODE_HEIGHT_MM: 17,
+  MESSAGE_X_MM: 7,
+  MESSAGE_Y_MM: 60,
+  MESSAGE_WIDTH_MM: 62,
+  CONTENT_X_MM: 7,
   CONTENT_Y_MM: 71,
-  CONTENT_WIDTH_MM: 48,
-  SENDER_X_MM: 70,
-  SENDER_Y_MM: 18,
-  SENDER_WIDTH_MM: 57,
-  RECIPIENT_X_MM: 70,
-  RECIPIENT_Y_MM: 45,
-  RECIPIENT_WIDTH_MM: 60,
-  REGISTRATION_X_MM: 70,
-  REGISTRATION_Y_MM: 78,
-  BOTTOM_BARCODE_X_MM: 72,
-  BOTTOM_BARCODE_Y_MM: 84,
-  BOTTOM_BARCODE_WIDTH_MM: 47,
-  BOTTOM_BARCODE_HEIGHT_MM: 13,
-  WATERMARK_X_MM: 55,
-  WATERMARK_Y_MM: 40
+  CONTENT_WIDTH_MM: 63,
+  PROMO_X_MM: 24,
+  PROMO_Y_MM: 88,
+  PROMO_WIDTH_MM: 43,
+  SENDER_X_MM: 78,
+  SENDER_Y_MM: 7,
+  SENDER_WIDTH_MM: 62,
+  RECIPIENT_X_MM: 78,
+  RECIPIENT_Y_MM: 36,
+  RECIPIENT_WIDTH_MM: 61,
+  RECIPIENT_BARCODE_X_MM: 128,
+  RECIPIENT_BARCODE_Y_MM: 35,
+  RECIPIENT_BARCODE_WIDTH_MM: 10,
+  RECIPIENT_BARCODE_HEIGHT_MM: 22,
+  REGISTRATION_X_MM: 91,
+  REGISTRATION_Y_MM: 76,
+  REGISTRATION_WIDTH_MM: 50,
+  BOTTOM_BARCODE_X_MM: 89,
+  BOTTOM_BARCODE_Y_MM: 82,
+  BOTTOM_BARCODE_WIDTH_MM: 49,
+  BOTTOM_BARCODE_HEIGHT_MM: 12,
+  WATERMARK_X_MM: 75,
+  WATERMARK_Y_MM: 50
 } as const;
 
 export function createPdfLabelDocument(order: ShippingLabelOrder, options: PdfLabelOptions): PdfLabelDocument {
   const watermark = options.testMode === false ? "" : '<div class="test-watermark">TEST / 실제 접수 아님</div>';
   const registrationNo = order.shipping_receipt_no || order.tracking_no || order.order_no;
+  const paymentMethod = /선불|prepaid/i.test(order.fee || "") ? "선불" : "착불";
+  const deliveryMessage = order.shipping_memo || order.memo || "배송 전 연락 바랍니다.";
+  const promo = order.promotion_text || "";
 
   return {
     mimeType: "text/html",
@@ -84,21 +97,23 @@ export function createPdfLabelDocument(order: ShippingLabelOrder, options: PdfLa
       "<style>",
       "@page{size:150mm 100mm;margin:0}",
       "html,body{margin:0;width:150mm;height:100mm;background:transparent;color:#000;font-family:Arial,'Noto Sans KR','Apple SD Gothic Neo',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}",
-      ".label-overlay{position:relative;width:150mm;height:100mm;overflow:hidden;background:transparent;color:#000}",
+      `.label-overlay{position:relative;width:150mm;height:100mm;overflow:hidden;background:transparent;color:#000;transform:rotate(${KOREA_POST_OVERLAY.PRINT_ROTATION_DEG}deg);transform-origin:center center}`,
       ".field,.barcode-slot,.test-watermark{position:absolute;color:#000}",
       ".field{font-size:3.1mm;font-weight:700;line-height:1.18;white-space:normal;overflow-wrap:anywhere;word-break:keep-all}",
       ".field-small{font-size:2.45mm;line-height:1.2}",
-      `.tracking-no{left:${x(KOREA_POST_OVERLAY.TRACKING_X_MM)};top:${y(KOREA_POST_OVERLAY.TRACKING_Y_MM)};width:46mm}`,
-      `.small-barcode{left:${x(KOREA_POST_OVERLAY.SMALL_BARCODE_X_MM)};top:${y(KOREA_POST_OVERLAY.SMALL_BARCODE_Y_MM)};width:${s(KOREA_POST_OVERLAY.SMALL_BARCODE_WIDTH_MM)};height:${s(KOREA_POST_OVERLAY.SMALL_BARCODE_HEIGHT_MM)}}`,
-      `.weight{left:${x(KOREA_POST_OVERLAY.WEIGHT_X_MM)};top:${y(KOREA_POST_OVERLAY.WEIGHT_Y_MM)};width:29mm}`,
-      `.fee{left:${x(KOREA_POST_OVERLAY.FEE_X_MM)};top:${y(KOREA_POST_OVERLAY.FEE_Y_MM)};width:22mm}`,
+      `.customer-order{left:${x(KOREA_POST_OVERLAY.CUSTOMER_ORDER_X_MM)};top:${y(KOREA_POST_OVERLAY.CUSTOMER_ORDER_Y_MM)};width:${s(KOREA_POST_OVERLAY.CUSTOMER_ORDER_WIDTH_MM)}}`,
+      `.payment-method{left:${x(KOREA_POST_OVERLAY.PAYMENT_X_MM)};top:${y(KOREA_POST_OVERLAY.PAYMENT_Y_MM)};width:25mm;text-align:center;font-size:6.2mm;font-weight:900;line-height:1}`,
       `.main-barcode{left:${x(KOREA_POST_OVERLAY.BARCODE_X_MM)};top:${y(KOREA_POST_OVERLAY.BARCODE_Y_MM)};width:${s(KOREA_POST_OVERLAY.BARCODE_WIDTH_MM)};height:${s(KOREA_POST_OVERLAY.BARCODE_HEIGHT_MM)}}`,
+      `.delivery-message{left:${x(KOREA_POST_OVERLAY.MESSAGE_X_MM)};top:${y(KOREA_POST_OVERLAY.MESSAGE_Y_MM)};width:${s(KOREA_POST_OVERLAY.MESSAGE_WIDTH_MM)}}`,
       `.content-name{left:${x(KOREA_POST_OVERLAY.CONTENT_X_MM)};top:${y(KOREA_POST_OVERLAY.CONTENT_Y_MM)};width:${s(KOREA_POST_OVERLAY.CONTENT_WIDTH_MM)}}`,
+      `.promo{left:${x(KOREA_POST_OVERLAY.PROMO_X_MM)};top:${y(KOREA_POST_OVERLAY.PROMO_Y_MM)};width:${s(KOREA_POST_OVERLAY.PROMO_WIDTH_MM)};text-align:center}`,
       `.sender{left:${x(KOREA_POST_OVERLAY.SENDER_X_MM)};top:${y(KOREA_POST_OVERLAY.SENDER_Y_MM)};width:${s(KOREA_POST_OVERLAY.SENDER_WIDTH_MM)}}`,
       `.recipient{left:${x(KOREA_POST_OVERLAY.RECIPIENT_X_MM)};top:${y(KOREA_POST_OVERLAY.RECIPIENT_Y_MM)};width:${s(KOREA_POST_OVERLAY.RECIPIENT_WIDTH_MM)}}`,
-      `.registration{left:${x(KOREA_POST_OVERLAY.REGISTRATION_X_MM)};top:${y(KOREA_POST_OVERLAY.REGISTRATION_Y_MM)};width:70mm}`,
+      `.recipient-barcode{left:${x(KOREA_POST_OVERLAY.RECIPIENT_BARCODE_X_MM)};top:${y(KOREA_POST_OVERLAY.RECIPIENT_BARCODE_Y_MM)};width:${s(KOREA_POST_OVERLAY.RECIPIENT_BARCODE_WIDTH_MM)};height:${s(KOREA_POST_OVERLAY.RECIPIENT_BARCODE_HEIGHT_MM)}}`,
+      `.registration{left:${x(KOREA_POST_OVERLAY.REGISTRATION_X_MM)};top:${y(KOREA_POST_OVERLAY.REGISTRATION_Y_MM)};width:${s(KOREA_POST_OVERLAY.REGISTRATION_WIDTH_MM)}}`,
       `.bottom-barcode{left:${x(KOREA_POST_OVERLAY.BOTTOM_BARCODE_X_MM)};top:${y(KOREA_POST_OVERLAY.BOTTOM_BARCODE_Y_MM)};width:${s(KOREA_POST_OVERLAY.BOTTOM_BARCODE_WIDTH_MM)};height:${s(KOREA_POST_OVERLAY.BOTTOM_BARCODE_HEIGHT_MM)}}`,
       ".barcode-slot svg{display:block;width:100%;height:100%;fill:#000;shape-rendering:crispEdges}",
+      ".sender-name{display:block;font-size:5.2mm;font-weight:900;line-height:1}",
       ".recipient-name{display:block;margin:1.4mm 0 1mm;font-size:6.8mm;font-weight:900;line-height:1}",
       ".address-line{display:block;margin-top:1.1mm}",
       `.test-watermark{left:${x(KOREA_POST_OVERLAY.WATERMARK_X_MM)};top:${y(KOREA_POST_OVERLAY.WATERMARK_Y_MM)};transform:translate(-50%,-50%) rotate(-20deg);color:rgba(0,0,0,.12);font-size:9mm;font-weight:700;white-space:nowrap}`,
@@ -107,15 +122,16 @@ export function createPdfLabelDocument(order: ShippingLabelOrder, options: PdfLa
       "<body>",
       '<main class="label-overlay">',
       watermark,
-      `<div class="field field-small tracking-no">${escapeHtml(order.tracking_no)}</div>`,
-      `<div class="barcode-slot small-barcode">${code39BarcodeSvg(order.tracking_no.slice(-10) || order.tracking_no)}</div>`,
-      `<div class="field field-small weight">중량: ${escapeHtml(order.weight || "1190g")}</div>`,
-      `<div class="field field-small fee">요금: ${escapeHtml(order.fee || "착불")}</div>`,
-      `<div class="barcode-slot main-barcode">${code39BarcodeSvg(order.tracking_no)}</div>`,
+      `<div class="field field-small customer-order"><span class="address-line">접수일: ${escapeHtml(datePart())}</span><span class="address-line">주문: ${escapeHtml(order.order_no)}</span><span class="address-line">고객: ${escapeHtml(order.agency_name)}</span></div>`,
+      `<div class="field payment-method">${escapeHtml(paymentMethod)}</div>`,
+      `<div class="barcode-slot main-barcode">${code39BarcodeSvg(registrationNo)}</div>`,
+      `<div class="field field-small delivery-message">배송메시지: ${escapeHtml(deliveryMessage)}</div>`,
       `<div class="field field-small content-name">내용품명: ${escapeHtml(order.product_name || "필름 제품")}</div>`,
-      `<div class="field field-small sender"><span class="address-line">${escapeHtml(order.sender_name)}</span><span class="address-line">T: ${escapeHtml(order.sender_phone)}</span><span class="address-line">${escapeHtml(order.sender_address)}</span></div>`,
-      `<div class="field recipient"><span class="address-line">${escapeHtml(order.recipient_zipcode || "")}</span><span class="address-line">${escapeHtml(order.recipient_address)}</span>${order.recipient_address_detail ? `<span class="address-line">${escapeHtml(order.recipient_address_detail)}</span>` : ""}<strong class="recipient-name">${escapeHtml(order.recipient_name || order.agency_name)}</strong><span class="address-line">T: ${escapeHtml(order.recipient_phone)}</span></div>`,
-      `<div class="field field-small registration">등기번호 : ${escapeHtml(registrationNo)}</div>`,
+      promo ? `<div class="field field-small promo">${escapeHtml(promo)}</div>` : "",
+      `<div class="field field-small sender"><strong class="sender-name">${escapeHtml(order.sender_name)}</strong><span class="address-line">${escapeHtml(order.sender_address)}</span><span class="address-line">T: ${escapeHtml(order.sender_phone)}</span></div>`,
+      `<div class="field recipient"><strong class="recipient-name">${escapeHtml(order.recipient_name || order.agency_name)}</strong><span class="address-line">T: ${escapeHtml(order.recipient_phone)}</span><span class="address-line">${escapeHtml(order.recipient_zipcode || "")}</span><span class="address-line">${escapeHtml(order.recipient_address)}</span>${order.recipient_address_detail ? `<span class="address-line">${escapeHtml(order.recipient_address_detail)}</span>` : ""}</div>`,
+      `<div class="barcode-slot recipient-barcode">${code39BarcodeSvg(order.tracking_no.slice(-10) || order.tracking_no)}</div>`,
+      `<div class="field field-small registration"><span class="address-line">등기번호: ${escapeHtml(registrationNo)}</span><span class="address-line">수량: ${Number(order.quantity || 0).toLocaleString("ko-KR")}롤</span></div>`,
       `<div class="barcode-slot bottom-barcode">${code39BarcodeSvg(registrationNo)}</div>`,
       "</main>",
       "</body>",
@@ -138,6 +154,10 @@ function s(value: number) {
 
 function mm(value: number) {
   return `${value.toFixed(2)}mm`;
+}
+
+function datePart() {
+  return new Date().toISOString().slice(0, 10).replaceAll("-", ".");
 }
 
 function code39BarcodeSvg(value: string) {
