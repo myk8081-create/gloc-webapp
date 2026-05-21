@@ -35,7 +35,7 @@ const koreaPostOverlay = {
   PROMO_Y_MM: 88,
   PROMO_WIDTH_MM: 43,
   SENDER_X_MM: 78,
-  SENDER_Y_MM: 7,
+  SENDER_Y_MM: 27,
   SENDER_WIDTH_MM: 62,
   RECIPIENT_X_MM: 78,
   RECIPIENT_Y_MM: 36,
