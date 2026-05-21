@@ -1,6 +1,6 @@
 export type OrderStatus = "접수" | "승인" | "shipping_registered_test" | "출고" | "완료" | "반려" | "취소";
 
-export type PrintStatus = "대기" | "완료" | "오류";
+export type PrintStatus = "대기" | "완료" | "오류" | "printed" | "failed";
 
 export interface RepositoryContext {
   token?: string;

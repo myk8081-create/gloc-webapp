@@ -108,6 +108,14 @@
     });
   }
 
+  async function markOrderPrinted({ orderId, printStatus, labelSize }) {
+    return request("markOrderPrinted", {
+      order_id: orderId,
+      print_status: printStatus,
+      label_size: labelSize || ""
+    });
+  }
+
   async function receiveOrder({ orderId }) {
     return request("receiveOrder", { order_id: orderId });
   }
@@ -216,6 +224,7 @@
     getOrders,
     updateOrderStatus,
     updateOrderStatusWithShipping,
+    markOrderPrinted,
     receiveOrder,
     cancelOrder,
     clearOrders,

@@ -1401,6 +1401,17 @@ h3 {
   color: #fff;
 }
 
+.order-actions .label-print-button {
+  border-color: var(--amber);
+  background: rgba(159, 123, 56, 0.18);
+  color: var(--text);
+}
+
+.order-actions .label-print-button:hover {
+  background: var(--amber);
+  color: #111;
+}
+
 .shipping-info {
   display: grid;
   gap: 4px;

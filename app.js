@@ -167,6 +167,9 @@ function createMockOrders(products) {
       approved_at: "",
       shipping_company: "",
       tracking_number: "",
+      print_status: "",
+      printed_at: "",
+      print_count: 0,
       created_at: nowText(),
       updated_at: nowText()
     },
@@ -197,6 +200,9 @@ function createMockOrders(products) {
       approved_at: nowText(),
       shipping_company: "우체국택배",
       tracking_number: "TEST-KP-20260511-123456",
+      print_status: "",
+      printed_at: "",
+      print_count: 0,
       created_at: nowText(),
       updated_at: nowText()
     }
@@ -276,6 +282,7 @@ const state = {
     reservationDate: dateInputValue(),
     reservationQty: 1,
     reservationMemo: "",
+    labelSize: "post-100x150",
     productSku: "",
     productName: "",
     productCategory: "PPF",
@@ -1098,6 +1105,9 @@ function renderOrders() {
         <select class="search-input compact-select" id="orderStatus">
           ${["전체", ...orderStatuses].map((status) => `<option value="${status}" ${state.filters.orderStatus === status ? "selected" : ""}>${status}</option>`).join("")}
         </select>
+        <select class="search-input compact-select label-size-select" id="labelSize" aria-label="송장 라벨 크기">
+          ${labelSizeOptions().map((option) => `<option value="${option.value}" ${state.forms.labelSize === option.value ? "selected" : ""}>${option.label}</option>`).join("")}
+        </select>
       </section>
 
       <section class="stats-grid order-report-grid" id="orderStats">
@@ -1839,6 +1849,9 @@ function renderOrderCard(order) {
     order.dealer_code === state.session.dealer_code &&
     ["출고", "완료"].includes(order.status) &&
     !order.dealer_received_at;
+  const trackingNo = orderTrackingNo(order);
+  const canPrintLabel = Boolean(trackingNo);
+  const printCount = Number(order.print_count || 0);
   const hasShipping = order.courier || order.tracking_no || order.shipping_receipt_no || order.shipping_company || order.tracking_number;
   const hasRecipient = order.recipient_name || order.recipient_phone || order.recipient_address || order.shipping_memo;
   const staffId = order.created_by_login_id || "";
@@ -1877,11 +1890,14 @@ function renderOrderCard(order) {
           <span>${escapeHtml(order.courier || order.shipping_company || "택배사 미입력")} · ${escapeHtml(order.tracking_no || order.tracking_number || "송장번호 미입력")}</span>
           ${order.shipping_receipt_no ? `<span>접수번호: ${escapeHtml(order.shipping_receipt_no)}</span>` : ""}
           ${order.approved_at ? `<span>승인일: ${escapeHtml(order.approved_at)}</span>` : ""}
+          ${order.print_status ? `<span>출력상태: ${escapeHtml(printStatusLabel(order.print_status))}${printCount ? ` · ${printCount}회` : ""}</span>` : ""}
+          ${order.printed_at ? `<span>마지막 출력: ${escapeHtml(order.printed_at)}</span>` : ""}
         </div>
       ` : ""}
-      ${canChange ? `
+      ${canChange || canPrintLabel ? `
         <div class="order-actions">
-          ${orderStatuses.map((status) => `<button type="button" class="${isOrderStatusActive(order.status, status) ? "active" : ""}" data-order-status="${status}" data-order-id="${escapeAttr(order.order_id)}">${status}</button>`).join("")}
+          ${canChange ? orderStatuses.map((status) => `<button type="button" class="${isOrderStatusActive(order.status, status) ? "active" : ""}" data-order-status="${status}" data-order-id="${escapeAttr(order.order_id)}">${status}</button>`).join("") : ""}
+          ${canPrintLabel ? `<button type="button" class="label-print-button" data-order-label-print="${escapeAttr(order.order_id)}">${printCount > 0 ? "재출력" : "송장출력"}</button>` : ""}
         </div>
       ` : ""}
       ${canCancel ? `
@@ -2165,6 +2181,10 @@ function bindEvents() {
     render();
   });
 
+  document.querySelector("#labelSize")?.addEventListener("change", (event) => {
+    state.forms.labelSize = event.target.value;
+  });
+
   document.querySelector("#orderDate")?.addEventListener("change", (event) => {
     state.filters.orderDate = event.target.value;
     render();
@@ -2358,6 +2378,12 @@ function bindDynamicListEvents(root) {
   root.querySelectorAll("[data-order-status]").forEach((button) => {
     button.addEventListener("click", () => {
       runWithButtonBusy(button, () => updateOrderStatus(button.dataset.orderId, button.dataset.orderStatus));
+    });
+  });
+
+  root.querySelectorAll("[data-order-label-print]").forEach((button) => {
+    button.addEventListener("click", () => {
+      runWithButtonBusy(button, () => printOrderLabel(button.dataset.orderLabelPrint));
     });
   });
 
@@ -2990,6 +3016,9 @@ async function createOrder() {
       approved_at: "",
       shipping_company: "",
       tracking_number: "",
+      print_status: "",
+      printed_at: "",
+      print_count: 0,
       created_at: nowText(),
       updated_at: nowText()
     });
@@ -3163,6 +3192,338 @@ function clearLocalShippingRegistration(order) {
   order.approved_at = "";
   order.shipping_company = "";
   order.tracking_number = "";
+  order.print_status = "";
+  order.printed_at = "";
+  order.print_count = 0;
+}
+
+async function printOrderLabel(orderId) {
+  const order = state.orders.find((item) => item.order_id === orderId);
+  if (!order) throw new Error("출력할 발주를 찾을 수 없습니다.");
+  if (!orderTrackingNo(order)) throw new Error("송장번호가 있는 발주만 출력할 수 있습니다.");
+
+  try {
+    const printWindow = window.open("", "_blank", "width=900,height=900");
+    if (!printWindow) throw new Error("팝업이 차단되어 송장 출력창을 열 수 없습니다.");
+
+    printWindow.document.open();
+    printWindow.document.write(buildShippingLabelHtml(order, state.forms.labelSize));
+    printWindow.document.close();
+    await markOrderPrintResult(orderId, "printed");
+    render();
+    showToast(`${Number(order.print_count || 0) > 1 ? "송장을 재출력했습니다." : "송장 출력창을 열었습니다."}`);
+  } catch (error) {
+    await markOrderPrintResult(orderId, "failed");
+    render();
+    throw error;
+  }
+}
+
+async function markOrderPrintResult(orderId, printStatus) {
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.markOrderPrinted({
+      orderId,
+      printStatus,
+      labelSize: state.forms.labelSize
+    });
+    if (data?.order) {
+      state.orders = state.orders.map((order) => (order.order_id === orderId ? data.order : order));
+    }
+    return;
+  }
+
+  const order = state.orders.find((item) => item.order_id === orderId);
+  if (!order) return;
+  order.print_status = printStatus;
+  if (printStatus === "printed") {
+    order.printed_at = nowText();
+    order.print_count = Number(order.print_count || 0) + 1;
+  }
+  order.updated_at = nowText();
+}
+
+function buildShippingLabelHtml(order, labelSizeValue) {
+  const label = labelSizeMeta(labelSizeValue);
+  const trackingNo = orderTrackingNo(order);
+  const sender = labelSenderInfo();
+  const recipientAddress = orderRecipientAddress(order);
+  const safeTrackingNo = escapeHtml(trackingNo);
+  return `<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>송장출력 ${safeTrackingNo}</title>
+    <style>
+      @page { size: ${label.pageSize}; margin: 0; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #e8e4dc;
+        color: #111;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .print-shell {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 18px;
+      }
+      .label {
+        position: relative;
+        width: ${label.widthMm}mm;
+        min-height: ${label.heightMm}mm;
+        overflow: hidden;
+        background: #fff;
+        border: 1px solid #111;
+        padding: ${label.paddingMm}mm;
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        gap: 3mm;
+      }
+      .watermark {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        transform: rotate(-24deg);
+        color: rgba(207, 78, 66, 0.14);
+        font-size: ${label.watermarkSize}px;
+        font-weight: 950;
+        letter-spacing: 2px;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      .top {
+        position: relative;
+        display: flex;
+        justify-content: space-between;
+        gap: 8mm;
+        border-bottom: 2px solid #111;
+        padding-bottom: 3mm;
+        z-index: 1;
+      }
+      .brand strong {
+        display: block;
+        font-size: ${label.titleSize}px;
+        letter-spacing: 0;
+      }
+      .brand span,
+      .meta span {
+        display: block;
+        margin-top: 1mm;
+        color: #333;
+        font-size: ${label.smallSize}px;
+        font-weight: 700;
+      }
+      .meta {
+        text-align: right;
+      }
+      .tracking {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        gap: 2mm;
+        border: 2px solid #111;
+        padding: 3mm;
+      }
+      .tracking strong {
+        font-size: ${label.headingSize}px;
+      }
+      .barcode svg {
+        display: block;
+        width: 100%;
+        height: ${label.barcodeHeight}px;
+      }
+      .grid {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 3mm;
+      }
+      .box {
+        border: 1px solid #222;
+        padding: 3mm;
+      }
+      .box h2 {
+        margin: 0 0 2mm;
+        font-size: ${label.headingSize}px;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 24mm 1fr;
+        gap: 2mm;
+        margin-top: 1.5mm;
+        font-size: ${label.bodySize}px;
+        line-height: 1.35;
+      }
+      .row b {
+        color: #555;
+      }
+      .test-copy {
+        position: relative;
+        z-index: 1;
+        border: 2px solid #cf4e42;
+        color: #cf4e42;
+        padding: 2.5mm;
+        text-align: center;
+        font-size: ${label.headingSize}px;
+        font-weight: 950;
+      }
+      .actions {
+        margin-top: 16px;
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+      }
+      .actions button {
+        min-height: 42px;
+        padding: 0 18px;
+        border: 1px solid #9f7b38;
+        border-radius: 8px;
+        background: #cf4e42;
+        color: #fff;
+        font-weight: 850;
+        cursor: pointer;
+      }
+      @media print {
+        body { background: #fff; }
+        .print-shell { display: block; padding: 0; }
+        .label { border-color: #000; }
+        .actions { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="print-shell">
+      <section class="label" aria-label="송장 라벨">
+        <div class="watermark">TEST / 실제 접수 아님</div>
+        <header class="top">
+          <div class="brand">
+            <strong>GLOC</strong>
+            <span>${escapeHtml(label.label)} 송장 라벨</span>
+          </div>
+          <div class="meta">
+            <strong>${escapeHtml(order.courier || order.shipping_company || "우체국택배")}</strong>
+            <span>${escapeHtml(order.order_id || "")}</span>
+            <span>${escapeHtml(order.shipping_receipt_no || "테스트 접수번호")}</span>
+          </div>
+        </header>
+
+        <section class="tracking">
+          <strong>${safeTrackingNo}</strong>
+          <div class="barcode">${code39BarcodeSvg(trackingNo)}</div>
+        </section>
+
+        <section class="grid">
+          <div class="box">
+            <h2>받는 분</h2>
+            <div class="row"><b>대리점</b><span>${escapeHtml(order.dealer_name || order.dealer_code || "")}</span></div>
+            <div class="row"><b>수령인</b><span>${escapeHtml(order.recipient_name || "담당자 미입력")}</span></div>
+            <div class="row"><b>연락처</b><span>${escapeHtml(order.recipient_phone || "전화번호 미입력")}</span></div>
+            <div class="row"><b>주소</b><span>${escapeHtml(recipientAddress || "주소 미입력")}</span></div>
+          </div>
+          <div class="box">
+            <h2>상품 정보</h2>
+            <div class="row"><b>제품명</b><span>${escapeHtml(order.product_name || "")}</span></div>
+            <div class="row"><b>SKU</b><span>${escapeHtml(order.sku || "")}</span></div>
+            <div class="row"><b>수량</b><span>${roll(Number(order.qty || 0))}</span></div>
+          </div>
+          <div class="box">
+            <h2>보내는 분</h2>
+            <div class="row"><b>발송인</b><span>${escapeHtml(sender.name)}</span></div>
+            <div class="row"><b>연락처</b><span>${escapeHtml(sender.phone)}</span></div>
+            <div class="row"><b>주소</b><span>${escapeHtml(sender.address)}</span></div>
+          </div>
+        </section>
+
+        <div class="test-copy">TEST / 실제 접수 아님</div>
+      </section>
+      <div class="actions">
+        <button type="button" onclick="window.print()">PDF 출력 / 프린트</button>
+        <button type="button" onclick="window.close()">닫기</button>
+      </div>
+    </main>
+    <script>
+      window.addEventListener("load", function () {
+        window.setTimeout(function () {
+          window.focus();
+          window.print();
+        }, 350);
+      });
+    </script>
+  </body>
+</html>`;
+}
+
+function labelSizeOptions() {
+  return [
+    { value: "post-100x150", label: "우체국 100x150mm", pageSize: "100mm 150mm", widthMm: 100, heightMm: 150, paddingMm: 5, titleSize: 24, headingSize: 17, bodySize: 13, smallSize: 11, barcodeHeight: 58, watermarkSize: 42 },
+    { value: "a6", label: "A6 105x148mm", pageSize: "105mm 148mm", widthMm: 105, heightMm: 148, paddingMm: 5, titleSize: 24, headingSize: 17, bodySize: 13, smallSize: 11, barcodeHeight: 56, watermarkSize: 42 },
+    { value: "four-by-six", label: "4x6 inch", pageSize: "101.6mm 152.4mm", widthMm: 101.6, heightMm: 152.4, paddingMm: 5, titleSize: 24, headingSize: 17, bodySize: 13, smallSize: 11, barcodeHeight: 60, watermarkSize: 42 }
+  ];
+}
+
+function labelSizeMeta(value) {
+  return labelSizeOptions().find((option) => option.value === value) || labelSizeOptions()[0];
+}
+
+function labelSenderInfo() {
+  return {
+    name: "GLOC 본사 출고팀",
+    phone: "본사 문의",
+    address: "본사 출고지"
+  };
+}
+
+function orderTrackingNo(order) {
+  return String(order?.tracking_no || order?.tracking_number || "").trim();
+}
+
+function orderRecipientAddress(order) {
+  return [order.recipient_zipcode ? `(${order.recipient_zipcode})` : "", order.recipient_address, order.recipient_address_detail]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function printStatusLabel(status) {
+  if (status === "printed") return "출력 완료";
+  if (status === "failed") return "출력 실패";
+  return status || "";
+}
+
+function code39BarcodeSvg(value) {
+  const patterns = {
+    "0": "nnnwwnwnn", "1": "wnnwnnnnw", "2": "nnwwnnnnw", "3": "wnwwnnnnn", "4": "nnnwwnnnw",
+    "5": "wnnwwnnnn", "6": "nnwwwnnnn", "7": "nnnwnnwnw", "8": "wnnwnnwnn", "9": "nnwwnnwnn",
+    A: "wnnnnwnnw", B: "nnwnnwnnw", C: "wnwnnwnnn", D: "nnnnwwnnw", E: "wnnnwwnnn",
+    F: "nnwnwwnnn", G: "nnnnnwwnw", H: "wnnnnwwnn", I: "nnwnnwwnn", J: "nnnnwwwnn",
+    K: "wnnnnnnww", L: "nnwnnnnww", M: "wnwnnnnwn", N: "nnnnwnnww", O: "wnnnwnnwn",
+    P: "nnwnwnnwn", Q: "nnnnnnwww", R: "wnnnnnwwn", S: "nnwnnnwwn", T: "nnnnwnwwn",
+    U: "wwnnnnnnw", V: "nwwnnnnnw", W: "wwwnnnnnn", X: "nwnnwnnnw", Y: "wwnnwnnnn",
+    Z: "nwwnwnnnn", "-": "nwnnnnwnw", ".": "wwnnnnwnn", " ": "nwwnnnwnn", "$": "nwnwnwnnn",
+    "/": "nwnwnnnwn", "+": "nwnnnwnwn", "%": "nnnwnwnwn", "*": "nwnnwnwnn"
+  };
+  const encoded = `*${String(value || "").toUpperCase().replace(/[^0-9A-Z .$/+%-]/g, "")}*`;
+  const narrow = 2;
+  const wide = 5;
+  const height = 80;
+  let x = 0;
+  const rects = [];
+
+  encoded.split("").forEach((char) => {
+    const pattern = patterns[char] || patterns["-"];
+    pattern.split("").forEach((unit, index) => {
+      const width = unit === "w" ? wide : narrow;
+      if (index % 2 === 0) {
+        rects.push(`<rect x="${x}" y="0" width="${width}" height="${height}" />`);
+      }
+      x += width;
+    });
+    x += narrow;
+  });
+
+  return `<svg viewBox="0 0 ${x} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="송장번호 바코드"><rect width="${x}" height="${height}" fill="#fff" />${rects.join("")}</svg>`;
 }
 
 async function receiveOrder(orderId) {

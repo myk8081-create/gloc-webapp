@@ -12,7 +12,7 @@ const SHEETS = {
 const HEADERS = {
   accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "role", "is_first_login", "is_active", "contact_name", "phone", "zipcode", "address", "address_detail", "default_courier", "shipping_memo", "password_changed_at", "profile_completed_at", "updated_at"],
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
-  orders: ["order_id", "agency_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "courier", "tracking_no", "shipping_receipt_no", "shipping_error", "approved_at", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
+  orders: ["order_id", "agency_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "courier", "tracking_no", "shipping_receipt_no", "shipping_error", "approved_at", "print_status", "printed_at", "print_count", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
   reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "reservation_date", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
@@ -53,6 +53,7 @@ function doPost(e) {
     if (action === "createOrder") return ok_(handleCreateOrder_(payload, user));
     if (action === "getOrders") return ok_(handleGetOrders_(payload, user));
     if (action === "updateOrderStatus") return ok_(handleUpdateOrderStatus_(payload, user));
+    if (action === "markOrderPrinted") return ok_(handleMarkOrderPrinted_(payload, user));
     if (action === "receiveOrder") return ok_(handleReceiveOrder_(payload, user));
     if (action === "cancelOrder") return ok_(handleCancelOrder_(payload, user));
     if (action === "clearOrders") return ok_(handleClearOrders_(payload, user));
@@ -335,6 +336,9 @@ function handleCreateOrder_(payload, user) {
     shipping_receipt_no: "",
     shipping_error: "",
     approved_at: "",
+    print_status: "",
+    printed_at: "",
+    print_count: 0,
     shipping_company: "",
     tracking_number: "",
     hq_stock_deducted_at: "",
@@ -420,6 +424,32 @@ function handleUpdateOrderStatus_(payload, user) {
     inventory: publicInventories.length ? publicInventories[publicInventories.length - 1] : null,
     inventory_rows: publicInventories,
     notification: notifyDealerOrderUpdated_(order)
+  };
+}
+
+function handleMarkOrderPrinted_(payload, user) {
+  const orderId = required_(payload.order_id, "order_id");
+  const printStatus = payload.print_status === "failed" ? "failed" : "printed";
+  const currentOrder = readRows_(SHEETS.orders).find((row) => row.order_id === orderId);
+  if (!currentOrder) throw new Error("발주를 찾을 수 없습니다.");
+  if (user.role !== "admin" && String(currentOrder.dealer_code).toUpperCase() !== String(user.dealer_code).toUpperCase()) {
+    throw new Error("본인 대리점 발주만 송장 출력 처리할 수 있습니다.");
+  }
+  if (!(currentOrder.tracking_no || currentOrder.tracking_number)) {
+    throw new Error("송장번호가 있는 발주만 출력 처리할 수 있습니다.");
+  }
+
+  const updates = {
+    print_status: printStatus,
+    updated_at: isoNow_()
+  };
+  if (printStatus === "printed") {
+    updates.printed_at = isoNow_();
+    updates.print_count = Number(currentOrder.print_count || 0) + 1;
+  }
+
+  return {
+    order: updateRowByKey_(SHEETS.orders, "order_id", orderId, updates)
   };
 }
 
@@ -1794,6 +1824,9 @@ function clearTestShippingFromOrderUpdates_(updates) {
   updates.approved_at = "";
   updates.shipping_company = "";
   updates.tracking_number = "";
+  updates.print_status = "";
+  updates.printed_at = "";
+  updates.print_count = 0;
 }
 
 function clearDealerProfileFromOrderUpdates_(updates) {

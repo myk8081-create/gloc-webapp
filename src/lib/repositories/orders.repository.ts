@@ -25,6 +25,12 @@ export interface UpdateOrderStatusInput {
   shipping_receipt_no?: string;
 }
 
+export interface MarkOrderPrintedInput {
+  order_no: string;
+  print_status?: "printed" | "failed";
+  label_size?: string;
+}
+
 function assertOrderStatus(status: OrderStatus) {
   if (!ORDER_STATUSES.includes(status)) {
     throw new Error(`지원하지 않는 발주 상태입니다: ${status}`);
@@ -69,10 +75,18 @@ export function createOrdersRepository(provider: DataProvider = createDataProvid
       return provider.request<{ order: OrderRecord }>("updateOrderStatus", mapOrderStatusPayload(input), context);
     },
 
-    markPrinted(orderNo: string, context: RepositoryContext = {}) {
+    markPrinted(input: string | MarkOrderPrintedInput, context: RepositoryContext = {}) {
+      const payload = typeof input === "string"
+        ? { order_no: input, order_id: input, print_status: "printed" }
+        : {
+            order_no: input.order_no,
+            order_id: input.order_no,
+            print_status: input.print_status || "printed",
+            label_size: input.label_size || ""
+          };
       return provider.request<{ order: OrderRecord }>(
         "markOrderPrinted",
-        { order_no: orderNo, order_id: orderNo },
+        payload,
         context
       );
     }
