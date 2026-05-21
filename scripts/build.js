@@ -51,6 +51,7 @@ const appsScriptUrl = process.env.APPS_SCRIPT_API_URL || "";
 const appPublicUrl = process.env.APP_PUBLIC_URL || "";
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
 const labelMode = process.env.LABEL_PRINT_MODE || "test";
+const labelPrivacyMasking = process.env.LABEL_PRIVACY_MASKING || "true";
 const apiBaseUrl = process.env.API_BASE_URL || (appsScriptUrl ? "/api/gloc" : "");
 const exposeAppsScriptUrl = process.env.EXPOSE_APPS_SCRIPT_URL === "true";
 
@@ -61,7 +62,8 @@ const config = `window.FILM_STOCK_CONFIG = {
   appsScriptUrl: ${JSON.stringify(exposeAppsScriptUrl ? appsScriptUrl : "")},
   appPublicUrl: ${JSON.stringify(appPublicUrl)},
   vapidPublicKey: ${JSON.stringify(vapidPublicKey)},
-  labelMode: ${JSON.stringify(labelMode)}
+  labelMode: ${JSON.stringify(labelMode)},
+  labelPrivacyMasking: ${JSON.stringify(labelPrivacyMasking)}
 };
 `;
 

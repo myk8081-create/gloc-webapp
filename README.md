@@ -185,6 +185,8 @@ VAPID_PUBLIC_KEY=YOUR_VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY=YOUR_VAPID_PRIVATE_KEY
 VAPID_SUBJECT=mailto:admin@example.com
 PUSH_API_SECRET=CHANGE_ME_TO_A_LONG_RANDOM_SECRET
+LABEL_PRINT_MODE=test
+LABEL_PRIVACY_MASKING=true
 ```
 
 4. 배포합니다.
@@ -196,6 +198,8 @@ PUSH_API_SECRET=CHANGE_ME_TO_A_LONG_RANDOM_SECRET
 ```bash
 npm run generate:vapid
 ```
+
+송장 출력은 우체국 소포 라벨지 위에 검정 텍스트와 바코드만 찍는 오버레이 방식입니다. `LABEL_PRINT_MODE=production`으로 바꾸면 테스트 워터마크가 사라지고, `LABEL_PRIVACY_MASKING=false`로 바꾸면 출력용 이름/전화번호 마스킹이 해제됩니다.
 
 ## 관리자 발주 푸시 알림
 
