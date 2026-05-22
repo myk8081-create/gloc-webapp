@@ -496,9 +496,9 @@ function renderLogin() {
         <section class="panel login-card">
           <img class="login-logo" src="gloc-logo-banner.png" alt="GLOC" />
           <div class="login-intro">
-            <p class="eyebrow">대리점 재고관리</p>
+            <p class="eyebrow">GLOC 재고관리</p>
             <h1>로그인</h1>
-            <p class="lead">QR 또는 카카오톡 링크로 접속한 뒤 대리점 계정으로 재고조회와 발주를 진행합니다.</p>
+            <p class="lead">대리점 또는 관리자 계정으로 재고조회와 발주를 진행합니다.</p>
           </div>
           <div class="form-grid">
             <div class="segmented" aria-label="계정 유형">
@@ -621,7 +621,7 @@ function renderAdminDashboard() {
       <section class="page-head">
         <p class="eyebrow">관리자 대시보드</p>
         <h1>전체 재고와 발주 현황</h1>
-        <p class="lead">본사 재고, 전체 대리점/샵 재고, 안전재고 미달 제품, 발주 상태를 한곳에서 확인합니다.</p>
+        <p class="lead">본사 재고, 전체 대리점 재고, 안전재고 미달 제품, 발주 상태를 한곳에서 확인합니다.</p>
         <div class="page-actions">
           <button class="primary-button" type="button" data-nav="inventoryManage">재고 수정</button>
           <button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>
@@ -641,7 +641,7 @@ function renderAdminDashboard() {
         <div class="metric blue">
           <div class="metric-label">총 재고</div>
           <div class="metric-value">${roll(stats.totalStock)}</div>
-          <div class="metric-note">본사와 대리점/샵 합산</div>
+          <div class="metric-note">본사와 대리점 합산</div>
         </div>
         <div class="metric danger">
           <div class="metric-label">안전재고 이하</div>
@@ -689,7 +689,7 @@ function renderAdminDashboard() {
             </button>
             <button class="quick-card" type="button" data-nav="links">
               <strong>QR/안내문</strong>
-              <span>공통 QR과 대리점별 안내문 생성</span>
+              <span>QR과 대리점별 안내문 생성</span>
             </button>
             <button class="quick-card" type="button" data-nav="notifications">
               <strong>알림설정</strong>
