@@ -16,28 +16,31 @@ const koreaPostOverlay = {
   OFFSET_X_MM: 0,
   OFFSET_Y_MM: 0,
   SCALE: 1,
+  PRINT_OFFSET_X_MM: 0,
+  PRINT_OFFSET_Y_MM: 0,
+  PRINT_SCALE: 1,
   PRINT_ROTATION_DEG: 180,
-  REGION_CODE_X_MM: 68,
-  REGION_CODE_Y_MM: 6,
-  REGION_CODE_WIDTH_MM: 46,
-  SORT_CODE_X_MM: 129,
-  SORT_CODE_Y_MM: 6,
-  SORT_CODE_WIDTH_MM: 17,
-  CUSTOMER_ORDER_X_MM: 7,
-  CUSTOMER_ORDER_Y_MM: 18,
-  CUSTOMER_ORDER_WIDTH_MM: 55,
-  PAYMENT_X_MM: 41,
-  PAYMENT_Y_MM: 31,
+  REGION_CODE_X_MM: 58,
+  REGION_CODE_Y_MM: 3,
+  REGION_CODE_WIDTH_MM: 53,
+  SORT_CODE_X_MM: 116,
+  SORT_CODE_Y_MM: 4,
+  SORT_CODE_WIDTH_MM: 19,
+  CUSTOMER_ORDER_X_MM: 6,
+  CUSTOMER_ORDER_Y_MM: 15,
+  CUSTOMER_ORDER_WIDTH_MM: 49,
+  PAYMENT_X_MM: 39,
+  PAYMENT_Y_MM: 29,
   WEIGHT_X_MM: 6,
   WEIGHT_Y_MM: 32,
   VOLUME_X_MM: 25,
   VOLUME_Y_MM: 32,
   FEE_X_MM: 45,
   FEE_Y_MM: 32,
-  BARCODE_X_MM: 14,
+  BARCODE_X_MM: 10,
   BARCODE_Y_MM: 41,
-  BARCODE_WIDTH_MM: 40,
-  BARCODE_HEIGHT_MM: 17,
+  BARCODE_WIDTH_MM: 33,
+  BARCODE_HEIGHT_MM: 14,
   MESSAGE_X_MM: 6,
   MESSAGE_Y_MM: 62,
   MESSAGE_WIDTH_MM: 62,
@@ -47,19 +50,19 @@ const koreaPostOverlay = {
   PRODUCT_X_MM: 6,
   PRODUCT_Y_MM: 78,
   PRODUCT_WIDTH_MM: 63,
-  SENDER_X_MM: 70,
+  SENDER_X_MM: 62,
   SENDER_Y_MM: 17,
-  SENDER_WIDTH_MM: 60,
-  RECIPIENT_X_MM: 70,
-  RECIPIENT_Y_MM: 43,
-  RECIPIENT_WIDTH_MM: 62,
-  REGISTRATION_X_MM: 72,
-  REGISTRATION_Y_MM: 77,
-  REGISTRATION_WIDTH_MM: 56,
-  BOTTOM_BARCODE_X_MM: 76,
-  BOTTOM_BARCODE_Y_MM: 85,
+  SENDER_WIDTH_MM: 70,
+  RECIPIENT_X_MM: 62,
+  RECIPIENT_Y_MM: 39,
+  RECIPIENT_WIDTH_MM: 70,
+  REGISTRATION_X_MM: 62,
+  REGISTRATION_Y_MM: 66,
+  REGISTRATION_WIDTH_MM: 63,
+  BOTTOM_BARCODE_X_MM: 62,
+  BOTTOM_BARCODE_Y_MM: 77,
   BOTTOM_BARCODE_WIDTH_MM: 44,
-  BOTTOM_BARCODE_HEIGHT_MM: 12,
+  BOTTOM_BARCODE_HEIGHT_MM: 15,
   BOTTOM_CODE_X_MM: 126,
   BOTTOM_CODE_Y_MM: 82,
   BOTTOM_CODE_WIDTH_MM: 18,
@@ -71,6 +74,9 @@ const labelCalibrationFields = [
   { id: "labelOffsetX", key: "label_offset_x_mm", label: "전체 X 이동값(mm)", defaultValue: koreaPostOverlay.OFFSET_X_MM },
   { id: "labelOffsetY", key: "label_offset_y_mm", label: "전체 Y 이동값(mm)", defaultValue: koreaPostOverlay.OFFSET_Y_MM },
   { id: "labelScale", key: "label_scale", label: "전체 배율", defaultValue: koreaPostOverlay.SCALE, step: 0.01 },
+  { id: "printOffsetX", key: "print_offset_x_mm", label: "실출력 전용 X 보정(mm)", defaultValue: koreaPostOverlay.PRINT_OFFSET_X_MM },
+  { id: "printOffsetY", key: "print_offset_y_mm", label: "실출력 전용 Y 보정(mm)", defaultValue: koreaPostOverlay.PRINT_OFFSET_Y_MM },
+  { id: "printScale", key: "print_scale", label: "실출력 전용 배율", defaultValue: koreaPostOverlay.PRINT_SCALE, step: 0.01 },
   { id: "zoneCodeX", key: "zone_code_x_mm", label: "상단 권역코드 X", defaultValue: koreaPostOverlay.REGION_CODE_X_MM },
   { id: "zoneCodeY", key: "zone_code_y_mm", label: "상단 권역코드 Y", defaultValue: koreaPostOverlay.REGION_CODE_Y_MM },
   { id: "sortCodeX", key: "sort_code_x_mm", label: "상단 분류번호 X", defaultValue: koreaPostOverlay.SORT_CODE_X_MM },
@@ -114,6 +120,9 @@ const labelCalibrationOverlayMap = {
   labelOffsetX: "OFFSET_X_MM",
   labelOffsetY: "OFFSET_Y_MM",
   labelScale: "SCALE",
+  printOffsetX: "PRINT_OFFSET_X_MM",
+  printOffsetY: "PRINT_OFFSET_Y_MM",
+  printScale: "PRINT_SCALE",
   zoneCodeX: "REGION_CODE_X_MM",
   zoneCodeY: "REGION_CODE_Y_MM",
   sortCodeX: "SORT_CODE_X_MM",
@@ -817,8 +826,15 @@ function renderLabelSettings() {
           <div class="history-item">
             <div class="history-time">2</div>
             <div>
-              <div class="product-name">조정 방법</div>
-              <div class="product-meta">오른쪽으로 밀려 있으면 전체 X를 음수로, 아래로 밀려 있으면 전체 Y를 음수로 줄입니다.</div>
+              <div class="product-name">미리보기 위치 조정</div>
+              <div class="product-meta">화면 미리보기에서 항목 자체가 어긋나면 전체 X/Y 또는 해당 항목 X/Y를 조정합니다.</div>
+            </div>
+          </div>
+          <div class="history-item">
+            <div class="history-time">3</div>
+            <div>
+              <div class="product-name">실제 인쇄 차이 보정</div>
+              <div class="product-meta">미리보기는 맞는데 종이 출력만 밀리면 실출력 전용 X/Y/배율을 조정합니다. 출력물이 오른쪽 또는 아래로 밀리면 먼저 음수 방향으로 줄여봅니다.</div>
             </div>
           </div>
         </div>
@@ -837,7 +853,7 @@ function renderLabelCalibrationEditor() {
         </div>
         <span class="badge">0.5mm 단위</span>
       </div>
-      <p class="product-meta label-calibration-help">숫자를 입력하거나 +/- 버튼을 누르면 왼쪽 미리보기에 바로 반영됩니다. 위치가 맞으면 저장을 눌러 Settings 시트에 남깁니다.</p>
+      <p class="product-meta label-calibration-help">숫자를 입력하거나 +/- 버튼을 누르면 왼쪽 미리보기에 바로 반영됩니다. 실제 인쇄만 밀리면 실출력 전용 X/Y/배율만 조정한 뒤 저장합니다.</p>
       <div class="label-calibration-grid" id="labelCalibrationFields">
         ${labelCalibrationFields.map(renderLabelCalibrationField).join("")}
       </div>
@@ -898,6 +914,8 @@ function renderLabelPreviewValues() {
     <span>OFFSET X <strong>${formatCalibrationNumber(labelCalibrationValue("labelOffsetX"))}mm</strong></span>
     <span>OFFSET Y <strong>${formatCalibrationNumber(labelCalibrationValue("labelOffsetY"))}mm</strong></span>
     <span>SCALE <strong>${formatCalibrationNumber(labelCalibrationValue("labelScale"))}</strong></span>
+    <span>실출력 X/Y <strong>${formatCalibrationNumber(labelCalibrationValue("printOffsetX"))}, ${formatCalibrationNumber(labelCalibrationValue("printOffsetY"))}</strong></span>
+    <span>실출력 배율 <strong>${formatCalibrationNumber(labelCalibrationValue("printScale"))}</strong></span>
     <span>메인 바코드 <strong>${formatCalibrationNumber(labelCalibrationValue("leftBarcodeX"))}, ${formatCalibrationNumber(labelCalibrationValue("leftBarcodeY"))}</strong></span>
     <span>하단 바코드 <strong>${formatCalibrationNumber(labelCalibrationValue("bottomBarcodeX"))}, ${formatCalibrationNumber(labelCalibrationValue("bottomBarcodeY"))}</strong></span>
   `;
@@ -925,14 +943,15 @@ function renderLabelPreviewSheet(data) {
 function renderLabelPreviewOverlay(data) {
   return `
     ${data.testWatermark ? `<div class="label-preview-watermark" style="${labelPreviewPointStyle(koreaPostOverlay.WATERMARK_X_MM, koreaPostOverlay.WATERMARK_Y_MM)}">TEST / 실제 접수 아님</div>` : ""}
-    <div class="label-preview-field preview-region-code" style="${labelPreviewBoxStyle(koreaPostOverlay.REGION_CODE_X_MM, koreaPostOverlay.REGION_CODE_Y_MM, koreaPostOverlay.REGION_CODE_WIDTH_MM)}">${escapeHtml(data.regionCode)}</div>
+    <div class="label-preview-field preview-region-code" style="${labelPreviewBoxStyle(koreaPostOverlay.REGION_CODE_X_MM, koreaPostOverlay.REGION_CODE_Y_MM, koreaPostOverlay.REGION_CODE_WIDTH_MM)}">${renderLabelRegionCode(data.regionCode)}</div>
     <div class="label-preview-field preview-sort-code" style="${labelPreviewBoxStyle(koreaPostOverlay.SORT_CODE_X_MM, koreaPostOverlay.SORT_CODE_Y_MM, koreaPostOverlay.SORT_CODE_WIDTH_MM)}">${escapeHtml(data.sortCode)}</div>
     <div class="label-preview-field preview-customer-order" style="${labelPreviewBoxStyle(koreaPostOverlay.CUSTOMER_ORDER_X_MM, koreaPostOverlay.CUSTOMER_ORDER_Y_MM, koreaPostOverlay.CUSTOMER_ORDER_WIDTH_MM)}">
-      <span>접수일: ${escapeHtml(data.receiptDate)}</span>
-      <span>주문: ${escapeHtml(data.orderNo)}</span>
-      <span>고객: ${escapeHtml(data.dealerName)}</span>
+      <span>접수국: ${escapeHtml(data.receiptOffice)}　신청일: ${escapeHtml(data.receiptDate)}</span>
+      <span>주문인: ${escapeHtml(data.ordererName)}</span>
+      <span>고객 주문처: ${escapeHtml(data.dealerName)}</span>
+      <span>주문번호: ${escapeHtml(data.orderNo)}</span>
     </div>
-    <div class="label-preview-field preview-payment" style="${labelPreviewBoxStyle(koreaPostOverlay.PAYMENT_X_MM, koreaPostOverlay.PAYMENT_Y_MM, 18)}">${escapeHtml(data.paymentMethod)}</div>
+    <div class="label-preview-field preview-payment" style="${labelPreviewBoxStyle(koreaPostOverlay.PAYMENT_X_MM, koreaPostOverlay.PAYMENT_Y_MM, 18)}">요금: ${escapeHtml(data.paymentMethod)}</div>
     <div class="label-preview-field preview-metric" style="${labelPreviewBoxStyle(koreaPostOverlay.WEIGHT_X_MM, koreaPostOverlay.WEIGHT_Y_MM, 18)}">중량:${escapeHtml(data.weightText)}</div>
     <div class="label-preview-field preview-metric" style="${labelPreviewBoxStyle(koreaPostOverlay.VOLUME_X_MM, koreaPostOverlay.VOLUME_Y_MM, 18)}">용적:${escapeHtml(data.volumeText)}</div>
     <div class="label-preview-field preview-metric" style="${labelPreviewBoxStyle(koreaPostOverlay.FEE_X_MM, koreaPostOverlay.FEE_Y_MM, 20)}">요금:${escapeHtml(data.feeText)}</div>
@@ -1015,6 +1034,7 @@ function adjustLabelCalibration(id, delta) {
 
 function validateLabelCalibration() {
   if (labelCalibrationValue("labelScale") <= 0) throw new Error("전체 배율은 0보다 커야 합니다.");
+  if (labelCalibrationValue("printScale") <= 0) throw new Error("실출력 전용 배율은 0보다 커야 합니다.");
   ["leftBarcodeWidth", "leftBarcodeHeight", "bottomBarcodeWidth", "bottomBarcodeHeight"].forEach((id) => {
     if (labelCalibrationValue(id) <= 0) throw new Error("바코드 width/height는 0보다 커야 합니다.");
   });
@@ -3800,6 +3820,8 @@ function shippingLabelPrintData(order, options = {}) {
   return {
     orderNo: String(order.order_id || order.order_no || "").trim(),
     dealerName: String(order.dealer_name || order.dealer_code || "").trim(),
+    ordererName: String(order.orderer_name || order.login_id || order.dealer_name || "GLOC").trim(),
+    receiptOffice: String(order.receipt_office || "GLOC").trim(),
     trackingNo: orderTrackingNo(order),
     registrationNo: labelRegistrationNo(order),
     regionCode: labelRegionCode(order),
@@ -3833,14 +3855,15 @@ function shippingLabelPrintData(order, options = {}) {
 function renderPrintLabelOverlay(data) {
   return `
     ${data.testWatermark ? `<div class="test-watermark">TEST / 실제 접수 아님</div>` : ""}
-    <div class="field region-code">${escapeHtml(data.regionCode)}</div>
+    <div class="field region-code">${renderLabelRegionCode(data.regionCode)}</div>
     <div class="field sort-code">${escapeHtml(data.sortCode)}</div>
     <div class="field field-small customer-order">
-      <span class="address-line">접수일: ${escapeHtml(data.receiptDate)}</span>
-      <span class="address-line">주문: ${escapeHtml(data.orderNo)}</span>
-      <span class="address-line">고객: ${escapeHtml(data.dealerName)}</span>
+      <span class="address-line">접수국: ${escapeHtml(data.receiptOffice)}　신청일: ${escapeHtml(data.receiptDate)}</span>
+      <span class="address-line">주문인: ${escapeHtml(data.ordererName)}</span>
+      <span class="address-line">고객 주문처: ${escapeHtml(data.dealerName)}</span>
+      <span class="address-line">주문번호: ${escapeHtml(data.orderNo)}</span>
     </div>
-    <div class="field payment-method">${escapeHtml(data.paymentMethod)}</div>
+    <div class="field payment-method">요금: ${escapeHtml(data.paymentMethod)}</div>
     <div class="field field-small weight">중량:${escapeHtml(data.weightText)}</div>
     <div class="field field-small volume">용적:${escapeHtml(data.volumeText)}</div>
     <div class="field field-small fee">요금:${escapeHtml(data.feeText)}</div>
@@ -3937,11 +3960,29 @@ function buildShippingLabelHtml(order, labelSizeValue, options = {}) {
         left: ${overlayX(koreaPostOverlay.REGION_CODE_X_MM)};
         top: ${overlayY(koreaPostOverlay.REGION_CODE_Y_MM)};
         width: ${overlaySize(koreaPostOverlay.REGION_CODE_WIDTH_MM)};
-        text-align: center;
-        font-size: ${overlaySize(14)};
+        display: flex;
+        align-items: center;
+        gap: ${overlaySize(1.2)};
+        font-size: ${overlaySize(13)};
         font-weight: 900;
         line-height: 0.9;
         letter-spacing: 0;
+      }
+      .label-region-prefix {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: ${overlaySize(14)};
+        min-height: ${overlaySize(13)};
+        padding: 0 ${overlaySize(0.8)};
+        background: #000;
+        color: #fff;
+        line-height: 1;
+      }
+      .label-region-route {
+        display: inline-block;
+        color: #000;
+        line-height: 0.92;
       }
       .sort-code {
         left: ${overlayX(koreaPostOverlay.SORT_CODE_X_MM)};
@@ -3961,10 +4002,10 @@ function buildShippingLabelHtml(order, labelSizeValue, options = {}) {
         left: ${overlayX(koreaPostOverlay.PAYMENT_X_MM)};
         top: ${overlayY(koreaPostOverlay.PAYMENT_Y_MM)};
         width: ${overlaySize(18)};
-        text-align: center;
-        font-size: ${overlaySize(6)};
+        text-align: left;
+        font-size: ${overlaySize(3)};
         font-weight: 900;
-        line-height: 1;
+        line-height: 1.1;
       }
       .weight {
         left: ${overlayX(koreaPostOverlay.WEIGHT_X_MM)};
@@ -4160,16 +4201,20 @@ function overlayMm(value) {
   return `${Number(value || 0).toFixed(2)}mm`;
 }
 
+function printOverlayScale() {
+  return koreaPostOverlay.SCALE * koreaPostOverlay.PRINT_SCALE;
+}
+
 function overlayX(value) {
-  return overlayMm(koreaPostOverlay.OFFSET_X_MM + Number(value || 0) * koreaPostOverlay.SCALE);
+  return overlayMm(koreaPostOverlay.OFFSET_X_MM + koreaPostOverlay.PRINT_OFFSET_X_MM + Number(value || 0) * printOverlayScale());
 }
 
 function overlayY(value) {
-  return overlayMm(koreaPostOverlay.OFFSET_Y_MM + Number(value || 0) * koreaPostOverlay.SCALE);
+  return overlayMm(koreaPostOverlay.OFFSET_Y_MM + koreaPostOverlay.PRINT_OFFSET_Y_MM + Number(value || 0) * printOverlayScale());
 }
 
 function overlaySize(value) {
-  return overlayMm(Number(value || 0) * koreaPostOverlay.SCALE);
+  return overlayMm(Number(value || 0) * printOverlayScale());
 }
 
 function labelPrintMode() {
@@ -4217,6 +4262,13 @@ function labelRegistrationNo(order) {
 
 function labelRegionCode(order) {
   return String(order.region_code || order.zone_code || order.label_region_code || "B4 484").trim();
+}
+
+function renderLabelRegionCode(value) {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return escapeHtml(parts.join(" "));
+  const prefix = parts.shift();
+  return `<span class="label-region-prefix">${escapeHtml(prefix)}</span><span class="label-region-route">${escapeHtml(parts.join(" "))}</span>`;
 }
 
 function labelSortCode(order) {

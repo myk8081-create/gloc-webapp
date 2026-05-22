@@ -634,9 +634,27 @@ h3 {
 }
 
 .preview-region-code {
-  text-align: center;
-  font-size: 8.85cqw;
+  display: flex;
+  align-items: center;
+  gap: 0.7cqw;
+  font-size: 8.2cqw;
   font-weight: 950;
+  line-height: 0.92;
+}
+
+.preview-region-code .label-region-prefix {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 9.2cqw;
+  min-height: 8.6cqw;
+  padding: 0 0.45cqw;
+  background: #000;
+  color: #fff;
+  line-height: 1;
+}
+
+.preview-region-code .label-region-route {
   line-height: 0.92;
 }
 
@@ -657,10 +675,10 @@ h3 {
 }
 
 .preview-payment {
-  text-align: center;
-  font-size: 3.9cqw;
+  text-align: left;
+  font-size: 1.95cqw;
   font-weight: 950;
-  line-height: 1;
+  line-height: 1.1;
 }
 
 .preview-metric {
