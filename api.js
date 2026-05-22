@@ -116,6 +116,14 @@
     });
   }
 
+  async function getLabelSettings() {
+    return request("getLabelSettings", {});
+  }
+
+  async function saveLabelSettings(settings) {
+    return request("saveLabelSettings", { settings });
+  }
+
   async function receiveOrder({ orderId }) {
     return request("receiveOrder", { order_id: orderId });
   }
@@ -225,6 +233,8 @@
     updateOrderStatus,
     updateOrderStatusWithShipping,
     markOrderPrinted,
+    getLabelSettings,
+    saveLabelSettings,
     receiveOrder,
     cancelOrder,
     clearOrders,

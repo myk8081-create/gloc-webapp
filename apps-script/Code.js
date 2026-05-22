@@ -35,6 +35,29 @@ const HEAD_OFFICE_NAME = "본사";
 const DEFAULT_RETAIL_PRICE = 1000000;
 const DEFAULT_PURCHASE_PRICE = 500000;
 const DEFAULT_LEGACY_ORDER_DISCOUNT_RATE = 20;
+const LABEL_SETTING_DEFAULTS = {
+  label_offset_x_mm: 0,
+  label_offset_y_mm: 0,
+  label_scale: 1,
+  zone_code_x_mm: 68,
+  zone_code_y_mm: 6,
+  sort_code_x_mm: 129,
+  sort_code_y_mm: 6,
+  left_barcode_x_mm: 14,
+  left_barcode_y_mm: 41,
+  left_barcode_width_mm: 40,
+  left_barcode_height_mm: 17,
+  sender_block_x_mm: 70,
+  sender_block_y_mm: 17,
+  receiver_block_x_mm: 70,
+  receiver_block_y_mm: 43,
+  tracking_text_x_mm: 72,
+  tracking_text_y_mm: 77,
+  bottom_barcode_x_mm: 76,
+  bottom_barcode_y_mm: 85,
+  bottom_barcode_width_mm: 44,
+  bottom_barcode_height_mm: 12
+};
 
 function doPost(e) {
   try {
@@ -54,6 +77,8 @@ function doPost(e) {
     if (action === "getOrders") return ok_(handleGetOrders_(payload, user));
     if (action === "updateOrderStatus") return ok_(handleUpdateOrderStatus_(payload, user));
     if (action === "markOrderPrinted") return ok_(handleMarkOrderPrinted_(payload, user));
+    if (action === "getLabelSettings") return ok_(handleGetLabelSettings_(payload, user));
+    if (action === "saveLabelSettings") return ok_(handleSaveLabelSettings_(payload, user));
     if (action === "receiveOrder") return ok_(handleReceiveOrder_(payload, user));
     if (action === "cancelOrder") return ok_(handleCancelOrder_(payload, user));
     if (action === "clearOrders") return ok_(handleClearOrders_(payload, user));
@@ -190,7 +215,8 @@ function handleLogin_(payload) {
     inventory: inventoryData.inventory,
     orders: orderData.orders,
     sales: salesData.sales,
-    reservations: reservationData.reservations
+    reservations: reservationData.reservations,
+    label_settings: user.role === "admin" ? labelSettings_() : {}
   };
 }
 
@@ -453,6 +479,35 @@ function handleMarkOrderPrinted_(payload, user) {
   return {
     order: updateRowByKey_(SHEETS.orders, "order_id", orderId, updates)
   };
+}
+
+function handleGetLabelSettings_(payload, user) {
+  requireAdmin_(user);
+  return { label_settings: labelSettings_() };
+}
+
+function handleSaveLabelSettings_(payload, user) {
+  requireAdmin_(user);
+  const settings = payload.settings || payload.label_settings || {};
+  Object.keys(LABEL_SETTING_DEFAULTS).forEach((key) => {
+    const fallback = LABEL_SETTING_DEFAULTS[key];
+    const value = hasSnapshotValue_(settings[key]) ? Number(settings[key]) : Number(fallback);
+    if (!isFinite(value)) throw new Error("라벨 보정값은 숫자여야 합니다: " + key);
+    if (key === "label_scale" && value <= 0) throw new Error("라벨 배율은 0보다 커야 합니다.");
+    if (/_width_mm$|_height_mm$/.test(key) && value <= 0) throw new Error("바코드 크기는 0보다 커야 합니다.");
+    setSetting_(key, value);
+  });
+  return { label_settings: labelSettings_() };
+}
+
+function labelSettings_() {
+  const settings = {};
+  Object.keys(LABEL_SETTING_DEFAULTS).forEach((key) => {
+    const stored = getSetting_(key);
+    const value = hasSnapshotValue_(stored) ? Number(stored) : Number(LABEL_SETTING_DEFAULTS[key]);
+    settings[key] = isFinite(value) ? value : Number(LABEL_SETTING_DEFAULTS[key]);
+  });
+  return settings;
 }
 
 function handleReceiveOrder_(payload, user) {

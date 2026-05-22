@@ -66,6 +66,68 @@ const koreaPostOverlay = {
   WATERMARK_Y_MM: 50
 };
 
+const labelCalibrationFields = [
+  { id: "labelOffsetX", key: "label_offset_x_mm", label: "전체 X 이동값(mm)", defaultValue: koreaPostOverlay.OFFSET_X_MM },
+  { id: "labelOffsetY", key: "label_offset_y_mm", label: "전체 Y 이동값(mm)", defaultValue: koreaPostOverlay.OFFSET_Y_MM },
+  { id: "labelScale", key: "label_scale", label: "전체 배율", defaultValue: koreaPostOverlay.SCALE, step: 0.01 },
+  { id: "zoneCodeX", key: "zone_code_x_mm", label: "상단 권역코드 X", defaultValue: koreaPostOverlay.REGION_CODE_X_MM },
+  { id: "zoneCodeY", key: "zone_code_y_mm", label: "상단 권역코드 Y", defaultValue: koreaPostOverlay.REGION_CODE_Y_MM },
+  { id: "sortCodeX", key: "sort_code_x_mm", label: "상단 분류번호 X", defaultValue: koreaPostOverlay.SORT_CODE_X_MM },
+  { id: "sortCodeY", key: "sort_code_y_mm", label: "상단 분류번호 Y", defaultValue: koreaPostOverlay.SORT_CODE_Y_MM },
+  { id: "leftBarcodeX", key: "left_barcode_x_mm", label: "좌측 바코드 X", defaultValue: koreaPostOverlay.BARCODE_X_MM },
+  { id: "leftBarcodeY", key: "left_barcode_y_mm", label: "좌측 바코드 Y", defaultValue: koreaPostOverlay.BARCODE_Y_MM },
+  { id: "leftBarcodeWidth", key: "left_barcode_width_mm", label: "좌측 바코드 width", defaultValue: koreaPostOverlay.BARCODE_WIDTH_MM },
+  { id: "leftBarcodeHeight", key: "left_barcode_height_mm", label: "좌측 바코드 height", defaultValue: koreaPostOverlay.BARCODE_HEIGHT_MM },
+  { id: "senderBlockX", key: "sender_block_x_mm", label: "우측 보내는 분 X", defaultValue: koreaPostOverlay.SENDER_X_MM },
+  { id: "senderBlockY", key: "sender_block_y_mm", label: "우측 보내는 분 Y", defaultValue: koreaPostOverlay.SENDER_Y_MM },
+  { id: "receiverBlockX", key: "receiver_block_x_mm", label: "우측 받는 분 X", defaultValue: koreaPostOverlay.RECIPIENT_X_MM },
+  { id: "receiverBlockY", key: "receiver_block_y_mm", label: "우측 받는 분 Y", defaultValue: koreaPostOverlay.RECIPIENT_Y_MM },
+  { id: "trackingTextX", key: "tracking_text_x_mm", label: "하단 등록번호 X", defaultValue: koreaPostOverlay.REGISTRATION_X_MM },
+  { id: "trackingTextY", key: "tracking_text_y_mm", label: "하단 등록번호 Y", defaultValue: koreaPostOverlay.REGISTRATION_Y_MM },
+  { id: "bottomBarcodeX", key: "bottom_barcode_x_mm", label: "하단 바코드 X", defaultValue: koreaPostOverlay.BOTTOM_BARCODE_X_MM },
+  { id: "bottomBarcodeY", key: "bottom_barcode_y_mm", label: "하단 바코드 Y", defaultValue: koreaPostOverlay.BOTTOM_BARCODE_Y_MM },
+  { id: "bottomBarcodeWidth", key: "bottom_barcode_width_mm", label: "하단 바코드 width", defaultValue: koreaPostOverlay.BOTTOM_BARCODE_WIDTH_MM },
+  { id: "bottomBarcodeHeight", key: "bottom_barcode_height_mm", label: "하단 바코드 height", defaultValue: koreaPostOverlay.BOTTOM_BARCODE_HEIGHT_MM }
+];
+
+const labelCalibrationOverlayMap = {
+  labelOffsetX: "OFFSET_X_MM",
+  labelOffsetY: "OFFSET_Y_MM",
+  labelScale: "SCALE",
+  zoneCodeX: "REGION_CODE_X_MM",
+  zoneCodeY: "REGION_CODE_Y_MM",
+  sortCodeX: "SORT_CODE_X_MM",
+  sortCodeY: "SORT_CODE_Y_MM",
+  leftBarcodeX: "BARCODE_X_MM",
+  leftBarcodeY: "BARCODE_Y_MM",
+  leftBarcodeWidth: "BARCODE_WIDTH_MM",
+  leftBarcodeHeight: "BARCODE_HEIGHT_MM",
+  senderBlockX: "SENDER_X_MM",
+  senderBlockY: "SENDER_Y_MM",
+  receiverBlockX: "RECIPIENT_X_MM",
+  receiverBlockY: "RECIPIENT_Y_MM",
+  trackingTextX: "REGISTRATION_X_MM",
+  trackingTextY: "REGISTRATION_Y_MM",
+  bottomBarcodeX: "BOTTOM_BARCODE_X_MM",
+  bottomBarcodeY: "BOTTOM_BARCODE_Y_MM",
+  bottomBarcodeWidth: "BOTTOM_BARCODE_WIDTH_MM",
+  bottomBarcodeHeight: "BOTTOM_BARCODE_HEIGHT_MM"
+};
+
+function defaultLabelCalibration() {
+  return Object.fromEntries(labelCalibrationFields.map((field) => [field.id, field.defaultValue]));
+}
+
+function calibrationNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : Number(fallback || 0);
+}
+
+function formatCalibrationNumber(value) {
+  const number = calibrationNumber(value, 0);
+  return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(2)));
+}
+
 const colorOptions = [
   { name: "전체", value: "전체", hex: "#cf4e42" },
   { name: "차콜", value: "차콜", hex: "#2f3d3d" },
@@ -277,6 +339,7 @@ const state = {
   orders: createMockOrders(mockProducts),
   retailSales: [],
   reservations: [],
+  labelCalibration: defaultLabelCalibration(),
   selectedColor: "전체",
   selectedSku: mockProducts[0].sku,
   filters: {
@@ -393,6 +456,7 @@ function render() {
       ${renderReservations()}
       ${renderDealerLinks()}
       ${renderNotifications()}
+      ${renderLabelSettings()}
       ${renderBottomNav()}
       <div id="toast" class="toast" role="status"></div>
     </div>
@@ -559,6 +623,7 @@ function renderAdminDashboard() {
           <button class="secondary-button" type="button" data-nav="sales">매출현황</button>
           <button class="primary-button" type="button" data-nav="dealers">대리점 계정 관리</button>
           <button class="secondary-button" type="button" data-nav="links">QR/카카오톡 안내문</button>
+          <button class="secondary-button" type="button" data-nav="labelSettings">송장출력 설정</button>
         </div>
       </section>
 
@@ -625,6 +690,10 @@ function renderAdminDashboard() {
               <strong>알림설정</strong>
               <span>이 기기 푸시 알림 등록과 테스트</span>
             </button>
+            <button class="quick-card" type="button" data-nav="labelSettings">
+              <strong>송장출력 설정</strong>
+              <span>우체국 라벨 출력 위치를 mm 단위로 보정</span>
+            </button>
           </div>
         </article>
         <article class="panel summary-panel">
@@ -670,6 +739,120 @@ function renderNotifications() {
       </section>
     </main>
   `;
+}
+
+function renderLabelSettings() {
+  if (state.session?.role !== "admin") return "";
+  return `
+    <main class="screen ${state.screen === "labelSettings" ? "active" : ""}" data-screen="labelSettings">
+      <section class="page-head">
+        <p class="eyebrow">송장출력 설정</p>
+        <h1>라벨 출력 위치 보정</h1>
+        <p class="lead">우체국 소포 라벨지에 실제 출력했을 때 밀리는 위치를 코드 수정 없이 mm 단위로 조정합니다. 빨간선, 로고, 박스는 출력하지 않고 검정 텍스트와 바코드만 출력됩니다.</p>
+        <div class="page-actions">
+          <button class="secondary-button" type="button" data-action="refreshLabelSettings">설정 새로고침</button>
+          <button class="secondary-button" type="button" data-action="previewTestLabel">테스트 송장 미리보기</button>
+          <button class="primary-button" type="button" data-action="printTestLabel">테스트 출력</button>
+        </div>
+      </section>
+
+      <section class="panel summary-panel">
+        <div class="panel-head-row">
+          <div>
+            <p class="eyebrow">Settings 시트 저장</p>
+            <h3>보정값</h3>
+          </div>
+          <span class="badge">0.5mm 단위</span>
+        </div>
+        <div class="label-calibration-grid">
+          ${labelCalibrationFields.map(renderLabelCalibrationField).join("")}
+        </div>
+        <div class="page-actions">
+          <button class="primary-button" type="button" data-action="saveLabelSettings">저장</button>
+          <button class="secondary-button" type="button" data-action="resetLabelSettings">기본값으로 초기화</button>
+        </div>
+      </section>
+
+      <section class="panel summary-panel">
+        <h3>출력 기준</h3>
+        <div class="history-list">
+          <div class="history-item">
+            <div class="history-time">1</div>
+            <div>
+              <div class="product-name">브라우저 인쇄 설정</div>
+              <div class="product-meta">배율 100%, 여백 없음, 가로 방향, 머리글/바닥글 제거</div>
+            </div>
+          </div>
+          <div class="history-item">
+            <div class="history-time">2</div>
+            <div>
+              <div class="product-name">조정 방법</div>
+              <div class="product-meta">오른쪽으로 밀려 있으면 전체 X를 음수로, 아래로 밀려 있으면 전체 Y를 음수로 줄입니다.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderLabelCalibrationField(field) {
+  const value = labelCalibrationValue(field.id);
+  const step = field.step || 0.5;
+  return `
+    <label class="field label-calibration-field">
+      <span>${escapeHtml(field.label)}</span>
+      <div class="label-stepper">
+        <button type="button" class="step-button" data-label-step="${escapeAttr(field.id)}" data-step="${-step}">-${step}</button>
+        <input id="labelCal_${escapeAttr(field.id)}" type="number" step="${step}" value="${escapeAttr(formatCalibrationNumber(value))}" inputmode="decimal" />
+        <button type="button" class="step-button" data-label-step="${escapeAttr(field.id)}" data-step="${step}">+${step}</button>
+      </div>
+      <small>${escapeHtml(field.key)}</small>
+    </label>
+  `;
+}
+
+function labelCalibrationValue(id) {
+  const field = labelCalibrationFields.find((item) => item.id === id);
+  return calibrationNumber(state.labelCalibration?.[id], field?.defaultValue);
+}
+
+function labelCalibrationSettingsPayload() {
+  return Object.fromEntries(labelCalibrationFields.map((field) => [field.key, labelCalibrationValue(field.id)]));
+}
+
+function applyLabelSettings(settings) {
+  if (!settings || typeof settings !== "object") {
+    syncLabelOverlayCalibration();
+    return;
+  }
+  labelCalibrationFields.forEach((field) => {
+    const nextValue = Object.prototype.hasOwnProperty.call(settings, field.key)
+      ? settings[field.key]
+      : settings[field.id];
+    state.labelCalibration[field.id] = calibrationNumber(nextValue, field.defaultValue);
+  });
+  syncLabelOverlayCalibration();
+}
+
+function syncLabelOverlayCalibration() {
+  Object.entries(labelCalibrationOverlayMap).forEach(([fieldId, overlayKey]) => {
+    koreaPostOverlay[overlayKey] = labelCalibrationValue(fieldId);
+  });
+}
+
+function adjustLabelCalibration(id, delta) {
+  const field = labelCalibrationFields.find((item) => item.id === id);
+  if (!field) return;
+  state.labelCalibration[id] = Number((labelCalibrationValue(id) + Number(delta || 0)).toFixed(2));
+  syncLabelOverlayCalibration();
+}
+
+function validateLabelCalibration() {
+  if (labelCalibrationValue("labelScale") <= 0) throw new Error("전체 배율은 0보다 커야 합니다.");
+  ["leftBarcodeWidth", "leftBarcodeHeight", "bottomBarcodeWidth", "bottomBarcodeHeight"].forEach((id) => {
+    if (labelCalibrationValue(id) <= 0) throw new Error("바코드 width/height는 0보다 커야 합니다.");
+  });
 }
 
 function renderPushNotificationPanel() {
@@ -2107,7 +2290,8 @@ function renderBottomNav() {
         ["dealers", "대리점"],
         ["dealerInfo", "정보"],
         ["links", "QR"],
-        ["notifications", "알림"]
+        ["notifications", "알림"],
+        ["labelSettings", "라벨"]
       ]
     : [
         ["inventory", "재고"],
@@ -2195,6 +2379,18 @@ function bindEvents() {
   bindInput("productUnit", (value) => (state.forms.productUnit = value));
   bindInput("productRetailPrice", (value) => (state.forms.productRetailPrice = Number(value || 0)));
   bindInput("productPurchasePrice", (value) => (state.forms.productPurchasePrice = Number(value || 0)));
+  labelCalibrationFields.forEach((field) => {
+    bindInput(`labelCal_${field.id}`, (value) => {
+      state.labelCalibration[field.id] = calibrationNumber(value, field.defaultValue);
+    });
+  });
+
+  document.querySelectorAll("[data-label-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      adjustLabelCalibration(button.dataset.labelStep, Number(button.dataset.step || 0));
+      render();
+    });
+  });
 
   document.querySelector("#inventoryDealerCode")?.addEventListener("change", (event) => {
     state.forms.inventoryDealerCode = event.target.value;
@@ -2722,6 +2918,11 @@ async function handleAction(action, button) {
   if (action === "enablePushNotifications") return enablePushNotifications();
   if (action === "checkPushNotifications") return updatePushState(true);
   if (action === "sendTestPushNotification") return sendTestPushNotification();
+  if (action === "refreshLabelSettings") return loadLabelSettings(true);
+  if (action === "saveLabelSettings") return saveLabelSettings();
+  if (action === "resetLabelSettings") return resetLabelSettings();
+  if (action === "previewTestLabel") return previewTestLabel();
+  if (action === "printTestLabel") return printTestLabel();
   if (action === "createOrder") return createOrder();
   if (action === "clearTestOrders") return clearTestOrders();
   if (action === "receiveOrder") return receiveOrder(button.dataset.orderId);
@@ -2786,6 +2987,7 @@ function applyRemoteSession(data) {
   if (Array.isArray(data.orders)) state.orders = data.orders;
   if (Array.isArray(data.sales)) state.retailSales = data.sales;
   if (Array.isArray(data.reservations)) state.reservations = data.reservations;
+  applyLabelSettings(data.label_settings || data.labelSettings);
   syncAppBadgeFromOrders();
 }
 
@@ -2999,18 +3201,21 @@ function loadDaumPostcode() {
 
 async function refreshData(showDone = true) {
   if (window.FilmStockApi?.isEnabled() && state.session) {
-    const [inventoryData, orderData, salesData, reservationData] = await Promise.all([
+    const requests = [
       window.FilmStockApi.getInventory({}),
       window.FilmStockApi.getOrders({}),
       window.FilmStockApi.getSales({}),
       window.FilmStockApi.getReservations({})
-    ]);
+    ];
+    if (state.session.role === "admin") requests.push(window.FilmStockApi.getLabelSettings().catch(() => null));
+    const [inventoryData, orderData, salesData, reservationData, labelData] = await Promise.all(requests);
     if (Array.isArray(inventoryData?.products)) state.products = inventoryData.products;
     if (Array.isArray(inventoryData?.inventory)) state.inventory = inventoryData.inventory;
     if (Array.isArray(orderData?.orders)) state.orders = orderData.orders;
     if (Array.isArray(orderData?.accounts)) state.accounts = orderData.accounts;
     if (Array.isArray(salesData?.sales)) state.retailSales = salesData.sales;
     if (Array.isArray(reservationData?.reservations)) state.reservations = reservationData.reservations;
+    applyLabelSettings(labelData?.label_settings || labelData?.settings);
     if (state.screen === "dealerInfo" && state.session?.role === "dealer") prepareDealerInfoForm();
     syncAppBadgeFromOrders();
   }
@@ -3025,6 +3230,89 @@ async function refreshLinks() {
   }
   render();
   showToast("대리점 링크를 갱신했습니다.");
+}
+
+async function loadLabelSettings(showDone = false) {
+  if (state.session?.role !== "admin") throw new Error("관리자만 라벨 출력 설정을 확인할 수 있습니다.");
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.getLabelSettings();
+    applyLabelSettings(data?.label_settings || data?.settings);
+  } else {
+    syncLabelOverlayCalibration();
+  }
+  render();
+  if (showDone) showToast("라벨 출력 보정값을 불러왔습니다.");
+}
+
+async function saveLabelSettings() {
+  if (state.session?.role !== "admin") throw new Error("관리자만 라벨 출력 설정을 저장할 수 있습니다.");
+  validateLabelCalibration();
+  syncLabelOverlayCalibration();
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.saveLabelSettings(labelCalibrationSettingsPayload());
+    applyLabelSettings(data?.label_settings || data?.settings);
+  }
+  render();
+  showToast("라벨 출력 위치 보정값을 저장했습니다.");
+}
+
+async function resetLabelSettings() {
+  if (state.session?.role !== "admin") throw new Error("관리자만 라벨 출력 설정을 초기화할 수 있습니다.");
+  state.labelCalibration = defaultLabelCalibration();
+  syncLabelOverlayCalibration();
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.saveLabelSettings(labelCalibrationSettingsPayload());
+    applyLabelSettings(data?.label_settings || data?.settings);
+  }
+  render();
+  showToast("라벨 출력 위치를 기본값으로 초기화했습니다.");
+}
+
+function previewTestLabel() {
+  openTestLabelWindow(false);
+  showToast("테스트 송장 미리보기를 열었습니다.");
+}
+
+function printTestLabel() {
+  openTestLabelWindow(true);
+  showToast("테스트 출력창을 열었습니다.");
+}
+
+function openTestLabelWindow(autoPrint) {
+  if (state.session?.role !== "admin") throw new Error("관리자만 테스트 송장을 출력할 수 있습니다.");
+  validateLabelCalibration();
+  syncLabelOverlayCalibration();
+  const printWindow = window.open("", "_blank", "width=900,height=900");
+  if (!printWindow) throw new Error("팝업이 차단되어 테스트 송장창을 열 수 없습니다.");
+  printWindow.document.open();
+  printWindow.document.write(buildShippingLabelHtml(testLabelOrder(), state.forms.labelSize, {
+    autoPrint,
+    forceTestMode: true
+  }));
+  printWindow.document.close();
+}
+
+function testLabelOrder() {
+  const date = compactDateValue();
+  return {
+    order_id: `TEST-ORDER-${date}`,
+    order_no: `TEST-ORDER-${date}`,
+    dealer_code: "D001",
+    dealer_name: "라벨 테스트 대리점",
+    product_name: "카본 틴팅 스모크 05%",
+    sku: "TN-SM-100",
+    qty: 10,
+    courier: "우체국택배",
+    tracking_no: `TEST-KP-${date}-123456`,
+    shipping_receipt_no: `MOCK-RCPT-${date}-123456`,
+    recipient_name: "홍길동",
+    recipient_phone: "010-1234-5678",
+    recipient_zipcode: "10900",
+    recipient_address: "경기 파주시 산내로 26",
+    recipient_address_detail: "파주창고",
+    shipping_memo: "테스트 송장입니다.",
+    created_at: nowText()
+  };
 }
 
 async function createOrder() {
@@ -3238,6 +3526,8 @@ async function printOrderLabel(orderId) {
   const order = state.orders.find((item) => item.order_id === orderId);
   if (!order) throw new Error("출력할 발주를 찾을 수 없습니다.");
   if (!orderTrackingNo(order)) throw new Error("송장번호가 있는 발주만 출력할 수 있습니다.");
+  validateLabelCalibration();
+  syncLabelOverlayCalibration();
 
   try {
     const printWindow = window.open("", "_blank", "width=900,height=900");
@@ -3279,7 +3569,7 @@ async function markOrderPrintResult(orderId, printStatus) {
   order.updated_at = nowText();
 }
 
-function buildShippingLabelHtml(order, labelSizeValue) {
+function buildShippingLabelHtml(order, labelSizeValue, options = {}) {
   const label = labelSizeMeta(labelSizeValue);
   const trackingNo = orderTrackingNo(order);
   const sender = labelSenderInfo();
@@ -3301,7 +3591,7 @@ function buildShippingLabelHtml(order, labelSizeValue) {
   const recipientZipcode = order.recipient_zipcode || "";
   const recipientAddress = order.recipient_address || "";
   const recipientAddressDetail = order.recipient_address_detail || "";
-  const testWatermark = shouldShowTestWatermark(order)
+  const testWatermark = options.forceTestMode || shouldShowTestWatermark(order)
     ? `<div class="test-watermark">TEST / 실제 접수 아님</div>`
     : "";
   return `<!doctype html>
@@ -3346,7 +3636,7 @@ function buildShippingLabelHtml(order, labelSizeValue) {
         color: #000;
       }
       .field {
-        font-size: 3mm;
+        font-size: ${overlaySize(3)};
         font-weight: 700;
         line-height: 1.16;
         letter-spacing: 0;
@@ -3355,12 +3645,12 @@ function buildShippingLabelHtml(order, labelSizeValue) {
         word-break: keep-all;
       }
       .field-small {
-        font-size: 2.45mm;
+        font-size: ${overlaySize(2.45)};
         font-weight: 700;
         line-height: 1.2;
       }
       .field-tiny {
-        font-size: 2.15mm;
+        font-size: ${overlaySize(2.15)};
         font-weight: 700;
         line-height: 1.2;
       }
@@ -3369,7 +3659,7 @@ function buildShippingLabelHtml(order, labelSizeValue) {
         top: ${overlayY(koreaPostOverlay.REGION_CODE_Y_MM)};
         width: ${overlaySize(koreaPostOverlay.REGION_CODE_WIDTH_MM)};
         text-align: center;
-        font-size: 14mm;
+        font-size: ${overlaySize(14)};
         font-weight: 900;
         line-height: 0.9;
         letter-spacing: 0;
@@ -3379,7 +3669,7 @@ function buildShippingLabelHtml(order, labelSizeValue) {
         top: ${overlayY(koreaPostOverlay.SORT_CODE_Y_MM)};
         width: ${overlaySize(koreaPostOverlay.SORT_CODE_WIDTH_MM)};
         text-align: center;
-        font-size: 9mm;
+        font-size: ${overlaySize(9)};
         font-weight: 900;
         line-height: 1;
       }
@@ -3391,26 +3681,26 @@ function buildShippingLabelHtml(order, labelSizeValue) {
       .payment-method {
         left: ${overlayX(koreaPostOverlay.PAYMENT_X_MM)};
         top: ${overlayY(koreaPostOverlay.PAYMENT_Y_MM)};
-        width: 18mm;
+        width: ${overlaySize(18)};
         text-align: center;
-        font-size: 6mm;
+        font-size: ${overlaySize(6)};
         font-weight: 900;
         line-height: 1;
       }
       .weight {
         left: ${overlayX(koreaPostOverlay.WEIGHT_X_MM)};
         top: ${overlayY(koreaPostOverlay.WEIGHT_Y_MM)};
-        width: 18mm;
+        width: ${overlaySize(18)};
       }
       .volume {
         left: ${overlayX(koreaPostOverlay.VOLUME_X_MM)};
         top: ${overlayY(koreaPostOverlay.VOLUME_Y_MM)};
-        width: 18mm;
+        width: ${overlaySize(18)};
       }
       .fee {
         left: ${overlayX(koreaPostOverlay.FEE_X_MM)};
         top: ${overlayY(koreaPostOverlay.FEE_Y_MM)};
-        width: 20mm;
+        width: ${overlaySize(20)};
       }
       .main-barcode {
         left: ${overlayX(koreaPostOverlay.BARCODE_X_MM)};
@@ -3459,7 +3749,7 @@ function buildShippingLabelHtml(order, labelSizeValue) {
         top: ${overlayY(koreaPostOverlay.BOTTOM_CODE_Y_MM)};
         width: ${overlaySize(koreaPostOverlay.BOTTOM_CODE_WIDTH_MM)};
         text-align: center;
-        font-size: 9mm;
+        font-size: ${overlaySize(9)};
         font-weight: 900;
         line-height: 0.9;
       }
@@ -3472,26 +3762,26 @@ function buildShippingLabelHtml(order, labelSizeValue) {
       }
       .sender-name {
         display: block;
-        margin-top: 0.8mm;
-        font-size: 4.2mm;
+        margin-top: ${overlaySize(0.8)};
+        font-size: ${overlaySize(4.2)};
         font-weight: 900;
         line-height: 1;
       }
       .recipient-name {
         display: block;
-        margin: 1.2mm 0 1mm;
-        font-size: 6.6mm;
+        margin: ${overlaySize(1.2)} 0 ${overlaySize(1)};
+        font-size: ${overlaySize(6.6)};
         font-weight: 900;
         line-height: 1;
       }
       .address-line {
         display: block;
-        margin-top: 0.8mm;
+        margin-top: ${overlaySize(0.8)};
       }
       .address-strong {
         display: block;
-        margin-top: 1.2mm;
-        font-size: 4.6mm;
+        margin-top: ${overlaySize(1.2)};
+        font-size: ${overlaySize(4.6)};
         font-weight: 900;
         line-height: 1.14;
       }
@@ -3500,7 +3790,7 @@ function buildShippingLabelHtml(order, labelSizeValue) {
         top: ${overlayY(koreaPostOverlay.WATERMARK_Y_MM)};
         transform: translate(-50%, -50%) rotate(-20deg);
         color: rgba(0, 0, 0, 0.12);
-        font-size: 9mm;
+        font-size: ${overlaySize(9)};
         font-weight: 700;
         white-space: nowrap;
         pointer-events: none;
@@ -3598,14 +3888,14 @@ function buildShippingLabelHtml(order, labelSizeValue) {
         <button type="button" onclick="window.close()">닫기</button>
       </div>
     </main>
-    <script>
+    ${options.autoPrint === false ? "" : `<script>
       window.addEventListener("load", function () {
         window.setTimeout(function () {
           window.focus();
           window.print();
         }, 350);
       });
-    </script>
+    </script>`}
   </body>
 </html>`;
 }
@@ -4231,7 +4521,7 @@ function logout() {
 }
 
 function navigate(screen) {
-  if (screen === "links" || screen === "admin" || screen === "productManage" || screen === "sales") {
+  if (screen === "links" || screen === "admin" || screen === "productManage" || screen === "sales" || screen === "labelSettings") {
     if (state.session?.role !== "admin") {
       showToast("관리자만 접근할 수 있습니다.");
       return;
