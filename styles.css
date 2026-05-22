@@ -431,11 +431,26 @@ h3 {
 }
 
 .label-calibration-panel {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 0;
+  max-height: calc(100dvh - 36px);
+  overflow: hidden;
 }
 
 .label-calibration-panel .label-calibration-grid {
   grid-template-columns: 1fr;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+}
+
+.label-calibration-panel .page-actions {
+  margin-top: 0;
 }
 
 .label-calibration-help {
@@ -727,8 +742,16 @@ h3 {
     position: static;
   }
 
+  .label-calibration-panel {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
   .label-calibration-panel .label-calibration-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    padding-right: 0;
   }
 }
 
