@@ -43,10 +43,26 @@ const LABEL_SETTING_DEFAULTS = {
   zone_code_y_mm: 6,
   sort_code_x_mm: 129,
   sort_code_y_mm: 6,
+  customer_order_x_mm: 7,
+  customer_order_y_mm: 18,
+  payment_x_mm: 41,
+  payment_y_mm: 31,
+  weight_x_mm: 6,
+  weight_y_mm: 32,
+  volume_x_mm: 25,
+  volume_y_mm: 32,
+  fee_x_mm: 45,
+  fee_y_mm: 32,
   left_barcode_x_mm: 14,
   left_barcode_y_mm: 41,
   left_barcode_width_mm: 40,
   left_barcode_height_mm: 17,
+  message_x_mm: 6,
+  message_y_mm: 62,
+  content_x_mm: 6,
+  content_y_mm: 71,
+  product_x_mm: 6,
+  product_y_mm: 78,
   sender_block_x_mm: 70,
   sender_block_y_mm: 17,
   receiver_block_x_mm: 70,
@@ -56,7 +72,10 @@ const LABEL_SETTING_DEFAULTS = {
   bottom_barcode_x_mm: 76,
   bottom_barcode_y_mm: 85,
   bottom_barcode_width_mm: 44,
-  bottom_barcode_height_mm: 12
+  bottom_barcode_height_mm: 12,
+  bottom_code_x_mm: 126,
+  bottom_code_y_mm: 82,
+  bottom_code_width_mm: 18
 };
 
 function doPost(e) {
