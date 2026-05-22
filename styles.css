@@ -412,6 +412,37 @@ h3 {
   margin: 18px 0;
 }
 
+.label-settings-workbench {
+  display: grid;
+  grid-template-columns: minmax(560px, 1.28fr) minmax(390px, 0.72fr);
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.label-settings-workbench > .summary-panel {
+  grid-column: auto;
+}
+
+.label-settings-workbench .label-preview-panel {
+  position: sticky;
+  top: 18px;
+  margin-bottom: 0;
+}
+
+.label-calibration-panel {
+  min-width: 0;
+}
+
+.label-calibration-panel .label-calibration-grid {
+  grid-template-columns: 1fr;
+}
+
+.label-calibration-help {
+  margin: 0;
+  line-height: 1.55;
+}
+
 .label-preview-panel {
   display: grid;
   gap: 16px;
@@ -685,6 +716,20 @@ h3 {
 
 .step-button:hover {
   background: var(--amber-soft);
+}
+
+@media (max-width: 1240px) {
+  .label-settings-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .label-settings-workbench .label-preview-panel {
+    position: static;
+  }
+
+  .label-calibration-panel .label-calibration-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .field {

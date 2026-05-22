@@ -761,23 +761,9 @@ function renderLabelSettings() {
         </div>
       </section>
 
-      ${renderKoreaPostLabelPreview()}
-
-      <section class="panel summary-panel">
-        <div class="panel-head-row">
-          <div>
-            <p class="eyebrow">Settings 시트 저장</p>
-            <h3>보정값</h3>
-          </div>
-          <span class="badge">0.5mm 단위</span>
-        </div>
-        <div class="label-calibration-grid" id="labelCalibrationFields">
-          ${labelCalibrationFields.map(renderLabelCalibrationField).join("")}
-        </div>
-        <div class="page-actions">
-          <button class="primary-button" type="button" data-action="saveLabelSettings">저장</button>
-          <button class="secondary-button" type="button" data-action="resetLabelSettings">기본값으로 초기화</button>
-        </div>
+      <section class="label-settings-workbench">
+        ${renderKoreaPostLabelPreview()}
+        ${renderLabelCalibrationEditor()}
       </section>
 
       <section class="panel summary-panel">
@@ -800,6 +786,28 @@ function renderLabelSettings() {
         </div>
       </section>
     </main>
+  `;
+}
+
+function renderLabelCalibrationEditor() {
+  return `
+    <section class="panel summary-panel label-calibration-panel" id="labelCalibrationPanel">
+      <div class="panel-head-row">
+        <div>
+          <p class="eyebrow">Settings 시트 저장</p>
+          <h3>위치 보정값</h3>
+        </div>
+        <span class="badge">0.5mm 단위</span>
+      </div>
+      <p class="product-meta label-calibration-help">숫자를 입력하거나 +/- 버튼을 누르면 왼쪽 미리보기에 바로 반영됩니다. 위치가 맞으면 저장을 눌러 Settings 시트에 남깁니다.</p>
+      <div class="label-calibration-grid" id="labelCalibrationFields">
+        ${labelCalibrationFields.map(renderLabelCalibrationField).join("")}
+      </div>
+      <div class="page-actions">
+        <button class="primary-button" type="button" data-action="saveLabelSettings">저장</button>
+        <button class="secondary-button" type="button" data-action="resetLabelSettings">기본값으로 초기화</button>
+      </div>
+    </section>
   `;
 }
 
@@ -841,7 +849,7 @@ function renderKoreaPostLabelPreview() {
       <div class="page-actions">
         <button class="secondary-button" type="button" data-action="previewTestLabel">테스트 PDF 생성</button>
         <button class="primary-button" type="button" data-action="printTestLabel">테스트 출력</button>
-        <a class="secondary-button" href="#labelCalibrationFields">위치 보정 설정으로 이동</a>
+        <a class="secondary-button" href="#labelCalibrationPanel">보정값 입력 보기</a>
       </div>
     </section>
   `;
@@ -2557,7 +2565,9 @@ function bindEvents() {
   document.querySelectorAll("[data-label-step]").forEach((button) => {
     button.addEventListener("click", () => {
       adjustLabelCalibration(button.dataset.labelStep, Number(button.dataset.step || 0));
-      render();
+      const input = document.querySelector(`#labelCal_${button.dataset.labelStep}`);
+      if (input) input.value = formatCalibrationNumber(labelCalibrationValue(button.dataset.labelStep));
+      refreshLabelPreview();
     });
   });
 
