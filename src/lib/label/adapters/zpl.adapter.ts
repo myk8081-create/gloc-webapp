@@ -20,6 +20,7 @@ export function createZplLabelDocument(order: ShippingLabelOrder, options: ZplLa
   const deliveryMessage = order.shipping_memo || order.memo || "Call before delivery";
   const recipientName = maskName(order.recipient_name || order.agency_name, privacyMasking);
   const recipientPhone = maskPhone(order.recipient_phone, privacyMasking);
+  const recipientAddressDetail = maskAddressDetail(order.recipient_address_detail, privacyMasking);
   const senderName = maskName(order.sender_name, privacyMasking);
   const senderPhone = maskPhone(order.sender_phone, privacyMasking);
   const productInfo = [order.product_name, order.sku, `${Number(order.quantity || 0).toLocaleString("ko-KR")}roll`]
@@ -49,7 +50,7 @@ export function createZplLabelDocument(order: ShippingLabelOrder, options: ZplLa
       `^FO${x(KOREA_POST_OVERLAY.CONTENT_X_MM, dotsPerMm)},${y(KOREA_POST_OVERLAY.CONTENT_Y_MM, dotsPerMm)}^A0N,20,20^FB${mm(KOREA_POST_OVERLAY.CONTENT_WIDTH_MM, dotsPerMm)},2,0,L^FDItem: ${safeZpl(order.product_name)}^FS`,
       `^FO${x(KOREA_POST_OVERLAY.PRODUCT_X_MM, dotsPerMm)},${y(KOREA_POST_OVERLAY.PRODUCT_Y_MM, dotsPerMm)}^A0N,17,17^FB${mm(KOREA_POST_OVERLAY.PRODUCT_WIDTH_MM, dotsPerMm)},2,0,L^FD${safeZpl(productInfo)}^FS`,
       `^FO${x(KOREA_POST_OVERLAY.SENDER_X_MM, dotsPerMm)},${y(KOREA_POST_OVERLAY.SENDER_Y_MM, dotsPerMm)}^A0N,20,20^FB${mm(KOREA_POST_OVERLAY.SENDER_WIDTH_MM, dotsPerMm)},4,0,L^FD${safeZpl(order.sender_address)}\\&${safeZpl(senderName)}\\&T: ${safeZpl(senderPhone)}^FS`,
-      `^FO${x(KOREA_POST_OVERLAY.RECIPIENT_X_MM, dotsPerMm)},${y(KOREA_POST_OVERLAY.RECIPIENT_Y_MM, dotsPerMm)}^A0N,22,22^FB${mm(KOREA_POST_OVERLAY.RECIPIENT_WIDTH_MM, dotsPerMm)},7,0,L^FD${safeZpl(order.recipient_address)}\\&${safeZpl(order.recipient_address_detail || "")}\\&${safeZpl(recipientName)}\\&T: ${safeZpl(recipientPhone)}\\&${safeZpl(order.recipient_zipcode || "")}^FS`,
+      `^FO${x(KOREA_POST_OVERLAY.RECIPIENT_X_MM, dotsPerMm)},${y(KOREA_POST_OVERLAY.RECIPIENT_Y_MM, dotsPerMm)}^A0N,22,22^FB${mm(KOREA_POST_OVERLAY.RECIPIENT_WIDTH_MM, dotsPerMm)},7,0,L^FD${safeZpl(order.recipient_address)}\\&${safeZpl(recipientAddressDetail)}\\&${safeZpl(recipientName)}\\&T: ${safeZpl(recipientPhone)}\\&${safeZpl(order.recipient_zipcode || "")}^FS`,
       `^FO${x(KOREA_POST_OVERLAY.REGISTRATION_X_MM, dotsPerMm)},${y(KOREA_POST_OVERLAY.REGISTRATION_Y_MM, dotsPerMm)}^A0N,20,20^FB${mm(KOREA_POST_OVERLAY.REGISTRATION_WIDTH_MM, dotsPerMm)},2,0,L^FDRegistration: ${safeZpl(registrationNo)}\\&Qty: ${Number(order.quantity || 0).toLocaleString("ko-KR")}roll^FS`,
       `^FO${x(KOREA_POST_OVERLAY.BOTTOM_BARCODE_X_MM, dotsPerMm)},${y(KOREA_POST_OVERLAY.BOTTOM_BARCODE_Y_MM, dotsPerMm)}^BY2^BCN,${mm(KOREA_POST_OVERLAY.BOTTOM_BARCODE_HEIGHT_MM, dotsPerMm)},N,N,N^FD${safeZpl(registrationNo)}^FS`,
       `^FO${x(KOREA_POST_OVERLAY.BOTTOM_CODE_X_MM, dotsPerMm)},${y(KOREA_POST_OVERLAY.BOTTOM_CODE_Y_MM, dotsPerMm)}^A0N,68,68^FB${mm(KOREA_POST_OVERLAY.BOTTOM_CODE_WIDTH_MM, dotsPerMm)},1,0,C^FD${safeZpl(labelBottomCode(order))}^FS`,
@@ -94,6 +95,14 @@ function maskPhone(value: string, enabled: boolean) {
   const phone = String(value || "").trim();
   if (!enabled) return phone;
   return phone.replace(/(\d{2,3})-?(\d{3,4})-?(\d{4})$/, "$1-****-$3");
+}
+
+function maskAddressDetail(value: string | undefined, enabled: boolean) {
+  const detail = String(value || "").trim();
+  if (!enabled || !detail) return detail;
+  const parts = detail.split(/\s+/);
+  if (parts.length === 1) return "***";
+  return `${parts.slice(0, -1).join(" ")} ***`;
 }
 
 function datePart(order?: ShippingLabelOrder) {

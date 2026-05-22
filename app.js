@@ -9,6 +9,7 @@ const defaultRetailPrice = 1000000;
 const defaultPurchasePrice = 500000;
 const defaultLegacyOrderDiscountRate = 20;
 const inventoryPageSize = 10;
+const koreaPostLabelPreviewTemplate = "./templates/korea-post-label-preview.png";
 const koreaPostOverlay = {
   PAGE_WIDTH_MM: 150,
   PAGE_HEIGHT_MM: 100,
@@ -402,6 +403,10 @@ const state = {
     reservationQty: 1,
     reservationMemo: "",
     labelSize: "post-overlay-150x100",
+    labelPreviewBackground: true,
+    labelPreviewGuides: false,
+    labelPreviewOutputArea: true,
+    labelPreviewZoom: 1,
     productSku: "",
     productName: "",
     productCategory: "PPF",
@@ -748,13 +753,15 @@ function renderLabelSettings() {
       <section class="page-head">
         <p class="eyebrow">송장출력 설정</p>
         <h1>라벨 출력 위치 보정</h1>
-        <p class="lead">우체국 소포 라벨지에 실제 출력했을 때 밀리는 위치를 코드 수정 없이 mm 단위로 조정합니다. 빨간선, 로고, 박스는 출력하지 않고 검정 텍스트와 바코드만 출력됩니다.</p>
+        <p class="lead">실제 우체국 라벨 미리보기와 출력 좌표를 함께 보정합니다. 배경 라벨 이미지는 화면 미리보기 전용이며 실제 출력은 검정 텍스트와 바코드만 사용합니다.</p>
         <div class="page-actions">
           <button class="secondary-button" type="button" data-action="refreshLabelSettings">설정 새로고침</button>
-          <button class="secondary-button" type="button" data-action="previewTestLabel">테스트 송장 미리보기</button>
+          <button class="secondary-button" type="button" data-action="previewTestLabel">테스트 PDF 생성</button>
           <button class="primary-button" type="button" data-action="printTestLabel">테스트 출력</button>
         </div>
       </section>
+
+      ${renderKoreaPostLabelPreview()}
 
       <section class="panel summary-panel">
         <div class="panel-head-row">
@@ -764,7 +771,7 @@ function renderLabelSettings() {
           </div>
           <span class="badge">0.5mm 단위</span>
         </div>
-        <div class="label-calibration-grid">
+        <div class="label-calibration-grid" id="labelCalibrationFields">
           ${labelCalibrationFields.map(renderLabelCalibrationField).join("")}
         </div>
         <div class="page-actions">
@@ -793,6 +800,118 @@ function renderLabelSettings() {
         </div>
       </section>
     </main>
+  `;
+}
+
+function renderKoreaPostLabelPreview() {
+  const previewData = shippingLabelPrintData(testLabelOrder(), { forceTestMode: true });
+  return `
+    <section class="panel summary-panel label-preview-panel" id="labelPreviewPanel">
+      <div class="panel-head-row">
+        <div>
+          <p class="eyebrow">미리보기 전용</p>
+          <h3>우체국 송장 미리보기</h3>
+        </div>
+        <span class="badge">실제 출력과 배경 분리</span>
+      </div>
+      <div class="label-preview-tools">
+        <label class="checkbox-row label-preview-toggle">
+          <span>실제 우체국 라벨 배경</span>
+          <input id="labelPreviewBackground" type="checkbox" ${state.forms.labelPreviewBackground ? "checked" : ""} />
+        </label>
+        <label class="checkbox-row label-preview-toggle">
+          <span>좌표 가이드</span>
+          <input id="labelPreviewGuides" type="checkbox" ${state.forms.labelPreviewGuides ? "checked" : ""} />
+        </label>
+        <label class="checkbox-row label-preview-toggle">
+          <span>실제 출력 영역</span>
+          <input id="labelPreviewOutputArea" type="checkbox" ${state.forms.labelPreviewOutputArea ? "checked" : ""} />
+        </label>
+        <label class="field label-preview-zoom">
+          <span>확대/축소 <output id="labelPreviewZoomValue">${Math.round(Number(state.forms.labelPreviewZoom || 1) * 100)}%</output></span>
+          <input id="labelPreviewZoom" type="range" min="0.6" max="1.6" step="0.05" value="${escapeAttr(state.forms.labelPreviewZoom)}" />
+        </label>
+      </div>
+      <div class="label-preview-values" id="labelPreviewValues">
+        ${renderLabelPreviewValues()}
+      </div>
+      <div class="label-preview-viewport" id="labelPreviewViewport">
+        ${renderLabelPreviewSheet(previewData)}
+      </div>
+      <div class="page-actions">
+        <button class="secondary-button" type="button" data-action="previewTestLabel">테스트 PDF 생성</button>
+        <button class="primary-button" type="button" data-action="printTestLabel">테스트 출력</button>
+        <a class="secondary-button" href="#labelCalibrationFields">위치 보정 설정으로 이동</a>
+      </div>
+    </section>
+  `;
+}
+
+function renderLabelPreviewValues() {
+  return `
+    <span>OFFSET X <strong>${formatCalibrationNumber(labelCalibrationValue("labelOffsetX"))}mm</strong></span>
+    <span>OFFSET Y <strong>${formatCalibrationNumber(labelCalibrationValue("labelOffsetY"))}mm</strong></span>
+    <span>SCALE <strong>${formatCalibrationNumber(labelCalibrationValue("labelScale"))}</strong></span>
+    <span>메인 바코드 <strong>${formatCalibrationNumber(labelCalibrationValue("leftBarcodeX"))}, ${formatCalibrationNumber(labelCalibrationValue("leftBarcodeY"))}</strong></span>
+    <span>하단 바코드 <strong>${formatCalibrationNumber(labelCalibrationValue("bottomBarcodeX"))}, ${formatCalibrationNumber(labelCalibrationValue("bottomBarcodeY"))}</strong></span>
+  `;
+}
+
+function renderLabelPreviewSheet(data) {
+  const classes = [
+    "label-preview-stage",
+    state.forms.labelPreviewBackground ? "show-template" : "",
+    state.forms.labelPreviewGuides ? "show-guides" : "",
+    state.forms.labelPreviewOutputArea ? "show-output-area" : ""
+  ].filter(Boolean).join(" ");
+  return `
+    <div class="label-preview-stage-wrap" style="--label-preview-zoom:${escapeAttr(state.forms.labelPreviewZoom)}">
+      <figure class="${classes}" id="labelPreviewStage" aria-label="우체국 소포 라벨 실제 미리보기">
+        <img class="label-preview-template" src="${koreaPostLabelPreviewTemplate}" alt="" aria-hidden="true" />
+        <div class="label-preview-overlay" style="--label-preview-data-scale:${escapeAttr(labelCalibrationValue("labelScale"))}">
+          ${renderLabelPreviewOverlay(data)}
+        </div>
+      </figure>
+    </div>
+  `;
+}
+
+function renderLabelPreviewOverlay(data) {
+  return `
+    ${data.testWatermark ? `<div class="label-preview-watermark" style="${labelPreviewPointStyle(koreaPostOverlay.WATERMARK_X_MM, koreaPostOverlay.WATERMARK_Y_MM)}">TEST / 실제 접수 아님</div>` : ""}
+    <div class="label-preview-field preview-region-code" style="${labelPreviewBoxStyle(koreaPostOverlay.REGION_CODE_X_MM, koreaPostOverlay.REGION_CODE_Y_MM, koreaPostOverlay.REGION_CODE_WIDTH_MM)}">${escapeHtml(data.regionCode)}</div>
+    <div class="label-preview-field preview-sort-code" style="${labelPreviewBoxStyle(koreaPostOverlay.SORT_CODE_X_MM, koreaPostOverlay.SORT_CODE_Y_MM, koreaPostOverlay.SORT_CODE_WIDTH_MM)}">${escapeHtml(data.sortCode)}</div>
+    <div class="label-preview-field preview-customer-order" style="${labelPreviewBoxStyle(koreaPostOverlay.CUSTOMER_ORDER_X_MM, koreaPostOverlay.CUSTOMER_ORDER_Y_MM, koreaPostOverlay.CUSTOMER_ORDER_WIDTH_MM)}">
+      <span>접수일: ${escapeHtml(data.receiptDate)}</span>
+      <span>주문: ${escapeHtml(data.orderNo)}</span>
+      <span>고객: ${escapeHtml(data.dealerName)}</span>
+    </div>
+    <div class="label-preview-field preview-payment" style="${labelPreviewBoxStyle(koreaPostOverlay.PAYMENT_X_MM, koreaPostOverlay.PAYMENT_Y_MM, 18)}">${escapeHtml(data.paymentMethod)}</div>
+    <div class="label-preview-field preview-metric" style="${labelPreviewBoxStyle(koreaPostOverlay.WEIGHT_X_MM, koreaPostOverlay.WEIGHT_Y_MM, 18)}">중량:${escapeHtml(data.weightText)}</div>
+    <div class="label-preview-field preview-metric" style="${labelPreviewBoxStyle(koreaPostOverlay.VOLUME_X_MM, koreaPostOverlay.VOLUME_Y_MM, 18)}">용적:${escapeHtml(data.volumeText)}</div>
+    <div class="label-preview-field preview-metric" style="${labelPreviewBoxStyle(koreaPostOverlay.FEE_X_MM, koreaPostOverlay.FEE_Y_MM, 20)}">요금:${escapeHtml(data.feeText)}</div>
+    <div class="label-preview-barcode" style="${labelPreviewBoxStyle(koreaPostOverlay.BARCODE_X_MM, koreaPostOverlay.BARCODE_Y_MM, koreaPostOverlay.BARCODE_WIDTH_MM, koreaPostOverlay.BARCODE_HEIGHT_MM)}">${code128BarcodeSvg(data.registrationNo)}</div>
+    <div class="label-preview-field preview-small" style="${labelPreviewBoxStyle(koreaPostOverlay.MESSAGE_X_MM, koreaPostOverlay.MESSAGE_Y_MM, koreaPostOverlay.MESSAGE_WIDTH_MM)}">배송메시지: ${escapeHtml(data.messageText)}</div>
+    <div class="label-preview-field preview-small" style="${labelPreviewBoxStyle(koreaPostOverlay.CONTENT_X_MM, koreaPostOverlay.CONTENT_Y_MM, koreaPostOverlay.CONTENT_WIDTH_MM)}">내용품명: ${escapeHtml(data.contentName)}</div>
+    <div class="label-preview-field preview-tiny" style="${labelPreviewBoxStyle(koreaPostOverlay.PRODUCT_X_MM, koreaPostOverlay.PRODUCT_Y_MM, koreaPostOverlay.PRODUCT_WIDTH_MM)}">${escapeHtml(data.productText)}</div>
+    <div class="label-preview-field preview-small preview-sender" style="${labelPreviewBoxStyle(koreaPostOverlay.SENDER_X_MM, koreaPostOverlay.SENDER_Y_MM, koreaPostOverlay.SENDER_WIDTH_MM)}">
+      <span>${escapeHtml(data.sender.address)}</span>
+      <strong>${escapeHtml(data.sender.name)}</strong>
+      <span>T: ${escapeHtml(data.sender.phone)}</span>
+    </div>
+    <div class="label-preview-field preview-recipient" style="${labelPreviewBoxStyle(koreaPostOverlay.RECIPIENT_X_MM, koreaPostOverlay.RECIPIENT_Y_MM, koreaPostOverlay.RECIPIENT_WIDTH_MM)}">
+      <span>${escapeHtml(data.recipient.address)}</span>
+      ${data.recipient.addressDetail ? `<span>${escapeHtml(data.recipient.addressDetail)}</span>` : ""}
+      <strong>${escapeHtml(data.recipient.name)}</strong>
+      <span>T: ${escapeHtml(data.recipient.phone)}</span>
+      <b>${escapeHtml(data.recipient.zipcode)}</b>
+    </div>
+    <div class="label-preview-field preview-small" style="${labelPreviewBoxStyle(koreaPostOverlay.REGISTRATION_X_MM, koreaPostOverlay.REGISTRATION_Y_MM, koreaPostOverlay.REGISTRATION_WIDTH_MM)}">
+      <span>등기번호: ${escapeHtml(data.registrationNo)}</span>
+      <span>수량: ${roll(data.qty)}</span>
+    </div>
+    <div class="label-preview-barcode" style="${labelPreviewBoxStyle(koreaPostOverlay.BOTTOM_BARCODE_X_MM, koreaPostOverlay.BOTTOM_BARCODE_Y_MM, koreaPostOverlay.BOTTOM_BARCODE_WIDTH_MM, koreaPostOverlay.BOTTOM_BARCODE_HEIGHT_MM)}">${code128BarcodeSvg(data.registrationNo)}</div>
+    <div class="label-preview-field preview-bottom-code" style="${labelPreviewBoxStyle(koreaPostOverlay.BOTTOM_CODE_X_MM, koreaPostOverlay.BOTTOM_CODE_Y_MM, koreaPostOverlay.BOTTOM_CODE_WIDTH_MM)}">${escapeHtml(data.bottomCode)}</div>
   `;
 }
 
@@ -853,6 +972,50 @@ function validateLabelCalibration() {
   ["leftBarcodeWidth", "leftBarcodeHeight", "bottomBarcodeWidth", "bottomBarcodeHeight"].forEach((id) => {
     if (labelCalibrationValue(id) <= 0) throw new Error("바코드 width/height는 0보다 커야 합니다.");
   });
+}
+
+function refreshLabelPreview() {
+  const viewport = document.querySelector("#labelPreviewViewport");
+  if (viewport) viewport.innerHTML = renderLabelPreviewSheet(shippingLabelPrintData(testLabelOrder(), { forceTestMode: true }));
+  const values = document.querySelector("#labelPreviewValues");
+  if (values) values.innerHTML = renderLabelPreviewValues();
+  refreshLabelPreviewZoom();
+}
+
+function refreshLabelPreviewZoom() {
+  document.querySelector(".label-preview-stage-wrap")?.style.setProperty("--label-preview-zoom", state.forms.labelPreviewZoom);
+  const output = document.querySelector("#labelPreviewZoomValue");
+  if (output) output.textContent = `${Math.round(Number(state.forms.labelPreviewZoom || 1) * 100)}%`;
+}
+
+function labelPreviewBoxStyle(x, y, width = 0, height = 0) {
+  const styles = [
+    `left:${labelPreviewXPercent(x)}%`,
+    `top:${labelPreviewYPercent(y)}%`
+  ];
+  if (width) styles.push(`width:${labelPreviewWidthPercent(width)}%`);
+  if (height) styles.push(`height:${labelPreviewHeightPercent(height)}%`);
+  return styles.join(";");
+}
+
+function labelPreviewPointStyle(x, y) {
+  return `${labelPreviewBoxStyle(x, y)};`;
+}
+
+function labelPreviewXPercent(value) {
+  return Number(((koreaPostOverlay.OFFSET_X_MM + Number(value || 0) * koreaPostOverlay.SCALE) / koreaPostOverlay.PAGE_WIDTH_MM * 100).toFixed(4));
+}
+
+function labelPreviewYPercent(value) {
+  return Number(((koreaPostOverlay.OFFSET_Y_MM + Number(value || 0) * koreaPostOverlay.SCALE) / koreaPostOverlay.PAGE_HEIGHT_MM * 100).toFixed(4));
+}
+
+function labelPreviewWidthPercent(value) {
+  return Number((Number(value || 0) * koreaPostOverlay.SCALE / koreaPostOverlay.PAGE_WIDTH_MM * 100).toFixed(4));
+}
+
+function labelPreviewHeightPercent(value) {
+  return Number((Number(value || 0) * koreaPostOverlay.SCALE / koreaPostOverlay.PAGE_HEIGHT_MM * 100).toFixed(4));
 }
 
 function renderPushNotificationPanel() {
@@ -2382,13 +2545,26 @@ function bindEvents() {
   labelCalibrationFields.forEach((field) => {
     bindInput(`labelCal_${field.id}`, (value) => {
       state.labelCalibration[field.id] = calibrationNumber(value, field.defaultValue);
+      syncLabelOverlayCalibration();
+      refreshLabelPreview();
     });
+  });
+  bindInput("labelPreviewZoom", (value) => {
+    state.forms.labelPreviewZoom = Math.min(1.6, Math.max(0.6, calibrationNumber(value, 1)));
+    refreshLabelPreviewZoom();
   });
 
   document.querySelectorAll("[data-label-step]").forEach((button) => {
     button.addEventListener("click", () => {
       adjustLabelCalibration(button.dataset.labelStep, Number(button.dataset.step || 0));
       render();
+    });
+  });
+
+  ["Background", "Guides", "OutputArea"].forEach((name) => {
+    document.querySelector(`#labelPreview${name}`)?.addEventListener("change", (event) => {
+      state.forms[`labelPreview${name}`] = event.target.checked;
+      refreshLabelPreview();
     });
   });
 
@@ -3309,7 +3485,7 @@ function testLabelOrder() {
     recipient_phone: "010-1234-5678",
     recipient_zipcode: "10900",
     recipient_address: "경기 파주시 산내로 26",
-    recipient_address_detail: "파주창고",
+    recipient_address_detail: "파주창고 101호",
     shipping_memo: "테스트 송장입니다.",
     created_at: nowText()
   };
@@ -3569,31 +3745,86 @@ async function markOrderPrintResult(orderId, printStatus) {
   order.updated_at = nowText();
 }
 
-function buildShippingLabelHtml(order, labelSizeValue, options = {}) {
-  const label = labelSizeMeta(labelSizeValue);
-  const trackingNo = orderTrackingNo(order);
+function shippingLabelPrintData(order, options = {}) {
   const sender = labelSenderInfo();
-  const registrationNo = labelRegistrationNo(order);
-  const safeRegistrationNo = escapeHtml(registrationNo);
-  const safeTrackingNo = escapeHtml(trackingNo);
-  const regionCode = labelRegionCode(order);
-  const sortCode = labelSortCode(order);
-  const paymentMethod = labelPaymentMethod(order);
-  const receiptDate = labelReceiptDate(order);
-  const weightText = labelWeightText(order);
-  const volumeText = labelVolumeText(order);
-  const feeText = labelFeeText(order);
-  const messageText = labelDeliveryMessage(order);
-  const productText = labelProductInfo(order);
-  const bottomCode = labelBottomCode(order);
   const recipientName = order.recipient_name || order.dealer_name || "수령인 미입력";
   const recipientPhone = order.recipient_phone || "전화번호 미입력";
-  const recipientZipcode = order.recipient_zipcode || "";
-  const recipientAddress = order.recipient_address || "";
-  const recipientAddressDetail = order.recipient_address_detail || "";
-  const testWatermark = options.forceTestMode || shouldShowTestWatermark(order)
-    ? `<div class="test-watermark">TEST / 실제 접수 아님</div>`
-    : "";
+  return {
+    orderNo: String(order.order_id || order.order_no || "").trim(),
+    dealerName: String(order.dealer_name || order.dealer_code || "").trim(),
+    trackingNo: orderTrackingNo(order),
+    registrationNo: labelRegistrationNo(order),
+    regionCode: labelRegionCode(order),
+    sortCode: labelSortCode(order),
+    paymentMethod: labelPaymentMethod(order),
+    receiptDate: labelReceiptDate(order),
+    weightText: labelWeightText(order),
+    volumeText: labelVolumeText(order),
+    feeText: labelFeeText(order),
+    messageText: labelDeliveryMessage(order),
+    contentName: labelContentName(order),
+    productText: labelProductInfo(order),
+    bottomCode: labelBottomCode(order),
+    qty: Number(order.qty || order.quantity || 0),
+    sender: {
+      name: labelPersonName(sender.name),
+      phone: labelPhone(sender.phone),
+      address: sender.address
+    },
+    recipient: {
+      name: labelPersonName(recipientName),
+      phone: labelPhone(recipientPhone),
+      zipcode: String(order.recipient_zipcode || "").trim(),
+      address: String(order.recipient_address || "").trim(),
+      addressDetail: labelAddressDetail(order.recipient_address_detail || "")
+    },
+    testWatermark: Boolean(options.forceTestMode || shouldShowTestWatermark(order))
+  };
+}
+
+function renderPrintLabelOverlay(data) {
+  return `
+    ${data.testWatermark ? `<div class="test-watermark">TEST / 실제 접수 아님</div>` : ""}
+    <div class="field region-code">${escapeHtml(data.regionCode)}</div>
+    <div class="field sort-code">${escapeHtml(data.sortCode)}</div>
+    <div class="field field-small customer-order">
+      <span class="address-line">접수일: ${escapeHtml(data.receiptDate)}</span>
+      <span class="address-line">주문: ${escapeHtml(data.orderNo)}</span>
+      <span class="address-line">고객: ${escapeHtml(data.dealerName)}</span>
+    </div>
+    <div class="field payment-method">${escapeHtml(data.paymentMethod)}</div>
+    <div class="field field-small weight">중량:${escapeHtml(data.weightText)}</div>
+    <div class="field field-small volume">용적:${escapeHtml(data.volumeText)}</div>
+    <div class="field field-small fee">요금:${escapeHtml(data.feeText)}</div>
+    <div class="barcode-slot main-barcode">${code128BarcodeSvg(data.registrationNo)}</div>
+    <div class="field field-small delivery-message">배송메시지: ${escapeHtml(data.messageText)}</div>
+    <div class="field field-small content-name">내용품명: ${escapeHtml(data.contentName)}</div>
+    <div class="field field-tiny product-info">${escapeHtml(data.productText)}</div>
+    <div class="field field-small sender">
+      <span class="address-line">${escapeHtml(data.sender.address)}</span>
+      <strong class="sender-name">${escapeHtml(data.sender.name)}</strong>
+      <span class="address-line">T: ${escapeHtml(data.sender.phone)}</span>
+    </div>
+    <div class="field recipient">
+      <span class="address-line">${escapeHtml(data.recipient.address)}</span>
+      ${data.recipient.addressDetail ? `<span class="address-line">${escapeHtml(data.recipient.addressDetail)}</span>` : ""}
+      <strong class="recipient-name">${escapeHtml(data.recipient.name)}</strong>
+      <span class="address-line">T: ${escapeHtml(data.recipient.phone)}</span>
+      <span class="address-strong">${escapeHtml(data.recipient.zipcode)}</span>
+    </div>
+    <div class="field field-small registration">
+      <span class="address-line">등기번호: ${escapeHtml(data.registrationNo)}</span>
+      <span class="address-line">수량: ${roll(data.qty)}</span>
+    </div>
+    <div class="barcode-slot bottom-barcode">${code128BarcodeSvg(data.registrationNo)}</div>
+    <div class="field bottom-code">${escapeHtml(data.bottomCode)}</div>
+  `;
+}
+
+function buildShippingLabelHtml(order, labelSizeValue, options = {}) {
+  const label = labelSizeMeta(labelSizeValue);
+  const data = shippingLabelPrintData(order, options);
+  const safeTrackingNo = escapeHtml(data.trackingNo);
   return `<!doctype html>
 <html lang="ko">
   <head>
@@ -3847,40 +4078,7 @@ function buildShippingLabelHtml(order, labelSizeValue, options = {}) {
   <body>
     <main class="print-shell">
       <section class="label-overlay" aria-label="우체국 소포 라벨 오버레이">
-        ${testWatermark}
-        <div class="field region-code">${escapeHtml(regionCode)}</div>
-        <div class="field sort-code">${escapeHtml(sortCode)}</div>
-        <div class="field field-small customer-order">
-          <span class="address-line">접수일: ${escapeHtml(receiptDate)}</span>
-          <span class="address-line">주문: ${escapeHtml(order.order_id || order.order_no || "")}</span>
-          <span class="address-line">고객: ${escapeHtml(order.dealer_name || order.dealer_code || "")}</span>
-        </div>
-        <div class="field payment-method">${escapeHtml(paymentMethod)}</div>
-        <div class="field field-small weight">중량:${escapeHtml(weightText)}</div>
-        <div class="field field-small volume">용적:${escapeHtml(volumeText)}</div>
-        <div class="field field-small fee">요금:${escapeHtml(feeText)}</div>
-        <div class="barcode-slot main-barcode">${code39BarcodeSvg(registrationNo)}</div>
-        <div class="field field-small delivery-message">배송메시지: ${escapeHtml(messageText)}</div>
-        <div class="field field-small content-name">내용품명: ${escapeHtml(labelContentName(order))}</div>
-        <div class="field field-tiny product-info">${escapeHtml(productText)}</div>
-        <div class="field field-small sender">
-          <span class="address-line">${escapeHtml(sender.address)}</span>
-          <strong class="sender-name">${escapeHtml(labelPersonName(sender.name))}</strong>
-          <span class="address-line">T: ${escapeHtml(labelPhone(sender.phone))}</span>
-        </div>
-        <div class="field recipient">
-          <span class="address-line">${escapeHtml(recipientAddress)}</span>
-          ${recipientAddressDetail ? `<span class="address-line">${escapeHtml(recipientAddressDetail)}</span>` : ""}
-          <strong class="recipient-name">${escapeHtml(labelPersonName(recipientName))}</strong>
-          <span class="address-line">T: ${escapeHtml(labelPhone(recipientPhone))}</span>
-          <span class="address-strong">${escapeHtml(recipientZipcode)}</span>
-        </div>
-        <div class="field field-small registration">
-          <span class="address-line">등기번호: ${safeRegistrationNo}</span>
-          <span class="address-line">수량: ${roll(Number(order.qty || 0))}</span>
-        </div>
-        <div class="barcode-slot bottom-barcode">${code39BarcodeSvg(registrationNo)}</div>
-        <div class="field bottom-code">${escapeHtml(bottomCode)}</div>
+        ${renderPrintLabelOverlay(data)}
       </section>
       <p class="print-instructions">프린터 설정: 배율 100%, 여백 없음, 가로 방향, 머리글/바닥글 제거 · 출력은 180도 회전 보정됨</p>
       <div class="actions">
@@ -3930,8 +4128,14 @@ function labelPrintMode() {
   return String(config.labelMode || "test").toLowerCase() === "production" ? "production" : "test";
 }
 
+function shippingMode() {
+  const mode = String(config.shippingMode || "").toLowerCase();
+  if (mode) return mode === "production" ? "production" : "mock";
+  return labelPrintMode() === "production" ? "production" : "mock";
+}
+
 function shouldShowTestWatermark() {
-  return labelPrintMode() !== "production";
+  return shippingMode() !== "production";
 }
 
 function labelPrivacyMaskingEnabled() {
@@ -3949,6 +4153,14 @@ function labelPhone(value) {
   const phone = String(value || "").trim();
   if (!labelPrivacyMaskingEnabled()) return phone;
   return phone.replace(/(\d{2,3})-?(\d{3,4})-?(\d{4})$/, "$1-****-$3");
+}
+
+function labelAddressDetail(value) {
+  const detail = String(value || "").trim();
+  if (!labelPrivacyMaskingEnabled() || !detail) return detail;
+  const parts = detail.split(/\s+/);
+  if (parts.length === 1) return "***";
+  return `${parts.slice(0, -1).join(" ")} ***`;
 }
 
 function labelRegistrationNo(order) {
@@ -4030,38 +4242,38 @@ function printStatusLabel(status) {
   return status || "";
 }
 
-function code39BarcodeSvg(value) {
-  const patterns = {
-    "0": "nnnwwnwnn", "1": "wnnwnnnnw", "2": "nnwwnnnnw", "3": "wnwwnnnnn", "4": "nnnwwnnnw",
-    "5": "wnnwwnnnn", "6": "nnwwwnnnn", "7": "nnnwnnwnw", "8": "wnnwnnwnn", "9": "nnwwnnwnn",
-    A: "wnnnnwnnw", B: "nnwnnwnnw", C: "wnwnnwnnn", D: "nnnnwwnnw", E: "wnnnwwnnn",
-    F: "nnwnwwnnn", G: "nnnnnwwnw", H: "wnnnnwwnn", I: "nnwnnwwnn", J: "nnnnwwwnn",
-    K: "wnnnnnnww", L: "nnwnnnnww", M: "wnwnnnnwn", N: "nnnnwnnww", O: "wnnnwnnwn",
-    P: "nnwnwnnwn", Q: "nnnnnnwww", R: "wnnnnnwwn", S: "nnwnnnwwn", T: "nnnnwnwwn",
-    U: "wwnnnnnnw", V: "nwwnnnnnw", W: "wwwnnnnnn", X: "nwnnwnnnw", Y: "wwnnwnnnn",
-    Z: "nwwnwnnnn", "-": "nwnnnnwnw", ".": "wwnnnnwnn", " ": "nwwnnnwnn", "$": "nwnwnwnnn",
-    "/": "nwnwnnnwn", "+": "nwnnnwnwn", "%": "nnnwnwnwn", "*": "nwnnwnwnn"
-  };
-  const encoded = `*${String(value || "").toUpperCase().replace(/[^0-9A-Z .$/+%-]/g, "")}*`;
-  const narrow = 2;
-  const wide = 5;
+function code128BarcodeSvg(value) {
+  const patterns = [
+    "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312", "132212", "221213",
+    "221312", "231212", "112232", "122132", "122231", "113222", "123122", "123221", "223211", "221132",
+    "221231", "213212", "223112", "312131", "311222", "321122", "321221", "312212", "322112", "322211",
+    "212123", "212321", "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313",
+    "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121", "313121", "211331",
+    "231131", "213113", "213311", "213131", "311123", "311321", "331121", "312113", "312311", "332111",
+    "314111", "221411", "431111", "111224", "111422", "121124", "121421", "141122", "141221", "112214",
+    "112412", "122114", "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111",
+    "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112", "421211", "212141",
+    "214121", "412121", "111143", "111341", "131141", "114113", "114311", "411113", "411311", "113141",
+    "114131", "311141", "411131", "211412", "211214", "211232", "2331112"
+  ];
+  const encoded = String(value || "-").replace(/[^\x20-\x7e]/g, "-");
+  const values = [104, ...encoded.split("").map((char) => char.charCodeAt(0) - 32)];
+  const checksum = values.slice(1).reduce((total, next, index) => total + next * (index + 1), values[0]) % 103;
+  values.push(checksum, 106);
+  const moduleWidth = 2;
   const height = 80;
-  let x = 0;
+  let x = 20;
   const rects = [];
 
-  encoded.split("").forEach((char) => {
-    const pattern = patterns[char] || patterns["-"];
-    pattern.split("").forEach((unit, index) => {
-      const width = unit === "w" ? wide : narrow;
-      if (index % 2 === 0) {
-        rects.push(`<rect x="${x}" y="0" width="${width}" height="${height}" />`);
-      }
+  values.forEach((code) => {
+    patterns[code].split("").forEach((unit, index) => {
+      const width = Number(unit) * moduleWidth;
+      if (index % 2 === 0) rects.push(`<rect x="${x}" y="0" width="${width}" height="${height}" />`);
       x += width;
     });
-    x += narrow;
   });
 
-  return `<svg viewBox="0 0 ${x} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="송장번호 바코드" fill="#000" shape-rendering="crispEdges">${rects.join("")}</svg>`;
+  return `<svg viewBox="0 0 ${x + 20} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Code128 송장번호 바코드" fill="#000" shape-rendering="crispEdges">${rects.join("")}</svg>`;
 }
 
 async function receiveOrder(orderId) {

@@ -46,11 +46,30 @@ manualFiles.forEach(([source, target]) => {
   }
 });
 
+const publicDir = path.join(root, "public");
+
+function copyDirectory(source, target) {
+  if (!fs.existsSync(source)) return;
+  fs.mkdirSync(target, { recursive: true });
+  fs.readdirSync(source, { withFileTypes: true }).forEach((entry) => {
+    const entrySource = path.join(source, entry.name);
+    const entryTarget = path.join(target, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectory(entrySource, entryTarget);
+    } else {
+      fs.copyFileSync(entrySource, entryTarget);
+    }
+  });
+}
+
+copyDirectory(publicDir, dist);
+
 const dataMode = process.env.DATA_MODE || "mock";
 const appsScriptUrl = process.env.APPS_SCRIPT_API_URL || "";
 const appPublicUrl = process.env.APP_PUBLIC_URL || "";
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
 const labelMode = process.env.LABEL_PRINT_MODE || "test";
+const shippingMode = process.env.SHIPPING_MODE || (labelMode === "production" ? "production" : "mock");
 const labelPrivacyMasking = process.env.LABEL_PRIVACY_MASKING || "true";
 const apiBaseUrl = process.env.API_BASE_URL || (appsScriptUrl ? "/api/gloc" : "");
 const exposeAppsScriptUrl = process.env.EXPOSE_APPS_SCRIPT_URL === "true";
@@ -63,6 +82,7 @@ const config = `window.FILM_STOCK_CONFIG = {
   appPublicUrl: ${JSON.stringify(appPublicUrl)},
   vapidPublicKey: ${JSON.stringify(vapidPublicKey)},
   labelMode: ${JSON.stringify(labelMode)},
+  shippingMode: ${JSON.stringify(shippingMode)},
   labelPrivacyMasking: ${JSON.stringify(labelPrivacyMasking)}
 };
 `;

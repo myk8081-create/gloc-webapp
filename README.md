@@ -185,6 +185,7 @@ VAPID_PUBLIC_KEY=YOUR_VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY=YOUR_VAPID_PRIVATE_KEY
 VAPID_SUBJECT=mailto:admin@example.com
 PUSH_API_SECRET=CHANGE_ME_TO_A_LONG_RANDOM_SECRET
+SHIPPING_MODE=mock
 LABEL_PRINT_MODE=test
 LABEL_PRIVACY_MASKING=true
 ```
@@ -199,7 +200,7 @@ LABEL_PRIVACY_MASKING=true
 npm run generate:vapid
 ```
 
-송장 출력은 우체국 소포 라벨지 위에 검정 텍스트와 바코드만 찍는 오버레이 방식입니다. `LABEL_PRINT_MODE=production`으로 바꾸면 테스트 워터마크가 사라지고, `LABEL_PRIVACY_MASKING=false`로 바꾸면 출력용 이름/전화번호 마스킹이 해제됩니다.
+송장 출력은 우체국 소포 라벨지 위에 검정 텍스트와 Code128 바코드만 찍는 오버레이 방식입니다. 관리자 `송장출력 설정` 미리보기에서는 `public/templates/korea-post-label-preview.png` 배경 이미지를 보여 주지만 실제 출력창에는 배경, 빨간선, 로고, 박스가 포함되지 않습니다. `SHIPPING_MODE=production`으로 바꾸면 테스트 워터마크가 사라지고, `LABEL_PRIVACY_MASKING=false`로 바꾸면 출력용 이름/전화번호/상세주소 마스킹이 해제됩니다.
 
 관리자 화면의 `송장출력 설정`에서 라벨 전체 이동값, 배율, 권역코드, 분류번호, 바코드, 발송인/수령인 블록 좌표를 0.5mm 단위로 보정할 수 있습니다. 저장한 값은 Google Sheets `settings` 시트에 `label_*`, `zone_code_*`, `sort_code_*`, `left_barcode_*`, `sender_block_*`, `receiver_block_*`, `tracking_text_*`, `bottom_barcode_*` 키로 기록됩니다. 이 기능을 운영 사이트에서 쓰려면 최신 `apps-script/Code.js`를 Apps Script에 붙여 넣고 웹 앱을 다시 배포해야 합니다.
 

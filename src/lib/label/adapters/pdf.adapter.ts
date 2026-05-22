@@ -1,3 +1,5 @@
+import { KOREA_POST_LABEL_LAYOUT } from "../koreaPostLabelLayout";
+
 export type LabelSize = "post-overlay-150x100";
 
 export interface ShippingLabelOrder {
@@ -47,62 +49,7 @@ export interface PdfLabelDocument {
   html: string;
 }
 
-export const KOREA_POST_OVERLAY = {
-  PAGE_WIDTH_MM: 150,
-  PAGE_HEIGHT_MM: 100,
-  OFFSET_X_MM: 0,
-  OFFSET_Y_MM: 0,
-  SCALE: 1,
-  PRINT_ROTATION_DEG: 180,
-  REGION_CODE_X_MM: 68,
-  REGION_CODE_Y_MM: 6,
-  REGION_CODE_WIDTH_MM: 46,
-  SORT_CODE_X_MM: 129,
-  SORT_CODE_Y_MM: 6,
-  SORT_CODE_WIDTH_MM: 17,
-  CUSTOMER_ORDER_X_MM: 7,
-  CUSTOMER_ORDER_Y_MM: 18,
-  CUSTOMER_ORDER_WIDTH_MM: 55,
-  PAYMENT_X_MM: 41,
-  PAYMENT_Y_MM: 31,
-  WEIGHT_X_MM: 6,
-  WEIGHT_Y_MM: 32,
-  VOLUME_X_MM: 25,
-  VOLUME_Y_MM: 32,
-  FEE_X_MM: 45,
-  FEE_Y_MM: 32,
-  BARCODE_X_MM: 14,
-  BARCODE_Y_MM: 41,
-  BARCODE_WIDTH_MM: 40,
-  BARCODE_HEIGHT_MM: 17,
-  MESSAGE_X_MM: 6,
-  MESSAGE_Y_MM: 62,
-  MESSAGE_WIDTH_MM: 62,
-  CONTENT_X_MM: 6,
-  CONTENT_Y_MM: 71,
-  CONTENT_WIDTH_MM: 63,
-  PRODUCT_X_MM: 6,
-  PRODUCT_Y_MM: 78,
-  PRODUCT_WIDTH_MM: 63,
-  SENDER_X_MM: 70,
-  SENDER_Y_MM: 17,
-  SENDER_WIDTH_MM: 60,
-  RECIPIENT_X_MM: 70,
-  RECIPIENT_Y_MM: 43,
-  RECIPIENT_WIDTH_MM: 62,
-  REGISTRATION_X_MM: 72,
-  REGISTRATION_Y_MM: 77,
-  REGISTRATION_WIDTH_MM: 56,
-  BOTTOM_BARCODE_X_MM: 76,
-  BOTTOM_BARCODE_Y_MM: 85,
-  BOTTOM_BARCODE_WIDTH_MM: 44,
-  BOTTOM_BARCODE_HEIGHT_MM: 12,
-  BOTTOM_CODE_X_MM: 126,
-  BOTTOM_CODE_Y_MM: 82,
-  BOTTOM_CODE_WIDTH_MM: 18,
-  WATERMARK_X_MM: 75,
-  WATERMARK_Y_MM: 50
-} as const;
+export const KOREA_POST_OVERLAY = KOREA_POST_LABEL_LAYOUT;
 
 export function createPdfLabelDocument(order: ShippingLabelOrder, options: PdfLabelOptions): PdfLabelDocument {
   const privacyMasking = options.privacyMasking ?? true;
@@ -112,6 +59,7 @@ export function createPdfLabelDocument(order: ShippingLabelOrder, options: PdfLa
   const deliveryMessage = order.shipping_memo || order.memo || "배송 전 연락 바랍니다.";
   const recipientName = maskName(order.recipient_name || order.agency_name, privacyMasking);
   const recipientPhone = maskPhone(order.recipient_phone, privacyMasking);
+  const recipientAddressDetail = maskAddressDetail(order.recipient_address_detail, privacyMasking);
   const senderName = maskName(order.sender_name, privacyMasking);
   const senderPhone = maskPhone(order.sender_phone, privacyMasking);
   const productInfo = [order.product_name, order.sku, `${Number(order.quantity || 0).toLocaleString("ko-KR")}롤`]
@@ -168,14 +116,14 @@ export function createPdfLabelDocument(order: ShippingLabelOrder, options: PdfLa
       `<div class="field field-small weight">중량:${escapeHtml(labelWeightText(order))}</div>`,
       `<div class="field field-small volume">용적:${escapeHtml(labelVolumeText(order))}</div>`,
       `<div class="field field-small fee">요금:${escapeHtml(labelFeeText(order))}</div>`,
-      `<div class="barcode-slot main-barcode">${code39BarcodeSvg(registrationNo)}</div>`,
+      `<div class="barcode-slot main-barcode">${code128BarcodeSvg(registrationNo)}</div>`,
       `<div class="field field-small delivery-message">배송메시지: ${escapeHtml(deliveryMessage)}</div>`,
       `<div class="field field-small content-name">내용품명: ${escapeHtml(order.product_name || "필름 제품")}</div>`,
       `<div class="field field-tiny product-info">${escapeHtml(productInfo)}</div>`,
       `<div class="field field-small sender"><span class="address-line">${escapeHtml(order.sender_address)}</span><strong class="sender-name">${escapeHtml(senderName)}</strong><span class="address-line">T: ${escapeHtml(senderPhone)}</span></div>`,
-      `<div class="field recipient"><span class="address-line">${escapeHtml(order.recipient_address)}</span>${order.recipient_address_detail ? `<span class="address-line">${escapeHtml(order.recipient_address_detail)}</span>` : ""}<strong class="recipient-name">${escapeHtml(recipientName)}</strong><span class="address-line">T: ${escapeHtml(recipientPhone)}</span><span class="address-strong">${escapeHtml(order.recipient_zipcode || "")}</span></div>`,
+      `<div class="field recipient"><span class="address-line">${escapeHtml(order.recipient_address)}</span>${recipientAddressDetail ? `<span class="address-line">${escapeHtml(recipientAddressDetail)}</span>` : ""}<strong class="recipient-name">${escapeHtml(recipientName)}</strong><span class="address-line">T: ${escapeHtml(recipientPhone)}</span><span class="address-strong">${escapeHtml(order.recipient_zipcode || "")}</span></div>`,
       `<div class="field field-small registration"><span class="address-line">등기번호: ${escapeHtml(registrationNo)}</span><span class="address-line">수량: ${Number(order.quantity || 0).toLocaleString("ko-KR")}롤</span></div>`,
-      `<div class="barcode-slot bottom-barcode">${code39BarcodeSvg(registrationNo)}</div>`,
+      `<div class="barcode-slot bottom-barcode">${code128BarcodeSvg(registrationNo)}</div>`,
       `<div class="field bottom-code">${escapeHtml(labelBottomCode(order))}</div>`,
       "</main>",
       "</body>",
@@ -221,6 +169,14 @@ function maskPhone(value: string, enabled: boolean) {
   return phone.replace(/(\d{2,3})-?(\d{3,4})-?(\d{4})$/, "$1-****-$3");
 }
 
+function maskAddressDetail(value: string | undefined, enabled: boolean) {
+  const detail = String(value || "").trim();
+  if (!enabled || !detail) return detail;
+  const parts = detail.split(/\s+/);
+  if (parts.length === 1) return "***";
+  return `${parts.slice(0, -1).join(" ")} ***`;
+}
+
 function x(value: number) {
   return mm(KOREA_POST_OVERLAY.OFFSET_X_MM + value * KOREA_POST_OVERLAY.SCALE);
 }
@@ -243,36 +199,38 @@ function datePart(order?: ShippingLabelOrder) {
   return (matched?.[0] || new Date().toISOString().slice(0, 10)).replaceAll("-", ".");
 }
 
-function code39BarcodeSvg(value: string) {
-  const patterns: Record<string, string> = {
-    "0": "nnnwwnwnn", "1": "wnnwnnnnw", "2": "nnwwnnnnw", "3": "wnwwnnnnn", "4": "nnnwwnnnw",
-    "5": "wnnwwnnnn", "6": "nnwwwnnnn", "7": "nnnwnnwnw", "8": "wnnwnnwnn", "9": "nnwwnnwnn",
-    A: "wnnnnwnnw", B: "nnwnnwnnw", C: "wnwnnwnnn", D: "nnnnwwnnw", E: "wnnnwwnnn",
-    F: "nnwnwwnnn", G: "nnnnnwwnw", H: "wnnnnwwnn", I: "nnwnnwwnn", J: "nnnnwwwnn",
-    K: "wnnnnnnww", L: "nnwnnnnww", M: "wnwnnnnwn", N: "nnnnwnnww", O: "wnnnwnnwn",
-    P: "nnwnwnnwn", Q: "nnnnnnwww", R: "wnnnnnwwn", S: "nnwnnnwwn", T: "nnnnwnwwn",
-    U: "wwnnnnnnw", V: "nwwnnnnnw", W: "wwwnnnnnn", X: "nwnnwnnnw", Y: "wwnnwnnnn",
-    Z: "nwwnwnnnn", "-": "nwnnnnwnw", ".": "wwnnnnwnn", " ": "nwwnnnwnn", "$": "nwnwnwnnn",
-    "/": "nwnwnnnwn", "+": "nwnnnwnwn", "%": "nnnwnwnwn", "*": "nwnnwnwnn"
-  };
-  const encoded = `*${String(value || "").toUpperCase().replace(/[^0-9A-Z .$/+%-]/g, "")}*`;
-  const narrow = 2;
-  const wide = 5;
+function code128BarcodeSvg(value: string) {
+  const patterns = [
+    "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312", "132212", "221213",
+    "221312", "231212", "112232", "122132", "122231", "113222", "123122", "123221", "223211", "221132",
+    "221231", "213212", "223112", "312131", "311222", "321122", "321221", "312212", "322112", "322211",
+    "212123", "212321", "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313",
+    "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121", "313121", "211331",
+    "231131", "213113", "213311", "213131", "311123", "311321", "331121", "312113", "312311", "332111",
+    "314111", "221411", "431111", "111224", "111422", "121124", "121421", "141122", "141221", "112214",
+    "112412", "122114", "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111",
+    "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112", "421211", "212141",
+    "214121", "412121", "111143", "111341", "131141", "114113", "114311", "411113", "411311", "113141",
+    "114131", "311141", "411131", "211412", "211214", "211232", "2331112"
+  ];
+  const encoded = String(value || "-").replace(/[^\x20-\x7e]/g, "-");
+  const values = [104, ...encoded.split("").map((char) => char.charCodeAt(0) - 32)];
+  const checksum = values.slice(1).reduce((total, next, index) => total + next * (index + 1), values[0]) % 103;
+  values.push(checksum, 106);
+  const moduleWidth = 2;
   const height = 80;
-  let cursor = 0;
+  let cursor = 20;
   const rects: string[] = [];
 
-  encoded.split("").forEach((char) => {
-    const pattern = patterns[char] || patterns["-"];
-    pattern.split("").forEach((unit, index) => {
-      const width = unit === "w" ? wide : narrow;
+  values.forEach((code) => {
+    patterns[code].split("").forEach((unit, index) => {
+      const width = Number(unit) * moduleWidth;
       if (index % 2 === 0) rects.push(`<rect x="${cursor}" y="0" width="${width}" height="${height}" />`);
       cursor += width;
     });
-    cursor += narrow;
   });
 
-  return `<svg viewBox="0 0 ${cursor} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="송장번호 바코드" fill="#000" shape-rendering="crispEdges">${rects.join("")}</svg>`;
+  return `<svg viewBox="0 0 ${cursor + 20} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Code128 송장번호 바코드" fill="#000" shape-rendering="crispEdges">${rects.join("")}</svg>`;
 }
 
 function escapeHtml(value: unknown) {
