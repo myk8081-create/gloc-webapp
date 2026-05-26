@@ -6,6 +6,9 @@ const SHEETS = {
   reservations: "예약현황",
   certificates: "정품인증서",
   certificateLogs: "인증로그",
+  vehicles: "차량등록",
+  vehicle3dParts: "차량3D매핑",
+  consultations: "상담현황",
   products: "제품등록",
   settings: "settings",
   pushSubscriptions: "푸시구독"
@@ -19,6 +22,9 @@ const HEADERS = {
   reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "reservation_date", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
   certificates: ["id", "reservation_id", "dealer_id", "dealer_code", "dealer_name", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "product_type", "product_name", "product_serial", "certificate_number", "random_code", "check_digit", "installation_date", "issued_at", "issued_by", "verified_count", "last_verified_at", "status", "created_at"],
   certificateLogs: ["id", "certificate_number", "verified_at", "ip_address", "user_agent", "result"],
+  vehicles: ["id", "brand", "model_name", "generation_name", "facelift_type", "body_code", "model_year", "vehicle_type", "default_color", "thumbnail_url", "image_mode_enabled", "three_d_enabled", "glb_file_url", "created_at", "updated_at", "is_active"],
+  vehicle3dParts: ["id", "vehicle_id", "part_key", "mesh_name", "part_type", "tint_available", "ppf_available", "material_group", "created_at", "updated_at"],
+  consultations: ["consultation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_id", "vehicle_model", "vehicle_color", "selected_tint_products", "selected_ppf_products", "selected_ppf_parts", "quote_total", "screenshot_url", "memo", "status", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
@@ -115,6 +121,9 @@ function doPost(e) {
     if (action === "completeReservation") return ok_(handleCompleteReservation_(payload, user));
     if (action === "getReservations") return ok_(handleGetReservations_(payload, user));
     if (action === "getCertificates") return ok_(handleGetCertificates_(payload, user));
+    if (action === "getConsultationData") return ok_(handleGetConsultationData_(payload, user));
+    if (action === "saveConsultation") return ok_(handleSaveConsultation_(payload, user));
+    if (action === "saveVehicle") return ok_(handleSaveVehicle_(payload, user));
     if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
     if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
     if (action === "updateDealerDiscount") return ok_(handleUpdateDealerDiscount_(payload, user));
@@ -150,6 +159,7 @@ function setupInitialData() {
   seedAdminIfEmpty_();
   seedDemoDealerIfEmpty_();
   seedInventoryIfEmpty_();
+  seedVehiclesIfEmpty_();
   ensureInventoryForOwner_(HEAD_OFFICE_CODE, HEAD_OFFICE_NAME);
 }
 
@@ -236,6 +246,7 @@ function handleLogin_(payload) {
   const salesData = handleGetSales_({}, user);
   const reservationData = handleGetReservations_({}, user);
   const certificateData = handleGetCertificates_({}, user);
+  const consultationData = handleGetConsultationData_({}, user);
   return {
     session,
     user,
@@ -246,6 +257,8 @@ function handleLogin_(payload) {
     sales: salesData.sales,
     reservations: reservationData.reservations,
     certificates: certificateData.certificates,
+    vehicles: consultationData.vehicles,
+    consultations: consultationData.consultations,
     label_settings: user.role === "admin" ? labelSettings_() : {}
   };
 }
@@ -726,6 +739,86 @@ function handleGetCertificates_(payload, user) {
     ));
   }
   return { certificates: certificates.reverse() };
+}
+
+function handleGetConsultationData_(payload, user) {
+  seedVehiclesIfEmpty_();
+  let consultations = readRows_(SHEETS.consultations);
+  if (user.role === "dealer") {
+    consultations = consultations.filter((row) => String(row.dealer_code).toUpperCase() === String(user.dealer_code).toUpperCase());
+  }
+  const query = String(payload.query || "").toLowerCase().trim();
+  if (query) {
+    consultations = consultations.filter((row) => (
+      [row.customer_name, row.customer_phone, row.vehicle_model, row.vehicle_color, row.dealer_name, row.created_by_login_id, row.memo, row.selected_tint_products, row.selected_ppf_products, row.selected_ppf_parts]
+        .some((value) => String(value || "").toLowerCase().indexOf(query) >= 0)
+    ));
+  }
+  const vehicles = readRows_(SHEETS.vehicles).filter((row) => row.is_active === "" || toBool_(row.is_active));
+  return {
+    vehicles: vehicles,
+    consultations: consultations.reverse()
+  };
+}
+
+function handleSaveConsultation_(payload, user) {
+  const customerName = required_(payload.customer_name, "customer_name");
+  const customerPhone = required_(payload.customer_phone, "customer_phone");
+  const vehicleModel = required_(payload.vehicle_model, "vehicle_model");
+  const quoteTotal = Number(payload.quote_total || 0);
+  if (quoteTotal <= 0) throw new Error("견적 금액이 없습니다.");
+
+  const now = isoNow_();
+  const consultation = {
+    consultation_id: "CNS-" + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd") + "-" + Utilities.getUuid().slice(0, 8).toUpperCase(),
+    dealer_code: user.dealer_code,
+    dealer_name: user.dealer_name,
+    created_by_login_id: user.login_id,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    vehicle_id: payload.vehicle_id || "",
+    vehicle_model: vehicleModel,
+    vehicle_color: payload.vehicle_color || "",
+    selected_tint_products: payload.selected_tint_products || "[]",
+    selected_ppf_products: payload.selected_ppf_products || "[]",
+    selected_ppf_parts: payload.selected_ppf_parts || "[]",
+    quote_total: quoteTotal,
+    screenshot_url: payload.screenshot_url || "",
+    memo: payload.memo || "",
+    status: payload.status || "saved",
+    created_at: now,
+    updated_at: now
+  };
+  appendObject_(SHEETS.consultations, consultation);
+  return { consultation: consultation };
+}
+
+function handleSaveVehicle_(payload, user) {
+  requireAdmin_(user);
+  const id = required_(payload.id, "id");
+  const now = isoNow_();
+  const existing = readRows_(SHEETS.vehicles).find((row) => String(row.id) === String(id));
+  const vehicle = {
+    id: id,
+    brand: payload.brand || "Tesla",
+    model_name: required_(payload.model_name, "model_name"),
+    generation_name: payload.generation_name || "Current",
+    facelift_type: payload.facelift_type || payload.generation_name || "",
+    body_code: payload.body_code || "",
+    model_year: payload.model_year || "",
+    vehicle_type: payload.vehicle_type || "",
+    default_color: payload.default_color || "Pearl White",
+    thumbnail_url: payload.thumbnail_url || "",
+    image_mode_enabled: payload.image_mode_enabled === undefined ? true : toBool_(payload.image_mode_enabled),
+    three_d_enabled: toBool_(payload.three_d_enabled),
+    glb_file_url: payload.glb_file_url || "",
+    created_at: existing ? existing.created_at : now,
+    updated_at: now,
+    is_active: payload.is_active === undefined ? true : toBool_(payload.is_active)
+  };
+  if (existing) updateRowByKey_(SHEETS.vehicles, "id", id, vehicle);
+  else appendObject_(SHEETS.vehicles, vehicle);
+  return { vehicle: vehicle };
 }
 
 function handleVerifyCertificate_(payload, event) {
@@ -1891,6 +1984,39 @@ function seedDemoDealerIfEmpty_() {
 function seedInventoryIfEmpty_() {
   if (readRows_(SHEETS.inventory).length) return;
   seedInventoryForDealer_("D001", "서울 총판");
+}
+
+function seedVehiclesIfEmpty_() {
+  if (readRows_(SHEETS.vehicles).length) return;
+  const now = isoNow_();
+  [
+    ["tesla-model3-legacy", "Tesla", "Model 3", "Legacy", "M3-L", "2017-2023", "sedan", "Pearl White", "/models/tesla/model3-legacy.glb"],
+    ["tesla-model3-highland", "Tesla", "Model 3", "Highland", "M3-H", "2024-", "sedan", "Pearl White", "/models/tesla/model3-highland.glb"],
+    ["tesla-modely-legacy", "Tesla", "Model Y", "Legacy", "MY-L", "2020-2024", "suv", "Pearl White", "/models/tesla/modely-legacy.glb"],
+    ["tesla-modely-juniper", "Tesla", "Model Y", "Juniper", "MY-J", "2025-", "suv", "Pearl White", "/models/tesla/modely-juniper.glb"],
+    ["tesla-models", "Tesla", "Model S", "Current", "MS", "2021-", "sedan", "Pearl White", "/models/tesla/models.glb"],
+    ["tesla-modelx", "Tesla", "Model X", "Current", "MX", "2021-", "suv", "Pearl White", "/models/tesla/modelx.glb"],
+    ["tesla-cybertruck", "Tesla", "Cybertruck", "Foundation", "CT", "2024-", "truck", "Quicksilver", "/models/tesla/cybertruck.glb"]
+  ].forEach((row) => {
+    appendObject_(SHEETS.vehicles, {
+      id: row[0],
+      brand: row[1],
+      model_name: row[2],
+      generation_name: row[3],
+      facelift_type: row[3],
+      body_code: row[4],
+      model_year: row[5],
+      vehicle_type: row[6],
+      default_color: row[7],
+      thumbnail_url: "",
+      image_mode_enabled: true,
+      three_d_enabled: false,
+      glb_file_url: row[8],
+      created_at: now,
+      updated_at: now,
+      is_active: true
+    });
+  });
 }
 
 function ensureInventoryForOwner_(dealerCode, dealerName) {

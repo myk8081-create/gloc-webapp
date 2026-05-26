@@ -168,6 +168,18 @@
     return request("getCertificates", filters);
   }
 
+  async function getConsultationData(filters = {}) {
+    return request("getConsultationData", filters);
+  }
+
+  async function saveConsultation(consultation) {
+    return request("saveConsultation", consultation);
+  }
+
+  async function saveVehicle(vehicle) {
+    return request("saveVehicle", vehicle);
+  }
+
   async function verifyCertificate({ certificateNumber, userAgent }) {
     return request(
       "verifyCertificate",
@@ -261,6 +273,9 @@
     completeReservation,
     getReservations,
     getCertificates,
+    getConsultationData,
+    saveConsultation,
+    saveVehicle,
     verifyCertificate,
     updateDealerDiscount,
     updateDealerProfile,

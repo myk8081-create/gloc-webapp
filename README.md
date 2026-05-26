@@ -8,7 +8,7 @@ PPF/틴팅 제품을 판매하는 본사와 대리점용 재고조회 및 발주
 - Frontend: HTML, CSS, JavaScript 정적 웹앱
 - Backend/DB: Vercel API Route + Repository/Provider 계층 + Google Sheets/Apps Script
 - Deploy: Vercel 정적 배포 + 발주 푸시 알림 API
-- 주요 화면: 로그인, 최초 비밀번호 변경, 관리자 대시보드, 대리점 관리, 본사/내 재고/전체 대리점·샵 재고조회, 재고수정, 제품등록/수정, 발주관리, 발주신청, 매출현황, QR/카카오톡 안내문 생성
+- 주요 화면: 로그인, 최초 비밀번호 변경, 관리자 대시보드, 대리점 관리, 본사/내 재고/전체 대리점·샵 재고조회, 재고수정, 제품등록/수정, 발주관리, 발주신청, 예약관리, 정품인증서, 매출현황, 상담 시뮬레이터, QR/카카오톡 안내문 생성
 
 ## 코드 구조
 
@@ -102,6 +102,45 @@ PPF/틴팅 제품을 판매하는 본사와 대리점용 재고조회 및 발주
 | retail_price | 소비자가. 비어 있으면 기본 1,000,000원 적용 |
 | purchase_price | 매입가. 비어 있으면 기본 500,000원 적용 |
 | is_active | 판매 여부 |
+
+### 차량등록
+
+| 컬럼 | 설명 |
+| --- | --- |
+| id | 차량 고유 ID. 예: `tesla-model3-highland` |
+| brand | 브랜드 |
+| model_name | 모델명 |
+| generation_name | 세부 모델명 |
+| body_code | 바디 코드 |
+| model_year | 연식 |
+| vehicle_type | 차종 |
+| default_color | 기본 색상 |
+| image_mode_enabled | 2.5D 이미지/SVG 모드 사용 여부 |
+| three_d_enabled | 3D GLB 모드 사용 여부 |
+| glb_file_url | GLB 파일 경로 |
+| is_active | 사용 여부 |
+
+### 상담현황
+
+| 컬럼 | 설명 |
+| --- | --- |
+| consultation_id | 상담 저장번호 |
+| dealer_code | 대리점 코드 |
+| dealer_name | 대리점명 |
+| created_by_login_id | 상담 담당자 아이디 |
+| customer_name | 고객명 |
+| customer_phone | 고객 연락처 |
+| vehicle_id | 차량 ID |
+| vehicle_model | 차량 모델 표시명 |
+| vehicle_color | 선택 색상 |
+| selected_tint_products | 선택 틴팅 제품 JSON |
+| selected_ppf_products | 선택 PPF 제품 JSON |
+| selected_ppf_parts | 선택 PPF 부위 JSON |
+| quote_total | 총 견적 |
+| memo | 상담 메모 |
+| status | 상담 상태 |
+| created_at | 생성일 |
+| updated_at | 수정일 |
 
 ### settings
 

@@ -1582,6 +1582,408 @@ h3 {
   line-height: 1.4;
 }
 
+.consultation-screen {
+  width: min(1360px, 100%);
+}
+
+.consultation-head h1 {
+  max-width: 840px;
+}
+
+.consultation-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.consultation-viewer-panel,
+.consultation-control-panel {
+  overflow: hidden;
+}
+
+.consultation-viewer-head,
+.control-section-head,
+.consultation-history-card,
+.vehicle-admin-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.consultation-viewer-head h2 {
+  margin: 3px 0 4px;
+  font-size: clamp(24px, 4vw, 42px);
+  line-height: 1.02;
+}
+
+.consultation-viewer-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.consultation-mode-toggle,
+.consultation-pill-row,
+.consultation-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.consultation-mode-toggle {
+  flex: 0 0 auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #111312;
+}
+
+.consultation-mode-toggle button,
+.consultation-pill-row button,
+.consultation-view-tabs button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.consultation-mode-toggle button {
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+}
+
+.consultation-mode-toggle button.active,
+.consultation-pill-row button.active,
+.consultation-view-tabs button.active {
+  background: var(--primary);
+  color: #fff8ed;
+}
+
+.consultation-stage {
+  position: relative;
+  min-height: 430px;
+  margin-top: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(214, 173, 85, 0.15), transparent 300px),
+    linear-gradient(180deg, #181c1a, #0f1110 78%);
+}
+
+.consultation-stage-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent 0 24%, rgba(255, 255, 255, 0.04) 24% 24.15%, transparent 24.15%),
+    linear-gradient(0deg, transparent 0 66%, rgba(255, 255, 255, 0.04) 66% 66.15%, transparent 66.15%);
+  opacity: 0.85;
+}
+
+.consultation-car-svg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(1000px, 118%);
+  max-width: none;
+  transform: translate(-50%, -48%);
+}
+
+.consultation-stage[data-view="front"] .consultation-car-svg,
+.consultation-stage[data-view="rear"] .consultation-car-svg {
+  width: min(760px, 105%);
+}
+
+.consultation-stage[data-view="side"] .consultation-car-svg {
+  width: min(1100px, 124%);
+}
+
+.consultation-stage[data-view="rear45"] .consultation-car-svg {
+  transform: translate(-50%, -48%) scaleX(-1);
+}
+
+.consultation-stage-caption {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(214, 173, 85, 0.32);
+  border-radius: 8px;
+  background: rgba(15, 17, 16, 0.74);
+  backdrop-filter: blur(12px);
+}
+
+.consultation-stage-caption strong {
+  font-size: 15px;
+}
+
+.consultation-stage-caption span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.consultation-3d-stage {
+  display: grid;
+  place-items: center;
+}
+
+.consultation-orbit-grid {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 0 30%, rgba(214, 173, 85, 0.12) 31%, transparent 32%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 58px);
+  opacity: 0.5;
+}
+
+.consultation-3d-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 440px;
+  padding: 24px;
+  text-align: center;
+}
+
+.consultation-3d-copy code {
+  display: block;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+  color: var(--amber);
+  font-size: 12px;
+}
+
+.consultation-view-tabs {
+  margin-top: 12px;
+}
+
+.consultation-bottom-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.consultation-control-panel {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.consultation-control-section {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 17, 16, 0.34);
+}
+
+.control-section-head strong {
+  font-size: 16px;
+}
+
+.consultation-color-grid,
+.consultation-part-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.consultation-color-grid button,
+.consultation-part-grid button,
+.consultation-product-choice,
+.vehicle-admin-row {
+  min-height: 54px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+}
+
+.consultation-color-grid button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+}
+
+.consultation-color-grid button span {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.consultation-color-grid button.active,
+.consultation-part-grid button.active,
+.consultation-product-choice.active,
+.vehicle-admin-row.active {
+  border-color: var(--primary);
+  background: linear-gradient(135deg, rgba(207, 78, 66, 0.26), rgba(214, 173, 85, 0.12));
+}
+
+.consultation-product-list {
+  display: grid;
+  gap: 8px;
+}
+
+.consultation-product-choice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.consultation-product-choice strong,
+.consultation-history-card h3 {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.consultation-product-choice small,
+.consultation-part-grid small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.consultation-product-choice em {
+  color: var(--amber);
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.consultation-part-grid button {
+  display: grid;
+  gap: 4px;
+}
+
+.consultation-quote-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(214, 173, 85, 0.45);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(207, 78, 66, 0.22), rgba(58, 43, 22, 0.52));
+}
+
+.consultation-quote-panel strong {
+  display: block;
+  margin-top: 4px;
+  font-size: clamp(26px, 4vw, 38px);
+  line-height: 1;
+}
+
+.consultation-quote-panel small {
+  color: var(--muted);
+}
+
+.consultation-quote-panel dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.consultation-quote-panel dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.consultation-quote-panel dd {
+  margin: 0;
+  color: var(--text);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.consultation-history {
+  margin-top: 16px;
+}
+
+.consultation-history-list,
+.vehicle-admin-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.consultation-history-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.consultation-history-card strong {
+  align-self: center;
+  color: var(--amber);
+  font-size: 18px;
+  white-space: nowrap;
+}
+
+.compact-search {
+  max-width: 360px;
+}
+
+.vehicle-admin-layout .form-panel {
+  align-content: start;
+}
+
+.vehicle-admin-row {
+  width: 100%;
+}
+
+.vehicle-admin-row small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.vehicle-admin-row em {
+  color: var(--amber);
+  font-style: normal;
+  font-weight: 850;
+}
+
+.vehicle-mesh-help {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.vehicle-mesh-help h4 {
+  margin: 0 0 8px;
+}
+
+.vehicle-mesh-help p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .panel-head-row {
   display: flex;
   align-items: flex-start;
@@ -2119,6 +2521,15 @@ h3 {
     grid-template-columns: 330px minmax(0, 1fr);
   }
 
+  .consultation-shell {
+    grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
+    align-items: start;
+  }
+
+  .consultation-stage {
+    min-height: 560px;
+  }
+
   .admin-grid {
     grid-template-columns: minmax(0, 1fr) 360px;
   }
@@ -2203,6 +2614,33 @@ h3 {
   .login-logo {
     max-width: 100%;
     margin-bottom: 18px;
+  }
+
+  .consultation-viewer-head,
+  .control-section-head,
+  .consultation-history-card {
+    display: grid;
+  }
+
+  .consultation-stage {
+    min-height: 330px;
+  }
+
+  .consultation-bottom-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .consultation-color-grid,
+  .consultation-part-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .consultation-product-choice {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-search {
+    max-width: none;
   }
 
   .label-calibration-grid {

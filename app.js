@@ -199,6 +199,58 @@ const baseProducts = [
   { category: "PPF", color: "클리어", product_name: "라이트 PPF 클리어", sku: "PPF-LC", sizes: ["120", "150", "180"], unit: "롤" }
 ];
 
+const teslaVehicleSeed = [
+  { id: "tesla-model3-legacy", brand: "Tesla", model_name: "Model 3", generation_name: "Legacy", facelift_type: "Legacy", body_code: "M3-L", model_year: "2017-2023", vehicle_type: "sedan", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/model3-legacy.glb" },
+  { id: "tesla-model3-highland", brand: "Tesla", model_name: "Model 3", generation_name: "Highland", facelift_type: "Highland", body_code: "M3-H", model_year: "2024-", vehicle_type: "sedan", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/model3-highland.glb" },
+  { id: "tesla-modely-legacy", brand: "Tesla", model_name: "Model Y", generation_name: "Legacy", facelift_type: "Legacy", body_code: "MY-L", model_year: "2020-2024", vehicle_type: "suv", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/modely-legacy.glb" },
+  { id: "tesla-modely-juniper", brand: "Tesla", model_name: "Model Y", generation_name: "Juniper", facelift_type: "Juniper", body_code: "MY-J", model_year: "2025-", vehicle_type: "suv", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/modely-juniper.glb" },
+  { id: "tesla-models", brand: "Tesla", model_name: "Model S", generation_name: "Current", facelift_type: "Current", body_code: "MS", model_year: "2021-", vehicle_type: "sedan", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/models.glb" },
+  { id: "tesla-modelx", brand: "Tesla", model_name: "Model X", generation_name: "Current", facelift_type: "Current", body_code: "MX", model_year: "2021-", vehicle_type: "suv", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/modelx.glb" },
+  { id: "tesla-cybertruck", brand: "Tesla", model_name: "Cybertruck", generation_name: "Foundation", facelift_type: "Foundation", body_code: "CT", model_year: "2024-", vehicle_type: "truck", default_color: "Quicksilver", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/cybertruck.glb" }
+];
+
+const vehicleColorOptions = [
+  { name: "Pearl White", label: "펄 화이트", hex: "#f4f1e8", accent: "#ffffff" },
+  { name: "Solid Black", label: "솔리드 블랙", hex: "#101214", accent: "#272b2c" },
+  { name: "Midnight Silver", label: "미드나잇 실버", hex: "#555c62", accent: "#9ca3a8" },
+  { name: "Deep Blue", label: "딥 블루", hex: "#142c55", accent: "#315994" },
+  { name: "Ultra Red", label: "울트라 레드", hex: "#a51f1e", accent: "#db5148" },
+  { name: "Stealth Gray", label: "스텔스 그레이", hex: "#333938", accent: "#747c79" },
+  { name: "Quicksilver", label: "퀵실버", hex: "#b8bcc0", accent: "#f4f5f5" }
+];
+
+const vehicleViewOptions = [
+  { value: "front", label: "Front" },
+  { value: "front45", label: "Front 45" },
+  { value: "side", label: "Side" },
+  { value: "rear45", label: "Rear 45" },
+  { value: "rear", label: "Rear" }
+];
+
+const ppfPartOptions = [
+  { key: "hood", label: "후드", price: 220000 },
+  { key: "front_bumper", label: "프론트 범퍼", price: 280000 },
+  { key: "rear_bumper", label: "리어 범퍼", price: 240000 },
+  { key: "front_fender", label: "프론트 휀더", price: 180000 },
+  { key: "rear_fender", label: "리어 휀더", price: 180000 },
+  { key: "front_door", label: "프론트 도어", price: 220000 },
+  { key: "rear_door", label: "리어 도어", price: 220000 },
+  { key: "mirror", label: "사이드미러", price: 90000 },
+  { key: "roof", label: "루프", price: 260000 },
+  { key: "trunk", label: "트렁크", price: 180000 },
+  { key: "headlight", label: "헤드라이트", price: 120000 },
+  { key: "pillar", label: "필러", price: 90000 },
+  { key: "door_cup", label: "도어컵", price: 60000 },
+  { key: "door_edge", label: "도어엣지", price: 60000 },
+  { key: "full_body", label: "전체 시공", price: 2500000, full: true }
+];
+
+const consultationStatusLabels = {
+  saved: "상담저장",
+  quote: "견적완료",
+  reservation_ready: "예약 전환 대기"
+};
+
 const mockDealers = [
   { dealer_code: "D001", dealer_name: "서울 총판", region: "서울" }
 ];
@@ -235,6 +287,15 @@ function createMockProducts() {
   products[3].product_name = "카본 틴팅 스모크 15%";
   products[3].sku = "TN-SM-015";
   return products;
+}
+
+function createMockVehicles() {
+  return teslaVehicleSeed.map((vehicle) => ({
+    ...vehicle,
+    is_active: true,
+    created_at: nowText(),
+    updated_at: nowText()
+  }));
 }
 
 function createMockAccounts() {
@@ -390,9 +451,23 @@ const state = {
   retailSales: [],
   reservations: [],
   certificates: [],
+  vehicles: createMockVehicles(),
+  consultations: [],
   labelCalibration: defaultLabelCalibration(),
   selectedColor: "전체",
   selectedSku: mockProducts[0].sku,
+  consultation: {
+    vehicleId: "tesla-model3-highland",
+    view: "front45",
+    color: "Pearl White",
+    renderMode: "image",
+    tintSku: "TN-CH-035",
+    ppfSku: "PPF-CL-150",
+    ppfParts: ["hood", "front_bumper"],
+    customerName: "",
+    customerPhone: "",
+    memo: ""
+  },
   filters: {
     inventoryQuery: "",
     inventoryScope: "mine",
@@ -410,7 +485,8 @@ const state = {
     salesDate: dateInputValue(),
     salesMonth: monthInputValue(),
     certificateQuery: "",
-    certificateDealerCode: "전체"
+    certificateDealerCode: "전체",
+    consultationQuery: ""
   },
   forms: {
     loginRole: "dealer",
@@ -469,6 +545,17 @@ const state = {
     productRetailPrice: defaultRetailPrice,
     productPurchasePrice: defaultPurchasePrice,
     productIsActive: true,
+    vehicleId: "",
+    vehicleBrand: "Tesla",
+    vehicleModelName: "",
+    vehicleGenerationName: "",
+    vehicleBodyCode: "",
+    vehicleModelYear: "",
+    vehicleType: "sedan",
+    vehicleDefaultColor: "Pearl White",
+    vehicleGlbFileUrl: "",
+    vehicleImageModeEnabled: true,
+    vehicleThreeDEnabled: false,
     resetPassword: ""
   },
   tempPasswords: {},
@@ -494,6 +581,15 @@ function initialScreenFromUrl() {
   return window.location.pathname === "/verify" || new URLSearchParams(window.location.search).get("screen") === "verify"
     ? "verify"
     : "login";
+}
+
+function requestedScreenFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get("screen");
+  if (requested === "consultation") return "consultation";
+  const path = window.location.pathname.replace(/\/index\.html$/, "");
+  if (path === "/consultation") return "consultation";
+  return "";
 }
 
 function initFromUrl() {
@@ -525,6 +621,8 @@ function render() {
       ${renderSales()}
       ${renderOrderCreate()}
       ${renderReservations()}
+      ${renderConsultation()}
+      ${renderVehicleAdmin()}
       ${renderCertificates()}
       ${renderDealerLinks()}
       ${renderNotifications()}
@@ -742,6 +840,7 @@ function renderAdminDashboard() {
           <button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>
           <button class="secondary-button" type="button" data-nav="sales">매출현황</button>
           <button class="secondary-button" type="button" data-nav="certificates">정품인증서</button>
+          <button class="primary-button" type="button" data-nav="consultation">상담 시뮬레이터</button>
           <button class="primary-button" type="button" data-nav="dealers">대리점 계정 관리</button>
           <button class="secondary-button" type="button" data-nav="links">QR/카카오톡 안내문</button>
           <button class="secondary-button" type="button" data-nav="labelSettings">송장출력 설정</button>
@@ -798,6 +897,14 @@ function renderAdminDashboard() {
             <button class="quick-card" type="button" data-nav="certificates">
               <strong>정품인증서 관리</strong>
               <span>인증번호 검색, 발급 내역 확인, 재인쇄</span>
+            </button>
+            <button class="quick-card" type="button" data-nav="consultation">
+              <strong>상담 시뮬레이터</strong>
+              <span>차량 색상, 틴팅, PPF 부위별 상담 화면</span>
+            </button>
+            <button class="quick-card" type="button" data-nav="vehicleAdmin">
+              <strong>차량/3D 관리</strong>
+              <span>Tesla 이미지, GLB, Mesh 매핑 확장 관리</span>
             </button>
             <button class="quick-card" type="button" data-nav="dealers">
               <strong>계정관리</strong>
@@ -2043,6 +2150,398 @@ function renderReservations() {
   `;
 }
 
+function renderConsultation() {
+  if (!state.session) return "";
+  const vehicle = selectedConsultationVehicle();
+  const quote = consultationQuote();
+  const color = vehicleColorByName(state.consultation.color);
+  const canUse3d = toBool(vehicle?.three_d_enabled) && String(vehicle?.glb_file_url || "").trim();
+  const mode = state.consultation.renderMode === "3d" && canUse3d ? "3d" : "image";
+  const recent = visibleConsultations().slice(0, 4);
+  return `
+    <main class="screen ${state.screen === "consultation" ? "active consultation-screen" : ""}" data-screen="consultation">
+      <section class="page-head consultation-head">
+        <p class="eyebrow">${state.session.role === "admin" ? "관리자 상담 도구" : escapeHtml(currentDealerName())}</p>
+        <h1>틴팅 및 PPF 상담 시뮬레이터</h1>
+        <p class="lead">차량 색상, 틴팅 농도, PPF 시공 부위를 선택하면 태블릿 상담 화면에서 즉시 시공 느낌과 견적을 확인합니다.</p>
+        <div class="page-actions">
+          ${state.session.role === "admin" ? `<button class="secondary-button" type="button" data-nav="vehicleAdmin">차량/3D 관리</button>` : ""}
+          <button class="secondary-button" type="button" data-action="refresh">제품/재고 새로고침</button>
+        </div>
+      </section>
+
+      <section class="consultation-shell">
+        <article class="panel consultation-viewer-panel">
+          <div class="consultation-viewer-head">
+            <div>
+              <span class="eyebrow">Tesla Showroom</span>
+              <h2>${escapeHtml(vehicleDisplayName(vehicle))}</h2>
+              <p>${escapeHtml(color.label)} · ${mode === "3d" ? "3D GLB 모드" : "2.5D 이미지/SVG 모드"}</p>
+            </div>
+            <div class="consultation-mode-toggle">
+              <button type="button" class="${mode === "image" ? "active" : ""}" data-consultation-mode="image">2.5D</button>
+              <button type="button" class="${mode === "3d" ? "active" : ""}" data-consultation-mode="3d" ${canUse3d ? "" : "disabled"}>3D</button>
+            </div>
+          </div>
+          ${mode === "3d" ? renderConsultation3dSlot(vehicle) : renderConsultationVehicleStage(vehicle)}
+          <div class="consultation-view-tabs">
+            ${vehicleViewOptions.map((view) => `<button type="button" class="${state.consultation.view === view.value ? "active" : ""}" data-consultation-view="${view.value}">${escapeHtml(view.label)}</button>`).join("")}
+          </div>
+          <div class="consultation-bottom-actions">
+            <button type="button" class="secondary-button" data-action="downloadConsultationSnapshot">Screenshot 저장</button>
+            <button type="button" class="primary-button" data-action="saveConsultation">상담 저장</button>
+            <button type="button" class="secondary-button" data-action="consultationFutureReservation">예약 생성</button>
+            <button type="button" class="secondary-button" data-action="consultationFutureCertificate">정품인증 생성</button>
+          </div>
+        </article>
+
+        <aside class="panel consultation-control-panel">
+          ${renderConsultationVehicleControls(vehicle)}
+          ${renderConsultationColorControls()}
+          ${renderConsultationProductControls()}
+          ${renderConsultationPartControls()}
+          ${renderConsultationCustomerForm()}
+          ${renderConsultationQuotePanel(quote)}
+        </aside>
+      </section>
+
+      <section class="panel history-panel consultation-history">
+        <div class="panel-head-row">
+          <h3>최근 상담</h3>
+          <input class="search-input compact-search" id="consultationQuery" type="search" placeholder="고객명, 차량, 제품 검색" value="${escapeAttr(state.filters.consultationQuery)}" />
+        </div>
+        <div class="consultation-history-list" id="consultationRows">
+          ${recent.map(renderConsultationHistoryCard).join("") || `<div class="empty">저장된 상담 내역이 없습니다.</div>`}
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderConsultationVehicleStage(vehicle) {
+  const color = vehicleColorByName(state.consultation.color);
+  const tint = selectedConsultationTintProduct();
+  const tintOpacity = consultationTintOpacity(tint);
+  const ppfProduct = selectedConsultationPpfProduct();
+  const ppfTone = ppfProduct && /매트|matte/i.test(ppfProduct.product_name || "") ? "matte" : /카본|carbon/i.test(ppfProduct?.product_name || "") ? "carbon" : "gloss";
+  return `
+    <div class="consultation-stage" data-view="${escapeAttr(state.consultation.view)}">
+      <div class="consultation-stage-bg"></div>
+      <svg class="consultation-car-svg" viewBox="0 0 980 470" role="img" aria-label="${escapeAttr(vehicleDisplayName(vehicle))} 상담 이미지">
+        <defs>
+          <linearGradient id="carBodyShine" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="${escapeAttr(color.accent)}" stop-opacity="0.95" />
+            <stop offset="45%" stop-color="${escapeAttr(color.hex)}" stop-opacity="1" />
+            <stop offset="100%" stop-color="#060707" stop-opacity="0.48" />
+          </linearGradient>
+          <linearGradient id="glassTintGradient" x1="0" x2="1">
+            <stop offset="0%" stop-color="#0c1115" stop-opacity="${tintOpacity}" />
+            <stop offset="100%" stop-color="#23323a" stop-opacity="${Math.max(0.18, tintOpacity - 0.12)}" />
+          </linearGradient>
+          <pattern id="carbonPattern" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+            <rect width="16" height="16" fill="rgba(255,255,255,0.04)" />
+            <path d="M0 0H16M0 8H16" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2" />
+          </pattern>
+          <filter id="softVehicleShadow" x="-20%" y="-30%" width="140%" height="160%">
+            <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.42" />
+          </filter>
+        </defs>
+        <ellipse cx="490" cy="392" rx="395" ry="42" fill="#000" opacity="0.35" />
+        <g filter="url(#softVehicleShadow)" class="vehicle-body-group">
+          <path class="consult-body" d="M119 276C146 215 234 190 313 179C357 128 440 98 571 108C663 116 728 155 773 204C844 209 893 238 913 287C926 318 914 345 882 353H130C91 342 90 310 119 276Z" fill="url(#carBodyShine)" />
+          <path class="consult-hood" d="M127 273C185 222 260 203 327 197L384 268L268 292L132 292Z" fill="${escapeAttr(color.hex)}" opacity="0.72" />
+          <path class="consult-roof" d="M352 184C397 132 470 117 564 126C633 132 690 164 731 210L623 217L397 212Z" fill="${escapeAttr(color.hex)}" opacity="0.82" />
+          <path class="consult-window" d="M385 203C423 152 488 140 559 146C618 151 668 176 702 211L616 215L414 210Z" fill="url(#glassTintGradient)" />
+          <path class="consult-window" d="M274 211C302 198 333 191 365 188L399 212L356 260L254 269Z" fill="url(#glassTintGradient)" opacity="0.88" />
+          <path class="consult-window" d="M707 214L766 220C795 227 819 240 835 260L736 263L621 217Z" fill="url(#glassTintGradient)" opacity="0.82" />
+          <path class="consult-door" d="M397 217L617 219L684 344H333L354 264Z" fill="${escapeAttr(color.hex)}" opacity="0.48" />
+          <path class="consult-trunk" d="M686 234C765 230 851 251 896 291L876 337L697 342L646 232Z" fill="${escapeAttr(color.hex)}" opacity="0.68" />
+          <path class="consult-bumper" d="M104 292L244 293L237 346H125C88 336 83 315 104 292Z" fill="#111415" opacity="0.55" />
+          <path class="consult-bumper" d="M849 287C898 295 925 318 891 348H733L732 294Z" fill="#111415" opacity="0.55" />
+          <circle cx="260" cy="347" r="54" fill="#111" />
+          <circle cx="260" cy="347" r="28" fill="#444" />
+          <circle cx="744" cy="347" r="54" fill="#111" />
+          <circle cx="744" cy="347" r="28" fill="#444" />
+          <path d="M163 292H877" stroke="#fff" stroke-opacity="0.22" stroke-width="2" />
+          <path d="M410 214L390 344M618 218L670 344" stroke="#080a0a" stroke-opacity="0.38" stroke-width="4" />
+          ${renderPpfSvgOverlays(ppfTone)}
+        </g>
+      </svg>
+      <div class="consultation-stage-caption">
+        <strong>${escapeHtml(vehicleDisplayName(vehicle))}</strong>
+        <span>${escapeHtml(selectedConsultationSummary())}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderPpfSvgOverlays(ppfTone) {
+  const parts = new Set(state.consultation.ppfParts || []);
+  const all = parts.has("full_body");
+  const fill = ppfTone === "carbon" ? "url(#carbonPattern)" : ppfTone === "matte" ? "rgba(255,255,255,0.20)" : "rgba(255,211,118,0.20)";
+  const stroke = ppfTone === "matte" ? "#d9d5ca" : "#d8b05a";
+  const overlays = [
+    ["hood", "M134 275C191 228 261 208 330 200L384 268L268 292L132 292Z"],
+    ["front_bumper", "M99 292L246 292L239 346H126C89 337 82 316 99 292Z"],
+    ["rear_bumper", "M831 287C889 292 928 318 891 348H735L732 295Z"],
+    ["front_fender", "M244 292L338 273L330 343H302C296 312 281 294 244 292Z"],
+    ["rear_fender", "M677 343L690 270L760 281C730 291 713 313 706 343Z"],
+    ["front_door", "M350 266L397 218L504 218L508 344H331Z"],
+    ["rear_door", "M507 218L617 219L681 344H509Z"],
+    ["mirror", "M348 214L383 211L372 227L342 229Z"],
+    ["roof", "M352 184C397 132 470 117 564 126C633 132 690 164 731 210L623 217L397 212Z"],
+    ["trunk", "M686 234C765 230 851 251 896 291L876 337L697 342L646 232Z"],
+    ["headlight", "M869 286L906 295L886 306L850 300Z"],
+    ["pillar", "M397 211L421 209L400 264L375 265Z"],
+    ["door_cup", "M457 262H492M574 262H609"],
+    ["door_edge", "M506 220V343M621 222L675 342"]
+  ];
+  return overlays
+    .filter(([key]) => all || parts.has(key))
+    .map(([key, path]) => {
+      const lineOnly = key === "door_cup" || key === "door_edge";
+      return lineOnly
+        ? `<path class="ppf-overlay" d="${path}" fill="none" stroke="${stroke}" stroke-width="8" stroke-linecap="round" opacity="0.95" />`
+        : `<path class="ppf-overlay" d="${path}" fill="${fill}" stroke="${stroke}" stroke-width="4" stroke-dasharray="10 8" opacity="0.9" />`;
+    })
+    .join("");
+}
+
+function renderConsultation3dSlot(vehicle) {
+  return `
+    <div class="consultation-stage consultation-3d-stage">
+      <div class="consultation-orbit-grid"></div>
+      <div class="consultation-3d-copy">
+        <span class="badge warn">GLB 확장 모드</span>
+        <h2>${escapeHtml(vehicleDisplayName(vehicle))}</h2>
+        <p>GLB 파일이 등록되면 이 영역에서 Orbit/Zoom/Front/Side/Rear 뷰어로 확장됩니다.</p>
+        <code>${escapeHtml(vehicle?.glb_file_url || "/public/models/tesla/*.glb")}</code>
+      </div>
+    </div>
+  `;
+}
+
+function renderConsultationVehicleControls(vehicle) {
+  const models = consultationVehicleModels();
+  const generations = consultationVehicleGenerations(vehicle?.model_name);
+  return `
+    <section class="consultation-control-section">
+      <div class="control-section-head">
+        <span class="eyebrow">01 Vehicle</span>
+        <strong>차량 선택</strong>
+      </div>
+      <div class="consultation-pill-row">
+        <button type="button" class="active" disabled>Tesla</button>
+      </div>
+      <div class="consultation-pill-row">
+        ${models.map((model) => `<button type="button" class="${vehicle?.model_name === model ? "active" : ""}" data-consultation-model="${escapeAttr(model)}">${escapeHtml(model)}</button>`).join("")}
+      </div>
+      <div class="consultation-pill-row">
+        ${generations.map((item) => `<button type="button" class="${vehicle?.id === item.id ? "active" : ""}" data-consultation-vehicle="${escapeAttr(item.id)}">${escapeHtml(item.generation_name)}</button>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderConsultationColorControls() {
+  return `
+    <section class="consultation-control-section">
+      <div class="control-section-head">
+        <span class="eyebrow">02 Color</span>
+        <strong>차량 색상</strong>
+      </div>
+      <div class="consultation-color-grid">
+        ${vehicleColorOptions.map((color) => `
+          <button type="button" class="${state.consultation.color === color.name ? "active" : ""}" data-consultation-color="${escapeAttr(color.name)}">
+            <span style="background:${escapeAttr(color.hex)}"></span>
+            ${escapeHtml(color.label)}
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderConsultationProductControls() {
+  const tintProducts = consultationTintProducts().slice(0, 5);
+  const ppfProducts = consultationPpfProducts().slice(0, 5);
+  return `
+    <section class="consultation-control-section">
+      <div class="control-section-head">
+        <span class="eyebrow">03 Film</span>
+        <strong>틴팅 제품</strong>
+      </div>
+      <div class="consultation-product-list">
+        ${tintProducts.map((product) => renderConsultationProductChoice(product, "tint")).join("") || `<div class="empty">활성 틴팅 제품이 없습니다.</div>`}
+      </div>
+    </section>
+    <section class="consultation-control-section">
+      <div class="control-section-head">
+        <span class="eyebrow">04 PPF</span>
+        <strong>PPF 제품</strong>
+      </div>
+      <div class="consultation-product-list">
+        ${ppfProducts.map((product) => renderConsultationProductChoice(product, "ppf")).join("") || `<div class="empty">활성 PPF 제품이 없습니다.</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderConsultationProductChoice(product, type) {
+  const currentSku = type === "tint" ? selectedConsultationTintProduct()?.sku : selectedConsultationPpfProduct()?.sku;
+  const selected = currentSku === product.sku;
+  const stock = consultationProductStock(product);
+  return `
+    <button type="button" class="consultation-product-choice ${selected ? "active" : ""}" data-consultation-product="${escapeAttr(product.sku)}" data-consultation-product-type="${type}" ${stock.disabled ? "disabled" : ""}>
+      <span>
+        <strong>${escapeHtml(product.product_name)}</strong>
+        <small>${escapeHtml(product.sku)} · ${escapeHtml(stock.label)}</small>
+      </span>
+      <em>${money(consultationProductPrice(product, type))}</em>
+    </button>
+  `;
+}
+
+function renderConsultationPartControls() {
+  const selected = new Set(state.consultation.ppfParts || []);
+  return `
+    <section class="consultation-control-section">
+      <div class="control-section-head">
+        <span class="eyebrow">05 Area</span>
+        <strong>PPF 부위 선택</strong>
+      </div>
+      <div class="consultation-part-grid">
+        ${ppfPartOptions.map((part) => `
+          <button type="button" class="${selected.has(part.key) ? "active" : ""}" data-consultation-part="${escapeAttr(part.key)}">
+            <span>${escapeHtml(part.label)}</span>
+            <small>${money(part.price)}</small>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderConsultationCustomerForm() {
+  return `
+    <section class="consultation-control-section">
+      <div class="control-section-head">
+        <span class="eyebrow">06 Customer</span>
+        <strong>상담 저장 정보</strong>
+      </div>
+      <div class="form-grid">
+        <label class="field">
+          <span>고객명</span>
+          <input id="consultationCustomerName" type="text" value="${escapeAttr(state.consultation.customerName)}" placeholder="예: 홍길동" />
+        </label>
+        <label class="field">
+          <span>연락처</span>
+          <input id="consultationCustomerPhone" type="tel" inputmode="numeric" maxlength="13" value="${escapeAttr(state.consultation.customerPhone)}" placeholder="예: 010-0000-0000" />
+        </label>
+        <label class="field">
+          <span>상담 메모</span>
+          <textarea id="consultationMemo" placeholder="희망 시공일, 차종 특이사항 등">${escapeHtml(state.consultation.memo)}</textarea>
+        </label>
+      </div>
+    </section>
+  `;
+}
+
+function renderConsultationQuotePanel(quote) {
+  return `
+    <section class="consultation-quote-panel">
+      <div>
+        <span class="eyebrow">Live Quote</span>
+        <strong>${money(quote.total)}</strong>
+        <small>${quote.items.length}개 선택 항목 기준</small>
+      </div>
+      <dl>
+        ${quote.items.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd>${money(item.amount)}</dd></div>`).join("") || `<div><dt>선택 항목</dt><dd>없음</dd></div>`}
+      </dl>
+    </section>
+  `;
+}
+
+function renderConsultationHistoryCard(row) {
+  return `
+    <article class="consultation-history-card">
+      <div>
+        <span class="badge">${escapeHtml(consultationStatusLabels[row.status] || row.status || "상담")}</span>
+        <h3>${escapeHtml(row.customer_name || "고객명 미입력")}</h3>
+        <p class="product-meta">${escapeHtml(row.vehicle_model || "-")} · ${escapeHtml(row.vehicle_color || "-")}</p>
+        <p class="product-meta">${escapeHtml(row.dealer_name || row.dealer_code || "-")} · ${escapeHtml(row.created_by_login_id || "담당자 미기록")} · ${escapeHtml(row.created_at || "-")}</p>
+      </div>
+      <strong>${money(Number(row.quote_total || 0))}</strong>
+    </article>
+  `;
+}
+
+function renderVehicleAdmin() {
+  if (state.session?.role !== "admin") return "";
+  const vehicles = activeVehicles();
+  const selected = selectedVehicleAdminRecord();
+  return `
+    <main class="screen ${state.screen === "vehicleAdmin" ? "active" : ""}" data-screen="vehicleAdmin">
+      <section class="page-head">
+        <p class="eyebrow">상담 시뮬레이터 관리</p>
+        <h1>차량/3D 관리</h1>
+        <p class="lead">차량 이미지, GLB 파일 경로, 3D Mesh 매핑을 상담 시뮬레이터에서 사용할 수 있도록 준비합니다.</p>
+        <div class="page-actions">
+          <button class="primary-button" type="button" data-nav="consultation">상담 화면 보기</button>
+          <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
+        </div>
+      </section>
+      <section class="work-layout vehicle-admin-layout">
+        <div class="panel list-panel">
+          <h3>등록 차량</h3>
+          <div class="vehicle-admin-list">
+            ${vehicles.map(renderVehicleAdminRow).join("") || `<div class="empty">등록된 차량이 없습니다.</div>`}
+          </div>
+        </div>
+        <div class="panel form-panel">
+          <h3>${selected ? "차량 정보 수정" : "차량 등록"}</h3>
+          <div class="form-grid">
+            <label class="field"><span>차량 ID</span><input id="vehicleId" type="text" value="${escapeAttr(state.forms.vehicleId)}" placeholder="예: tesla-model3-highland" /></label>
+            <div class="two-col">
+              <label class="field"><span>브랜드</span><input id="vehicleBrand" type="text" value="${escapeAttr(state.forms.vehicleBrand)}" /></label>
+              <label class="field"><span>모델명</span><input id="vehicleModelName" type="text" value="${escapeAttr(state.forms.vehicleModelName)}" placeholder="Model 3" /></label>
+            </div>
+            <div class="two-col">
+              <label class="field"><span>세부 모델</span><input id="vehicleGenerationName" type="text" value="${escapeAttr(state.forms.vehicleGenerationName)}" placeholder="Highland" /></label>
+              <label class="field"><span>바디 코드</span><input id="vehicleBodyCode" type="text" value="${escapeAttr(state.forms.vehicleBodyCode)}" placeholder="M3-H" /></label>
+            </div>
+            <div class="two-col">
+              <label class="field"><span>연식</span><input id="vehicleModelYear" type="text" value="${escapeAttr(state.forms.vehicleModelYear)}" placeholder="2024-" /></label>
+              <label class="field"><span>차량 타입</span><input id="vehicleType" type="text" value="${escapeAttr(state.forms.vehicleType)}" placeholder="sedan" /></label>
+            </div>
+            <label class="field"><span>기본 색상</span><input id="vehicleDefaultColor" type="text" value="${escapeAttr(state.forms.vehicleDefaultColor)}" placeholder="Pearl White" /></label>
+            <label class="field"><span>GLB 파일 경로</span><input id="vehicleGlbFileUrl" type="text" value="${escapeAttr(state.forms.vehicleGlbFileUrl)}" placeholder="/models/tesla/model3-highland.glb" /></label>
+            <label class="checkbox-row"><input id="vehicleImageModeEnabled" type="checkbox" ${toBool(state.forms.vehicleImageModeEnabled) ? "checked" : ""} /> 2.5D 이미지/SVG 모드 사용</label>
+            <label class="checkbox-row"><input id="vehicleThreeDEnabled" type="checkbox" ${toBool(state.forms.vehicleThreeDEnabled) ? "checked" : ""} /> 3D GLB 모드 사용</label>
+            <button type="button" class="primary-button" data-action="saveVehicle">차량 저장</button>
+          </div>
+          <div class="vehicle-mesh-help">
+            <h4>권장 Mesh 이름</h4>
+            <p>body, hood, front_bumper, rear_bumper, front_door_left/right, rear_door_left/right, windshield_front, window_front_left/right, windshield_rear, sunroof 등을 GLB에서 사용하면 향후 3D 매핑이 쉬워집니다.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderVehicleAdminRow(vehicle) {
+  return `
+    <button type="button" class="vehicle-admin-row ${state.forms.vehicleId === vehicle.id ? "active" : ""}" data-edit-vehicle="${escapeAttr(vehicle.id)}">
+      <span>
+        <strong>${escapeHtml(vehicleDisplayName(vehicle))}</strong>
+        <small>${escapeHtml(vehicle.id)} · ${toBool(vehicle.three_d_enabled) ? "3D 사용" : "2.5D 우선"}</small>
+      </span>
+      <em>${escapeHtml(vehicle.body_code || vehicle.model_year || "")}</em>
+    </button>
+  `;
+}
+
 function renderCertificates() {
   if (!state.session) return "";
   const rows = visibleCertificates();
@@ -2656,6 +3155,8 @@ function renderBottomNav() {
         ["productManage", "제품"],
         ["orders", "발주"],
         ["sales", "매출"],
+        ["consultation", "상담"],
+        ["vehicleAdmin", "차량"],
         ["certificates", "인증서"],
         ["dealers", "대리점"],
         ["dealerInfo", "정보"],
@@ -2669,6 +3170,7 @@ function renderBottomNav() {
         ["orderCreate", "발주신청"],
         ["orders", "내 발주"],
         ["reservations", "예약"],
+        ["consultation", "상담"],
         ["certificates", "인증서"],
         ["dealers", "담당자"],
         ["dealerInfo", "대리점 정보"],
@@ -2747,6 +3249,9 @@ function bindEvents() {
     refreshReservationStockPanel();
   });
   bindInput("reservationMemo", (value) => (state.forms.reservationMemo = value));
+  bindInput("consultationCustomerName", (value) => (state.consultation.customerName = value));
+  bindPhoneInput("consultationCustomerPhone", (value) => (state.consultation.customerPhone = value));
+  bindInput("consultationMemo", (value) => (state.consultation.memo = value));
   bindInput("verifySerial", (value) => {
     state.forms.verifySerial = normalizeCertificateNumberInput(value);
     state.verification.error = "";
@@ -2757,6 +3262,15 @@ function bindEvents() {
   bindInput("productUnit", (value) => (state.forms.productUnit = value));
   bindInput("productRetailPrice", (value) => (state.forms.productRetailPrice = Number(value || 0)));
   bindInput("productPurchasePrice", (value) => (state.forms.productPurchasePrice = Number(value || 0)));
+  bindInput("vehicleId", (value) => (state.forms.vehicleId = value.trim()));
+  bindInput("vehicleBrand", (value) => (state.forms.vehicleBrand = value));
+  bindInput("vehicleModelName", (value) => (state.forms.vehicleModelName = value));
+  bindInput("vehicleGenerationName", (value) => (state.forms.vehicleGenerationName = value));
+  bindInput("vehicleBodyCode", (value) => (state.forms.vehicleBodyCode = value));
+  bindInput("vehicleModelYear", (value) => (state.forms.vehicleModelYear = value));
+  bindInput("vehicleType", (value) => (state.forms.vehicleType = value));
+  bindInput("vehicleDefaultColor", (value) => (state.forms.vehicleDefaultColor = value));
+  bindInput("vehicleGlbFileUrl", (value) => (state.forms.vehicleGlbFileUrl = value));
   labelCalibrationFields.forEach((field) => {
     bindInput(`labelCal_${field.id}`, (value) => {
       state.labelCalibration[field.id] = calibrationNumber(value, field.defaultValue);
@@ -2812,6 +3326,14 @@ function bindEvents() {
     state.forms.productIsActive = event.target.checked;
   });
 
+  document.querySelector("#vehicleImageModeEnabled")?.addEventListener("change", (event) => {
+    state.forms.vehicleImageModeEnabled = event.target.checked;
+  });
+
+  document.querySelector("#vehicleThreeDEnabled")?.addEventListener("change", (event) => {
+    state.forms.vehicleThreeDEnabled = event.target.checked;
+  });
+
   bindSearchInput("inventoryQuery", (value) => {
     state.filters.inventoryQuery = value;
     state.filters.inventoryPage = 1;
@@ -2819,6 +3341,7 @@ function bindEvents() {
   bindSearchInput("orderQuery", (value) => (state.filters.orderQuery = value));
   bindSearchInput("salesQuery", (value) => (state.filters.salesQuery = value));
   bindSearchInput("certificateQuery", (value) => (state.filters.certificateQuery = value));
+  bindSearchInput("consultationQuery", (value) => (state.filters.consultationQuery = value));
 
   document.querySelector("#orderStatus")?.addEventListener("change", (event) => {
     state.filters.orderStatus = event.target.value;
@@ -3056,6 +3579,66 @@ function bindDynamicListEvents(root) {
       render();
     });
   });
+
+  root.querySelectorAll("[data-consultation-model]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectConsultationModel(button.dataset.consultationModel);
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-consultation-vehicle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.consultation.vehicleId = button.dataset.consultationVehicle;
+      const vehicle = selectedConsultationVehicle();
+      state.consultation.color = vehicle?.default_color || state.consultation.color;
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-consultation-color]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.consultation.color = button.dataset.consultationColor;
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-consultation-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.consultation.view = button.dataset.consultationView;
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-consultation-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.consultation.renderMode = button.dataset.consultationMode;
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-consultation-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const type = button.dataset.consultationProductType;
+      if (type === "tint") state.consultation.tintSku = button.dataset.consultationProduct;
+      if (type === "ppf") state.consultation.ppfSku = button.dataset.consultationProduct;
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-consultation-part]").forEach((button) => {
+    button.addEventListener("click", () => {
+      toggleConsultationPpfPart(button.dataset.consultationPart);
+      render();
+    });
+  });
+
+  root.querySelectorAll("[data-edit-vehicle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectVehicleForEdit(button.dataset.editVehicle);
+      render();
+    });
+  });
 }
 
 async function runWithButtonBusy(button, task) {
@@ -3146,6 +3729,11 @@ function refreshActiveSearchResults() {
 
   if (state.screen === "certificates") {
     replaceHtml("#certificateList", visibleCertificates().map(renderCertificateCard).join("") || `<div class="empty">발급된 정품인증서가 없습니다.</div>`);
+    return;
+  }
+
+  if (state.screen === "consultation") {
+    replaceHtml("#consultationRows", visibleConsultations().slice(0, 4).map(renderConsultationHistoryCard).join("") || `<div class="empty">저장된 상담 내역이 없습니다.</div>`);
   }
 }
 
@@ -3340,9 +3928,14 @@ async function handleAction(action, button) {
   if (action === "createReservation") return createReservation();
   if (action === "completeReservation") return completeReservation(button.dataset.reservationId);
   if (action === "printCertificate") return printCertificate(button.dataset.certificateId);
+  if (action === "saveConsultation") return saveConsultation();
+  if (action === "downloadConsultationSnapshot") return downloadConsultationSnapshot();
+  if (action === "consultationFutureReservation") return consultationFutureReservation();
+  if (action === "consultationFutureCertificate") return consultationFutureCertificate();
   if (action === "cancelOrder") return cancelOrder(button.dataset.orderId);
   if (action === "saveInventory") return saveInventory();
   if (action === "saveProduct") return saveProduct();
+  if (action === "saveVehicle") return saveVehicle();
   if (action === "createAccount") return createDealerAccount();
   if (action === "resetPassword") return resetDealerPassword(button.dataset.loginId);
   if (action === "updateDealerDiscount") return updateDealerDiscount(button.dataset.dealerCode);
@@ -3400,6 +3993,8 @@ function applyRemoteSession(data) {
   if (Array.isArray(data.sales)) state.retailSales = data.sales;
   if (Array.isArray(data.reservations)) state.reservations = data.reservations;
   if (Array.isArray(data.certificates)) state.certificates = data.certificates;
+  if (Array.isArray(data.vehicles)) state.vehicles = data.vehicles.length ? data.vehicles : createMockVehicles();
+  if (Array.isArray(data.consultations)) state.consultations = data.consultations;
   applyLabelSettings(data.label_settings || data.labelSettings);
   syncAppBadgeFromOrders();
 }
@@ -3407,6 +4002,8 @@ function applyRemoteSession(data) {
 function nextScreenAfterLogin() {
   if (needsDealerOnboarding(state.session)) return "onboarding";
   if (toBool(state.session?.is_first_login)) return "passwordChange";
+  const requested = requestedScreenFromUrl();
+  if (requested && canAccessScreen(requested)) return requested;
   return defaultScreen();
 }
 
@@ -3619,10 +4216,11 @@ async function refreshData(showDone = true) {
       window.FilmStockApi.getOrders({}),
       window.FilmStockApi.getSales({}),
       window.FilmStockApi.getReservations({}),
-      window.FilmStockApi.getCertificates({})
+      window.FilmStockApi.getCertificates({}),
+      window.FilmStockApi.getConsultationData({})
     ];
     if (state.session.role === "admin") requests.push(window.FilmStockApi.getLabelSettings().catch(() => null));
-    const [inventoryData, orderData, salesData, reservationData, certificateData, labelData] = await Promise.all(requests);
+    const [inventoryData, orderData, salesData, reservationData, certificateData, consultationData, labelData] = await Promise.all(requests);
     if (Array.isArray(inventoryData?.products)) state.products = inventoryData.products;
     if (Array.isArray(inventoryData?.inventory)) state.inventory = inventoryData.inventory;
     if (Array.isArray(orderData?.orders)) state.orders = orderData.orders;
@@ -3630,6 +4228,8 @@ async function refreshData(showDone = true) {
     if (Array.isArray(salesData?.sales)) state.retailSales = salesData.sales;
     if (Array.isArray(reservationData?.reservations)) state.reservations = reservationData.reservations;
     if (Array.isArray(certificateData?.certificates)) state.certificates = certificateData.certificates;
+    if (Array.isArray(consultationData?.vehicles)) state.vehicles = consultationData.vehicles.length ? consultationData.vehicles : createMockVehicles();
+    if (Array.isArray(consultationData?.consultations)) state.consultations = consultationData.consultations;
     applyLabelSettings(labelData?.label_settings || labelData?.settings);
     if (state.screen === "dealerInfo" && state.session?.role === "dealer") prepareDealerInfoForm();
     syncAppBadgeFromOrders();
@@ -5305,11 +5905,9 @@ function logout() {
 }
 
 function navigate(screen) {
-  if (screen === "links" || screen === "admin" || screen === "productManage" || screen === "sales" || screen === "labelSettings") {
-    if (state.session?.role !== "admin") {
-      showToast("관리자만 접근할 수 있습니다.");
-      return;
-    }
+  if (!canAccessScreen(screen)) {
+    showToast("관리자만 접근할 수 있습니다.");
+    return;
   }
   if (screen === "inventoryManage") {
     ensureInventoryForm();
@@ -5317,12 +5915,20 @@ function navigate(screen) {
   if (screen === "productManage") {
     ensureProductForm();
   }
+  if (screen === "vehicleAdmin") {
+    ensureVehicleForm();
+  }
   if (screen === "dealerInfo" && state.session?.role === "dealer") {
     prepareDealerInfoForm();
   }
   state.screen = screen;
   render();
   scrollTop();
+}
+
+function canAccessScreen(screen) {
+  const adminOnlyScreens = ["links", "admin", "productManage", "sales", "labelSettings", "vehicleAdmin"];
+  return !adminOnlyScreens.includes(screen) || state.session?.role === "admin";
 }
 
 function ensureInventoryForm() {
@@ -5718,6 +6324,340 @@ function dashboardStats() {
     lowStock: inventory.lowStock,
     openOrders: state.orders.filter((order) => order.status === "접수").length
   };
+}
+
+function activeVehicles() {
+  const source = state.vehicles.length ? state.vehicles : createMockVehicles();
+  return source.filter((vehicle) => toBool(vehicle.is_active));
+}
+
+function selectedConsultationVehicle() {
+  const vehicles = activeVehicles();
+  return vehicles.find((vehicle) => vehicle.id === state.consultation.vehicleId) || vehicles[0] || teslaVehicleSeed[0];
+}
+
+function vehicleColorByName(name) {
+  return vehicleColorOptions.find((color) => color.name === name) || vehicleColorOptions[0];
+}
+
+function vehicleDisplayName(vehicle) {
+  if (!vehicle) return "Tesla";
+  return [vehicle.brand, vehicle.model_name, vehicle.generation_name]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function consultationVehicleModels() {
+  return Array.from(new Set(activeVehicles().map((vehicle) => vehicle.model_name).filter(Boolean)));
+}
+
+function consultationVehicleGenerations(modelName) {
+  return activeVehicles().filter((vehicle) => vehicle.model_name === modelName);
+}
+
+function selectConsultationModel(modelName) {
+  const vehicle = consultationVehicleGenerations(modelName)[0];
+  if (!vehicle) return;
+  state.consultation.vehicleId = vehicle.id;
+  state.consultation.color = vehicle.default_color || state.consultation.color;
+}
+
+function productCategoryMatches(product, key) {
+  const category = normalize(product?.category || "");
+  const name = normalize(product?.product_name || "");
+  if (key === "tint") return category.includes("틴팅") || category.includes("tint") || name.includes("틴팅");
+  if (key === "ppf") return category.includes("ppf") || name.includes("ppf");
+  return false;
+}
+
+function consultationTintProducts() {
+  return activeProducts().filter((product) => productCategoryMatches(product, "tint"));
+}
+
+function consultationPpfProducts() {
+  return activeProducts().filter((product) => productCategoryMatches(product, "ppf"));
+}
+
+function selectedConsultationTintProduct() {
+  const products = consultationTintProducts();
+  return products.find((product) => product.sku === state.consultation.tintSku) || products[0] || null;
+}
+
+function selectedConsultationPpfProduct() {
+  const products = consultationPpfProducts();
+  return products.find((product) => product.sku === state.consultation.ppfSku) || products[0] || null;
+}
+
+function parseTintVlt(product) {
+  const match = String(product?.product_name || product?.sku || "").match(/(\d{1,2})\s*%/);
+  if (!match) return 35;
+  return Math.min(80, Math.max(5, Number(match[1])));
+}
+
+function consultationTintOpacity(product) {
+  const vlt = parseTintVlt(product);
+  return Math.min(0.82, Math.max(0.18, 0.9 - vlt / 100));
+}
+
+function consultationProductStock(product) {
+  if (!product) return { qty: 0, label: "재고 없음", disabled: true };
+  const dealerCode = state.session?.role === "dealer" ? state.session.dealer_code : headOfficeCode;
+  const rows = state.inventory.filter((row) => row.sku === product.sku && (row.dealer_code === dealerCode || state.session?.role === "admin"));
+  const qty = rows.reduce((sum, row) => sum + Number(row.stock_qty || 0), 0);
+  if (qty <= 0) return { qty, label: "품절", disabled: true };
+  const safety = Math.max(...rows.map((row) => Number(row.safety_stock || 0)), 0);
+  if (qty <= safety) return { qty, label: `부족 ${roll(qty)}`, disabled: false };
+  return { qty, label: `재고 ${roll(qty)}`, disabled: false };
+}
+
+function consultationProductPrice(product, type) {
+  if (!product) return 0;
+  const dealerCode = state.session?.role === "dealer" ? state.session.dealer_code : headOfficeCode;
+  const base = dealerSalePrice(product, dealerCode);
+  if (type === "tint") return Math.round(base * vehicleQuoteMultiplier(selectedConsultationVehicle()) * 0.8);
+  const name = normalize(product.product_name);
+  const factor = name.includes("매트") || name.includes("matte") ? 1.12 : name.includes("카본") || name.includes("carbon") ? 1.18 : 1;
+  return Math.round(base * 0.12 * factor);
+}
+
+function vehicleQuoteMultiplier(vehicle) {
+  const model = String(vehicle?.model_name || "");
+  if (model.includes("Model X") || model.includes("Cybertruck")) return 1.25;
+  if (model.includes("Model Y") || model.includes("Model S")) return 1.12;
+  return 1;
+}
+
+function selectedPpfPartObjects() {
+  const selected = new Set(state.consultation.ppfParts || []);
+  if (selected.has("full_body")) return ppfPartOptions.filter((part) => part.full);
+  return ppfPartOptions.filter((part) => selected.has(part.key) && !part.full);
+}
+
+function consultationQuote() {
+  const tintProduct = selectedConsultationTintProduct();
+  const ppfProduct = selectedConsultationPpfProduct();
+  const items = [];
+  if (tintProduct) {
+    items.push({
+      label: `틴팅 · ${tintProduct.product_name}`,
+      amount: consultationProductPrice(tintProduct, "tint")
+    });
+  }
+  if (ppfProduct) {
+    const productBase = consultationProductPrice(ppfProduct, "ppf");
+    const partAmount = selectedPpfPartObjects().reduce((sum, part) => sum + part.price, 0);
+    if (partAmount > 0) {
+      items.push({
+        label: `PPF · ${ppfProduct.product_name}`,
+        amount: productBase + partAmount
+      });
+    }
+  }
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  return { items, total };
+}
+
+function toggleConsultationPpfPart(partKey) {
+  const selected = new Set(state.consultation.ppfParts || []);
+  if (partKey === "full_body") {
+    state.consultation.ppfParts = selected.has("full_body") ? [] : ["full_body"];
+    return;
+  }
+  selected.delete("full_body");
+  if (selected.has(partKey)) selected.delete(partKey);
+  else selected.add(partKey);
+  state.consultation.ppfParts = Array.from(selected);
+}
+
+function selectedConsultationSummary() {
+  const tint = selectedConsultationTintProduct();
+  const ppf = selectedConsultationPpfProduct();
+  const parts = selectedPpfPartObjects().map((part) => part.label).join(", ");
+  return [
+    tint ? `틴팅 ${tint.product_name}` : "",
+    ppf && parts ? `PPF ${parts}` : ""
+  ].filter(Boolean).join(" · ") || "제품을 선택해 상담을 시작하세요";
+}
+
+function visibleConsultations() {
+  const query = normalize(state.filters.consultationQuery);
+  return state.consultations
+    .filter((row) => state.session?.role !== "dealer" || sameDealerCode(row.dealer_code, state.session.dealer_code))
+    .filter((row) => {
+      if (!query) return true;
+      return [row.customer_name, row.customer_phone, row.vehicle_model, row.vehicle_color, row.dealer_name, row.created_by_login_id, row.memo, row.selected_tint_products, row.selected_ppf_products, row.selected_ppf_parts]
+        .some((value) => normalize(value).includes(query));
+    })
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+}
+
+function upsertConsultation(row) {
+  if (!row) return;
+  const index = state.consultations.findIndex((item) => item.consultation_id === row.consultation_id);
+  if (index >= 0) state.consultations[index] = { ...state.consultations[index], ...row };
+  else state.consultations.unshift(row);
+}
+
+function consultationPayload() {
+  const vehicle = selectedConsultationVehicle();
+  const tintProduct = selectedConsultationTintProduct();
+  const ppfProduct = selectedConsultationPpfProduct();
+  const quote = consultationQuote();
+  const selectedParts = selectedPpfPartObjects();
+  return {
+    customer_name: state.consultation.customerName.trim(),
+    customer_phone: state.consultation.customerPhone.trim(),
+    vehicle_id: vehicle?.id || "",
+    vehicle_model: vehicleDisplayName(vehicle),
+    vehicle_color: vehicleColorByName(state.consultation.color).label,
+    selected_tint_products: tintProduct ? JSON.stringify([{ sku: tintProduct.sku, product_name: tintProduct.product_name, vlt: parseTintVlt(tintProduct) }]) : "[]",
+    selected_ppf_products: ppfProduct ? JSON.stringify([{ sku: ppfProduct.sku, product_name: ppfProduct.product_name }]) : "[]",
+    selected_ppf_parts: JSON.stringify(selectedParts.map((part) => ({ key: part.key, label: part.label, price: part.price }))),
+    quote_total: quote.total,
+    screenshot_url: "",
+    memo: state.consultation.memo.trim(),
+    status: "saved"
+  };
+}
+
+async function saveConsultation() {
+  if (!state.session) throw new Error("로그인 후 상담을 저장할 수 있습니다.");
+  const payload = consultationPayload();
+  if (!payload.customer_name) throw new Error("고객명을 입력해 주세요.");
+  if (!payload.customer_phone) throw new Error("연락처를 입력해 주세요.");
+  if (payload.quote_total <= 0) throw new Error("틴팅 또는 PPF 제품을 선택해 주세요.");
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.saveConsultation(payload);
+    upsertConsultation(data?.consultation);
+  } else {
+    upsertConsultation({
+      ...payload,
+      consultation_id: `CNS-${compactDateValue()}-${Math.random().toString(16).slice(2, 8).toUpperCase()}`,
+      dealer_code: state.session.dealer_code,
+      dealer_name: state.session.dealer_name,
+      created_by_login_id: state.session.login_id,
+      created_at: nowText(),
+      updated_at: nowText()
+    });
+  }
+  render();
+  showToast("상담 내역을 저장했습니다.");
+}
+
+function downloadConsultationSnapshot() {
+  const vehicle = selectedConsultationVehicle();
+  const quote = consultationQuote();
+  const svg = consultationSnapshotSvg(vehicle, quote);
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `gloc-consultation-${compactDateValue()}.svg`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("상담 스냅샷 SVG를 저장했습니다.");
+}
+
+function consultationSnapshotSvg(vehicle, quote) {
+  const color = vehicleColorByName(state.consultation.color);
+  const title = escapeHtml(vehicleDisplayName(vehicle));
+  const summary = escapeHtml(selectedConsultationSummary());
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <rect width="1600" height="1000" fill="#101211"/>
+  <rect x="80" y="80" width="1440" height="840" rx="36" fill="#1c201e" stroke="#8b6b35"/>
+  <text x="130" y="160" fill="#cf4e42" font-size="34" font-family="Arial, sans-serif" font-weight="700">GLOC CONSULTATION</text>
+  <text x="130" y="230" fill="#fff8ed" font-size="70" font-family="Arial, sans-serif" font-weight="800">${title}</text>
+  <text x="130" y="292" fill="#c8c0b6" font-size="32" font-family="Arial, sans-serif">${escapeHtml(color.label)} · ${summary}</text>
+  <ellipse cx="800" cy="690" rx="480" ry="48" fill="#000" opacity="0.35"/>
+  <path d="M330 590C375 490 510 450 630 435C700 355 825 330 1010 350C1120 365 1215 415 1270 495C1375 505 1440 550 1460 615C1480 680 1430 710 1365 720H350C270 705 275 640 330 590Z" fill="${escapeAttr(color.hex)}" stroke="#ffffff" stroke-opacity="0.22" stroke-width="6"/>
+  <path d="M690 445C760 375 880 365 985 385C1075 402 1140 440 1195 497L1020 505L715 495Z" fill="#111923" opacity="${consultationTintOpacity(selectedConsultationTintProduct())}"/>
+  <circle cx="520" cy="710" r="78" fill="#0a0b0b"/><circle cx="520" cy="710" r="39" fill="#555"/>
+  <circle cx="1180" cy="710" r="78" fill="#0a0b0b"/><circle cx="1180" cy="710" r="39" fill="#555"/>
+  <text x="130" y="835" fill="#fff8ed" font-size="44" font-family="Arial, sans-serif" font-weight="800">견적 합계 ${escapeHtml(money(quote.total))}</text>
+</svg>`;
+}
+
+function consultationFutureReservation() {
+  showToast("상담 저장 후 예약관리와 연결할 수 있도록 확장 슬롯을 준비했습니다.");
+}
+
+function consultationFutureCertificate() {
+  showToast("시공완료 후 정품인증서 자동 생성 흐름과 연결할 수 있도록 구조를 준비했습니다.");
+}
+
+function selectedVehicleAdminRecord() {
+  return activeVehicles().find((vehicle) => vehicle.id === state.forms.vehicleId);
+}
+
+function ensureVehicleForm() {
+  if (!state.forms.vehicleId && activeVehicles()[0]) selectVehicleForEdit(activeVehicles()[0].id);
+}
+
+function selectVehicleForEdit(vehicleId) {
+  const vehicle = activeVehicles().find((item) => item.id === vehicleId);
+  if (!vehicle) return;
+  state.forms.vehicleId = vehicle.id || "";
+  state.forms.vehicleBrand = vehicle.brand || "Tesla";
+  state.forms.vehicleModelName = vehicle.model_name || "";
+  state.forms.vehicleGenerationName = vehicle.generation_name || "";
+  state.forms.vehicleBodyCode = vehicle.body_code || "";
+  state.forms.vehicleModelYear = vehicle.model_year || "";
+  state.forms.vehicleType = vehicle.vehicle_type || "sedan";
+  state.forms.vehicleDefaultColor = vehicle.default_color || "Pearl White";
+  state.forms.vehicleGlbFileUrl = vehicle.glb_file_url || "";
+  state.forms.vehicleImageModeEnabled = toBool(vehicle.image_mode_enabled);
+  state.forms.vehicleThreeDEnabled = toBool(vehicle.three_d_enabled);
+}
+
+function vehiclePayload() {
+  const id = state.forms.vehicleId.trim();
+  if (!id) throw new Error("차량 ID를 입력해 주세요.");
+  if (!state.forms.vehicleModelName.trim()) throw new Error("모델명을 입력해 주세요.");
+  return {
+    id,
+    brand: state.forms.vehicleBrand.trim() || "Tesla",
+    model_name: state.forms.vehicleModelName.trim(),
+    generation_name: state.forms.vehicleGenerationName.trim() || "Current",
+    facelift_type: state.forms.vehicleGenerationName.trim() || "",
+    body_code: state.forms.vehicleBodyCode.trim(),
+    model_year: state.forms.vehicleModelYear.trim(),
+    vehicle_type: state.forms.vehicleType.trim() || "sedan",
+    default_color: state.forms.vehicleDefaultColor.trim() || "Pearl White",
+    thumbnail_url: "",
+    image_mode_enabled: toBool(state.forms.vehicleImageModeEnabled),
+    three_d_enabled: toBool(state.forms.vehicleThreeDEnabled),
+    glb_file_url: state.forms.vehicleGlbFileUrl.trim(),
+    is_active: true
+  };
+}
+
+function upsertVehicle(vehicle) {
+  if (!vehicle) return;
+  const index = state.vehicles.findIndex((item) => item.id === vehicle.id);
+  if (index >= 0) state.vehicles[index] = { ...state.vehicles[index], ...vehicle };
+  else state.vehicles.push(vehicle);
+}
+
+async function saveVehicle() {
+  if (state.session?.role !== "admin") throw new Error("관리자만 차량 정보를 저장할 수 있습니다.");
+  const payload = vehiclePayload();
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.saveVehicle(payload);
+    upsertVehicle(data?.vehicle);
+  } else {
+    upsertVehicle({
+      ...payload,
+      created_at: selectedVehicleAdminRecord()?.created_at || nowText(),
+      updated_at: nowText()
+    });
+  }
+  state.consultation.vehicleId = payload.id;
+  render();
+  showToast("차량 정보를 저장했습니다.");
 }
 
 function selectedProduct() {
