@@ -405,6 +405,14 @@ h3 {
   margin-top: 20px;
 }
 
+.filter-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
 .label-calibration-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1702,6 +1710,28 @@ h3 {
   background: var(--panel);
 }
 
+.certificate-list {
+  display: grid;
+  gap: 10px;
+}
+
+.certificate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.certificate-row h3 {
+  margin-top: 8px;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
 .order-card h3,
 .account-row h3 {
   margin-top: 8px;
@@ -1809,6 +1839,73 @@ h3 {
 
 .shipping-info.shipping-error strong {
   color: var(--red);
+}
+
+.verify-layout {
+  display: grid;
+  min-height: calc(100dvh - 116px);
+  align-items: center;
+  justify-items: center;
+  padding: 18px 0;
+}
+
+.verify-card {
+  width: min(560px, 100%);
+  padding: 24px;
+}
+
+.verify-logo {
+  display: block;
+  width: min(320px, 100%);
+  margin-bottom: 22px;
+}
+
+.verify-result {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.verify-result strong {
+  font-size: 20px;
+}
+
+.verify-result.ok {
+  border-color: rgba(44, 122, 84, 0.55);
+}
+
+.verify-result.warn,
+.verify-result.danger {
+  border-color: rgba(207, 78, 66, 0.6);
+  background: var(--red-soft);
+}
+
+.verify-detail-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.verify-detail-list div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.verify-detail-list dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.verify-detail-list dd {
+  margin: 0;
+  font-weight: 850;
+  overflow-wrap: anywhere;
 }
 
 .dealer-info-panel {
@@ -2261,6 +2358,12 @@ h3 {
   .summary-grid,
   .stats-grid,
   .stock-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-row,
+  .certificate-row,
+  .verify-detail-list div {
     grid-template-columns: 1fr;
   }
 

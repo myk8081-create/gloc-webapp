@@ -9,6 +9,8 @@ const defaultRetailPrice = 1000000;
 const defaultPurchasePrice = 500000;
 const defaultLegacyOrderDiscountRate = 20;
 const inventoryPageSize = 10;
+const certificateRandomChars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const certificateNumberPattern = /^GLOC-[A-Z0-9]{4}-\d{8}-[A-Z0-9]{6}-[A-Z]{1}$/;
 const koreaPostLabelPreviewTemplate = "./templates/korea-post-label-preview.png";
 const koreaPostOverlay = {
   PAGE_WIDTH_MM: 150,
@@ -378,7 +380,7 @@ function createMockOrders(products) {
 const mockProducts = createMockProducts();
 
 const state = {
-  screen: "login",
+  screen: initialScreenFromUrl(),
   dataMode: window.FilmStockApi?.isEnabled() ? "appsScript" : "mock",
   session: null,
   accounts: createMockAccounts(),
@@ -387,6 +389,7 @@ const state = {
   orders: createMockOrders(mockProducts),
   retailSales: [],
   reservations: [],
+  certificates: [],
   labelCalibration: defaultLabelCalibration(),
   selectedColor: "전체",
   selectedSku: mockProducts[0].sku,
@@ -405,7 +408,9 @@ const state = {
     salesDealerCode: "전체",
     salesPeriod: "월별",
     salesDate: dateInputValue(),
-    salesMonth: monthInputValue()
+    salesMonth: monthInputValue(),
+    certificateQuery: "",
+    certificateDealerCode: "전체"
   },
   forms: {
     loginRole: "dealer",
@@ -446,9 +451,12 @@ const state = {
     saleMemo: "",
     reservationCustomerName: "",
     reservationCustomerPhone: "",
+    reservationVehicleNumber: "",
+    reservationVehicleModel: "",
     reservationDate: dateInputValue(),
     reservationQty: 1,
     reservationMemo: "",
+    verifySerial: "",
     labelSize: "post-overlay-150x100",
     labelPreviewBackground: true,
     labelPreviewGuides: false,
@@ -471,12 +479,22 @@ const state = {
     subscribed: false,
     checking: false,
     message: "이 기기에서 발주 알림을 받을 수 있는지 확인 중입니다."
+  },
+  verification: {
+    result: null,
+    error: ""
   }
 };
 
 let searchRefreshTimer = null;
 let accountFormRefreshTimer = null;
 let daumPostcodeLoading = null;
+
+function initialScreenFromUrl() {
+  return window.location.pathname === "/verify" || new URLSearchParams(window.location.search).get("screen") === "verify"
+    ? "verify"
+    : "login";
+}
 
 function initFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -493,6 +511,7 @@ function render() {
   app.innerHTML = `
     <div class="app-shell ${state.session?.role === "admin" ? "admin-shell" : ""}">
       ${renderTopbar()}
+      ${renderPublicVerify()}
       ${renderLogin()}
       ${renderPasswordChange()}
       ${renderOnboarding()}
@@ -506,6 +525,7 @@ function render() {
       ${renderSales()}
       ${renderOrderCreate()}
       ${renderReservations()}
+      ${renderCertificates()}
       ${renderDealerLinks()}
       ${renderNotifications()}
       ${renderLabelSettings()}
@@ -570,6 +590,54 @@ function renderLogin() {
         </section>
       </section>
     </main>
+  `;
+}
+
+function renderPublicVerify() {
+  const result = state.verification.result;
+  const error = state.verification.error;
+  return `
+    <main class="screen verify-screen ${state.screen === "verify" ? "active" : ""}" data-screen="verify">
+      <section class="verify-layout">
+        <section class="panel verify-card">
+          <img class="verify-logo" src="gloc-logo-banner.png" alt="GLOC" />
+          <p class="eyebrow">GLOC AUTHENTICITY</p>
+          <h1>정품 인증 확인</h1>
+          <p class="lead">QR은 인증 페이지 접속용입니다. 인증서에 인쇄된 시리얼번호를 직접 입력해야 정품 여부를 확인할 수 있습니다.</p>
+          <div class="form-grid">
+            <label class="field">
+              <span>시리얼번호</span>
+              <input id="verifySerial" type="text" value="${escapeAttr(state.forms.verifySerial)}" placeholder="인증서에 인쇄된 시리얼번호를 입력하세요" autocomplete="off" />
+            </label>
+            <button type="button" class="primary-button" data-action="verifyCertificate">인증 확인</button>
+          </div>
+          ${error ? `<div class="verify-result danger"><strong>인증 실패</strong><span>${escapeHtml(error)}</span></div>` : ""}
+          ${result ? renderVerificationResult(result) : ""}
+          <div class="page-actions">
+            <button type="button" class="secondary-button" data-nav="login">로그인 화면으로</button>
+          </div>
+        </section>
+      </section>
+    </main>
+  `;
+}
+
+function renderVerificationResult(data) {
+  if (data.result !== "success") {
+    return `<div class="verify-result warn"><strong>${escapeHtml(data.message || "인증 결과")}</strong><span>시리얼번호를 다시 확인해 주세요.</span></div>`;
+  }
+  const certificate = data.certificate || {};
+  return `
+    <div class="verify-result ok">
+      <strong>${escapeHtml(data.message || "GLOC 정품 인증 완료")}</strong>
+      <dl class="verify-detail-list">
+        <div><dt>제품 유형</dt><dd>${escapeHtml(certificate.product_type || "-")}</dd></div>
+        <div><dt>제품명</dt><dd>${escapeHtml(certificate.product_name || "-")}</dd></div>
+        <div><dt>시공일</dt><dd>${escapeHtml(formatDateOnly(certificate.installation_date) || "-")}</dd></div>
+        <div><dt>시공 대리점</dt><dd>${escapeHtml(certificate.dealer_name || "-")}</dd></div>
+        <div><dt>차량번호</dt><dd>${escapeHtml(certificate.vehicle_number_masked || "-")}</dd></div>
+      </dl>
+    </div>
   `;
 }
 
@@ -673,6 +741,7 @@ function renderAdminDashboard() {
           <button class="primary-button" type="button" data-nav="inventoryManage">재고 수정</button>
           <button class="secondary-button" type="button" data-nav="productManage">제품 등록</button>
           <button class="secondary-button" type="button" data-nav="sales">매출현황</button>
+          <button class="secondary-button" type="button" data-nav="certificates">정품인증서</button>
           <button class="primary-button" type="button" data-nav="dealers">대리점 계정 관리</button>
           <button class="secondary-button" type="button" data-nav="links">QR/카카오톡 안내문</button>
           <button class="secondary-button" type="button" data-nav="labelSettings">송장출력 설정</button>
@@ -725,6 +794,10 @@ function renderAdminDashboard() {
             <button class="quick-card" type="button" data-nav="sales">
               <strong>매출현황</strong>
               <span>일별/월별 대리점별 매출과 이익 확인</span>
+            </button>
+            <button class="quick-card" type="button" data-nav="certificates">
+              <strong>정품인증서 관리</strong>
+              <span>인증번호 검색, 발급 내역 확인, 재인쇄</span>
             </button>
             <button class="quick-card" type="button" data-nav="dealers">
               <strong>계정관리</strong>
@@ -1936,6 +2009,14 @@ function renderReservations() {
               <input id="reservationCustomerPhone" type="tel" inputmode="numeric" maxlength="13" value="${escapeAttr(state.forms.reservationCustomerPhone)}" placeholder="예: 010-0000-0000" />
             </label>
             <label class="field">
+              <span>차량번호</span>
+              <input id="reservationVehicleNumber" type="text" value="${escapeAttr(state.forms.reservationVehicleNumber)}" placeholder="예: 12가3456" />
+            </label>
+            <label class="field">
+              <span>차량모델</span>
+              <input id="reservationVehicleModel" type="text" value="${escapeAttr(state.forms.reservationVehicleModel)}" placeholder="예: GV80" />
+            </label>
+            <label class="field">
               <span>예약 날짜</span>
               <input id="reservationDate" type="date" value="${escapeAttr(state.forms.reservationDate || dateInputValue())}" />
             </label>
@@ -1959,6 +2040,57 @@ function renderReservations() {
         </div>
       </section>
     </main>
+  `;
+}
+
+function renderCertificates() {
+  if (!state.session) return "";
+  const rows = visibleCertificates();
+  const dealers = certificateDealerOptions();
+  return `
+    <main class="screen ${state.screen === "certificates" ? "active" : ""}" data-screen="certificates">
+      <section class="page-head">
+        <p class="eyebrow">${state.session.role === "admin" ? "관리자" : escapeHtml(currentDealerName())}</p>
+        <h1>정품인증서 ${state.session.role === "admin" ? "관리" : "내역"}</h1>
+        <p class="lead">시공완료 처리된 예약 기준으로 인증서가 자동 발급됩니다. QR은 인증페이지 진입용이며 실제 인증은 시리얼번호 입력으로만 진행됩니다.</p>
+        <div class="page-actions">
+          ${state.session.role === "dealer" ? `<button class="secondary-button" type="button" data-nav="reservations">예약관리</button>` : ""}
+          <button class="secondary-button" type="button" data-action="refresh">새로고침</button>
+        </div>
+      </section>
+
+      <section class="panel list-panel">
+        <div class="filter-row">
+          <input class="search-input" id="certificateQuery" type="search" placeholder="인증번호, 대리점명, 차량번호, 제품명 검색" value="${escapeAttr(state.filters.certificateQuery)}" />
+          ${state.session.role === "admin" ? `
+            <select id="certificateDealerCode" class="search-input">
+              <option value="전체">전체 대리점</option>
+              ${dealers.map((dealer) => `<option value="${escapeAttr(dealer.dealer_code)}" ${state.filters.certificateDealerCode === dealer.dealer_code ? "selected" : ""}>${escapeHtml(dealer.dealer_name)} (${escapeHtml(dealer.dealer_code)})</option>`).join("")}
+            </select>
+          ` : ""}
+        </div>
+        <div class="certificate-list" id="certificateList">
+          ${rows.map(renderCertificateCard).join("") || `<div class="empty">발급된 정품인증서가 없습니다.</div>`}
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderCertificateCard(certificate) {
+  return `
+    <article class="certificate-row">
+      <div>
+        <span class="badge ${certificate.status === "active" ? "ok" : "warn"}">${escapeHtml(certificateStatusLabel(certificate.status))}</span>
+        <h3>${escapeHtml(certificate.certificate_number)}</h3>
+        <p class="product-meta">${escapeHtml(certificate.product_type || "-")} · ${escapeHtml(certificate.product_name || "-")}</p>
+        <p class="product-meta">${escapeHtml(certificate.dealer_name || certificate.dealer_code || "-")} · 차량 ${escapeHtml(certificate.vehicle_number || "미입력")} · ${escapeHtml(certificate.vehicle_model || "모델 미입력")}</p>
+        <p class="product-meta">시공일 ${escapeHtml(formatDateOnly(certificate.installation_date) || "-")} · 발급일 ${escapeHtml(formatDateOnly(certificate.issued_at) || "-")} · 인증조회 ${Number(certificate.verified_count || 0)}회</p>
+      </div>
+      <div class="account-actions">
+        <button type="button" class="primary-button small-button" data-certificate-print="${escapeAttr(certificate.id)}">정품인증서 인쇄</button>
+      </div>
+    </article>
   `;
 }
 
@@ -2384,6 +2516,8 @@ function renderReservationCard(reservation) {
   const canComplete = state.session?.role === "dealer" &&
     reservation.dealer_code === state.session.dealer_code &&
     reservation.status !== "시공완료";
+  const certificate = certificateForReservation(reservation.reservation_id);
+  const canPrintCertificate = reservation.status === "시공완료" && certificate;
   const tone = reservation.status === "재고부족"
     ? "danger"
     : reservation.status === "시공완료"
@@ -2396,6 +2530,7 @@ function renderReservationCard(reservation) {
         <h3>${escapeHtml(reservation.product_name)}</h3>
         <p class="product-meta">${escapeHtml(reservation.reservation_id || "")} · ${escapeHtml(reservation.sku)}</p>
         <p class="product-meta">${escapeHtml(reservation.customer_name || "고객명 미입력")} · ${escapeHtml(reservation.customer_phone || "연락처 미입력")}</p>
+        <p class="product-meta">차량: ${escapeHtml(reservation.vehicle_number || "미입력")} · ${escapeHtml(reservation.vehicle_model || "모델 미입력")}</p>
         <p class="product-meta">예약일: ${escapeHtml(reservation.reservation_date || "미지정")}</p>
       </div>
       <div class="order-side">
@@ -2408,6 +2543,11 @@ function renderReservationCard(reservation) {
           <button type="button" class="primary-button" data-action="completeReservation" data-reservation-id="${escapeAttr(reservation.reservation_id)}">시공완료</button>
         </div>
       ` : ""}
+      ${canPrintCertificate ? `
+        <div class="order-actions">
+          <button type="button" class="label-print-button" data-certificate-print="${escapeAttr(certificate.id)}">정품인증서 인쇄</button>
+        </div>
+      ` : reservation.status === "시공완료" ? `<p class="product-meta">정품인증서가 아직 동기화되지 않았습니다. 새로고침 후 확인해 주세요.</p>` : ""}
     </article>
   `;
 }
@@ -2516,6 +2656,7 @@ function renderBottomNav() {
         ["productManage", "제품"],
         ["orders", "발주"],
         ["sales", "매출"],
+        ["certificates", "인증서"],
         ["dealers", "대리점"],
         ["dealerInfo", "정보"],
         ["links", "QR"],
@@ -2528,6 +2669,7 @@ function renderBottomNav() {
         ["orderCreate", "발주신청"],
         ["orders", "내 발주"],
         ["reservations", "예약"],
+        ["certificates", "인증서"],
         ["dealers", "담당자"],
         ["dealerInfo", "대리점 정보"],
         ["notifications", "알림"]
@@ -2597,12 +2739,19 @@ function bindEvents() {
   bindInput("saleMemo", (value) => (state.forms.saleMemo = value));
   bindInput("reservationCustomerName", (value) => (state.forms.reservationCustomerName = value));
   bindPhoneInput("reservationCustomerPhone", (value) => (state.forms.reservationCustomerPhone = value));
+  bindInput("reservationVehicleNumber", (value) => (state.forms.reservationVehicleNumber = value));
+  bindInput("reservationVehicleModel", (value) => (state.forms.reservationVehicleModel = value));
   bindInput("reservationDate", (value) => (state.forms.reservationDate = value || dateInputValue()));
   bindInput("reservationQty", (value) => {
     state.forms.reservationQty = Number(value || 0);
     refreshReservationStockPanel();
   });
   bindInput("reservationMemo", (value) => (state.forms.reservationMemo = value));
+  bindInput("verifySerial", (value) => {
+    state.forms.verifySerial = normalizeCertificateNumberInput(value);
+    state.verification.error = "";
+    state.verification.result = null;
+  });
   bindInput("productSku", (value) => (state.forms.productSku = value.trim()));
   bindInput("productName", (value) => (state.forms.productName = value));
   bindInput("productUnit", (value) => (state.forms.productUnit = value));
@@ -2669,6 +2818,7 @@ function bindEvents() {
   });
   bindSearchInput("orderQuery", (value) => (state.filters.orderQuery = value));
   bindSearchInput("salesQuery", (value) => (state.filters.salesQuery = value));
+  bindSearchInput("certificateQuery", (value) => (state.filters.certificateQuery = value));
 
   document.querySelector("#orderStatus")?.addEventListener("change", (event) => {
     state.filters.orderStatus = event.target.value;
@@ -2677,6 +2827,11 @@ function bindEvents() {
 
   document.querySelector("#labelSize")?.addEventListener("change", (event) => {
     state.forms.labelSize = event.target.value;
+  });
+
+  document.querySelector("#certificateDealerCode")?.addEventListener("change", (event) => {
+    state.filters.certificateDealerCode = event.target.value;
+    render();
   });
 
   document.querySelector("#orderDate")?.addEventListener("change", (event) => {
@@ -2881,6 +3036,12 @@ function bindDynamicListEvents(root) {
     });
   });
 
+  root.querySelectorAll("[data-certificate-print]").forEach((button) => {
+    button.addEventListener("click", () => {
+      runWithButtonBusy(button, () => printCertificate(button.dataset.certificatePrint));
+    });
+  });
+
   root.querySelectorAll("[data-inventory-dealer]").forEach((button) => {
     button.addEventListener("click", () => {
       state.filters.inventoryDealerCode = button.dataset.inventoryDealer;
@@ -2980,6 +3141,11 @@ function refreshActiveSearchResults() {
     const rows = visibleSalesRows();
     replaceHtml("#salesStats", renderSalesStatsCards(rows));
     replaceHtml("#salesRows", rows.map(renderSalesRow).join("") || `<tr><td colspan="9" class="empty-cell">완료된 매출 내역이 없습니다.</td></tr>`);
+    return;
+  }
+
+  if (state.screen === "certificates") {
+    replaceHtml("#certificateList", visibleCertificates().map(renderCertificateCard).join("") || `<div class="empty">발급된 정품인증서가 없습니다.</div>`);
   }
 }
 
@@ -3167,11 +3333,13 @@ async function handleAction(action, button) {
   if (action === "resetLabelSettings") return resetLabelSettings();
   if (action === "previewTestLabel") return previewTestLabel();
   if (action === "printTestLabel") return printTestLabel();
+  if (action === "verifyCertificate") return verifyCertificatePublic();
   if (action === "createOrder") return createOrder();
   if (action === "clearTestOrders") return clearTestOrders();
   if (action === "receiveOrder") return receiveOrder(button.dataset.orderId);
   if (action === "createReservation") return createReservation();
   if (action === "completeReservation") return completeReservation(button.dataset.reservationId);
+  if (action === "printCertificate") return printCertificate(button.dataset.certificateId);
   if (action === "cancelOrder") return cancelOrder(button.dataset.orderId);
   if (action === "saveInventory") return saveInventory();
   if (action === "saveProduct") return saveProduct();
@@ -3231,6 +3399,7 @@ function applyRemoteSession(data) {
   if (Array.isArray(data.orders)) state.orders = data.orders;
   if (Array.isArray(data.sales)) state.retailSales = data.sales;
   if (Array.isArray(data.reservations)) state.reservations = data.reservations;
+  if (Array.isArray(data.certificates)) state.certificates = data.certificates;
   applyLabelSettings(data.label_settings || data.labelSettings);
   syncAppBadgeFromOrders();
 }
@@ -3449,16 +3618,18 @@ async function refreshData(showDone = true) {
       window.FilmStockApi.getInventory({}),
       window.FilmStockApi.getOrders({}),
       window.FilmStockApi.getSales({}),
-      window.FilmStockApi.getReservations({})
+      window.FilmStockApi.getReservations({}),
+      window.FilmStockApi.getCertificates({})
     ];
     if (state.session.role === "admin") requests.push(window.FilmStockApi.getLabelSettings().catch(() => null));
-    const [inventoryData, orderData, salesData, reservationData, labelData] = await Promise.all(requests);
+    const [inventoryData, orderData, salesData, reservationData, certificateData, labelData] = await Promise.all(requests);
     if (Array.isArray(inventoryData?.products)) state.products = inventoryData.products;
     if (Array.isArray(inventoryData?.inventory)) state.inventory = inventoryData.inventory;
     if (Array.isArray(orderData?.orders)) state.orders = orderData.orders;
     if (Array.isArray(orderData?.accounts)) state.accounts = orderData.accounts;
     if (Array.isArray(salesData?.sales)) state.retailSales = salesData.sales;
     if (Array.isArray(reservationData?.reservations)) state.reservations = reservationData.reservations;
+    if (Array.isArray(certificateData?.certificates)) state.certificates = certificateData.certificates;
     applyLabelSettings(labelData?.label_settings || labelData?.settings);
     if (state.screen === "dealerInfo" && state.session?.role === "dealer") prepareDealerInfoForm();
     syncAppBadgeFromOrders();
@@ -4376,6 +4547,297 @@ function code128BarcodeSvg(value) {
   return `<svg viewBox="0 0 ${x + 20} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Code128 송장번호 바코드" fill="#000" shape-rendering="crispEdges">${rects.join("")}</svg>`;
 }
 
+async function verifyCertificatePublic() {
+  const certificateNumber = normalizeCertificateNumberInput(state.forms.verifySerial);
+  state.forms.verifySerial = certificateNumber;
+  state.verification.result = null;
+  state.verification.error = "";
+
+  if (!certificateNumberPattern.test(certificateNumber)) {
+    state.verification.error = "올바른 인증번호 형식이 아닙니다.";
+    render();
+    return;
+  }
+
+  try {
+    const data = window.FilmStockApi?.isEnabled()
+      ? await window.FilmStockApi.verifyCertificate({
+          certificateNumber,
+          userAgent: navigator.userAgent
+        })
+      : await mockVerifyCertificate(certificateNumber);
+    state.verification.result = data;
+    state.verification.error = "";
+  } catch (error) {
+    state.verification.error = error.message || "인증번호를 확인할 수 없습니다.";
+  }
+  render();
+}
+
+async function mockVerifyCertificate(certificateNumber) {
+  if (!(await isLocalCertificateCheckDigitValid(certificateNumber))) {
+    return {
+      result: "invalid",
+      message: "등록되지 않은 인증번호입니다."
+    };
+  }
+  const certificate = state.certificates.find((item) => item.certificate_number === certificateNumber);
+  if (!certificate) {
+    return {
+      result: "invalid",
+      message: "등록되지 않은 인증번호입니다."
+    };
+  }
+  if (certificate.status !== "active") {
+    return {
+      result: certificate.status,
+      message: certificate.status === "revoked" ? "사용 중지된 인증서입니다" : "재발급된 인증서입니다"
+    };
+  }
+  certificate.verified_count = Number(certificate.verified_count || 0) + 1;
+  certificate.last_verified_at = nowText();
+  return {
+    result: "success",
+    message: "GLOC 정품 인증 완료",
+    certificate: verificationCertificateView(certificate)
+  };
+}
+
+function verificationCertificateView(certificate) {
+  return {
+    status: certificate.status,
+    product_type: certificate.product_type,
+    product_name: certificate.product_name,
+    installation_date: certificate.installation_date,
+    dealer_name: certificate.dealer_name,
+    vehicle_number_masked: maskVehicleNumber(certificate.vehicle_number),
+    verified_count: certificate.verified_count,
+    last_verified_at: certificate.last_verified_at
+  };
+}
+
+async function createLocalCertificateForReservation(reservation) {
+  const existing = certificateForReservation(reservation?.reservation_id);
+  if (existing) return existing;
+  const issueDate = compactDateValue(new Date());
+  const serial = await generateLocalCertificateNumber(reservation.dealer_code, issueDate);
+  const now = nowText();
+  return {
+    id: `CERT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    reservation_id: reservation.reservation_id,
+    dealer_id: reservation.dealer_code,
+    dealer_code: reservation.dealer_code,
+    dealer_name: reservation.dealer_name,
+    customer_name: reservation.customer_name || "",
+    customer_phone: reservation.customer_phone || "",
+    vehicle_number: reservation.vehicle_number || "",
+    vehicle_model: reservation.vehicle_model || "",
+    product_type: productTypeForCertificate(reservation),
+    product_name: reservation.product_name || "",
+    product_serial: serial,
+    certificate_number: serial,
+    random_code: serial.split("-")[3] || "",
+    check_digit: serial.split("-")[4] || "",
+    installation_date: reservation.completed_at || now,
+    issued_at: now,
+    issued_by: state.session?.login_id || "",
+    verified_count: 0,
+    last_verified_at: "",
+    status: "active",
+    created_at: now
+  };
+}
+
+async function generateLocalCertificateNumber(dealerCode, issueDate) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const randomCode = localCertificateRandomCode();
+    const base = ["GLOC", String(dealerCode || "").toUpperCase(), issueDate, randomCode].join("-");
+    const checkDigit = await certificateCheckDigit(base);
+    const certificateNumber = `${base}-${checkDigit}`;
+    if (!state.certificates.some((item) => item.certificate_number === certificateNumber)) return certificateNumber;
+  }
+  throw new Error("인증번호 중복이 반복되어 생성하지 못했습니다. 다시 시도해 주세요.");
+}
+
+function localCertificateRandomCode() {
+  const bytes = new Uint8Array(6);
+  if (window.crypto?.getRandomValues) window.crypto.getRandomValues(bytes);
+  else bytes.forEach((_, index) => (bytes[index] = Math.floor(Math.random() * 255)));
+  return Array.from(bytes, (byte) => certificateRandomChars[byte % certificateRandomChars.length]).join("");
+}
+
+async function certificateCheckDigit(base) {
+  if (window.crypto?.subtle) {
+    const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(base));
+    const bytes = new Uint8Array(digest);
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[bytes[bytes.length - 1] % 26];
+  }
+  const total = String(base).split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[total % 26];
+}
+
+async function isLocalCertificateCheckDigitValid(certificateNumber) {
+  const parts = String(certificateNumber || "").split("-");
+  if (parts.length !== 5) return false;
+  const checkDigit = parts.pop();
+  return (await certificateCheckDigit(parts.join("-"))) === checkDigit;
+}
+
+function normalizeCertificateNumberInput(value) {
+  return String(value || "").toUpperCase().replace(/\s+/g, "").replace(/[^A-Z0-9-]/g, "");
+}
+
+function productTypeForCertificate(source) {
+  const text = [source.category, source.product_name, source.sku].join(" ").toLowerCase();
+  if (text.includes("ppf")) return "PPF";
+  if (text.includes("틴팅") || text.includes("tint") || text.includes("tn-")) return "TINTING";
+  return source.category || "FILM";
+}
+
+function maskVehicleNumber(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const digits = text.match(/\d{4}$/);
+  if (digits) return `****${digits[0]}`;
+  return text.length <= 2 ? `${text[0]}*` : `${text.slice(0, 2)}****`;
+}
+
+function formatDateOnly(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text.slice(0, 10);
+}
+
+function printCertificate(certificateId) {
+  const certificate = state.certificates.find((item) => item.id === certificateId || item.certificate_number === certificateId);
+  if (!certificate) throw new Error("출력할 정품인증서를 찾을 수 없습니다.");
+  if (state.session?.role === "dealer" && certificate.dealer_code !== state.session.dealer_code) {
+    throw new Error("본인 대리점 인증서만 출력할 수 있습니다.");
+  }
+
+  const printWindow = window.open("", "_blank", "width=1000,height=760");
+  if (!printWindow) throw new Error("팝업이 차단되어 정품인증서 출력창을 열 수 없습니다.");
+  printWindow.document.open();
+  printWindow.document.write(buildCertificateHtml(certificate));
+  printWindow.document.close();
+  showToast("정품인증서 출력창을 열었습니다.");
+}
+
+function buildCertificateHtml(certificate) {
+  const verifyUrl = certificateVerifyUrl(certificate.dealer_code);
+  const qrSrc = certificateQrUrl(verifyUrl);
+  const issuedDate = formatDateOnly(certificate.issued_at || nowText());
+  const installDate = formatDateOnly(certificate.installation_date || certificate.issued_at || nowText());
+  return `<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GLOC 정품인증서</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: #fff; color: #111; font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+      body { padding: 24px; }
+      .certificate-sheet {
+        width: min(1120px, 100%);
+        min-height: 720px;
+        margin: 0 auto;
+        padding: 52px;
+        border: 1.5px solid #111;
+        outline: 6px solid #fff;
+        background: #fff;
+        page-break-inside: avoid;
+      }
+      .cert-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; border-bottom: 3px solid #cf4e42; padding-bottom: 28px; }
+      .cert-logo { width: 190px; height: auto; display: block; }
+      .cert-title { text-align: right; }
+      .cert-title p { margin: 0 0 8px; color: #cf4e42; font-weight: 900; letter-spacing: 2px; }
+      .cert-title h1 { margin: 0; font-size: 36px; line-height: 1.05; letter-spacing: 1px; }
+      .cert-body { display: grid; grid-template-columns: 1.1fr 260px; gap: 36px; margin-top: 38px; }
+      .cert-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; }
+      .cert-field { border-bottom: 1px solid #cfc9c0; padding: 0 0 12px; }
+      .cert-field span { display: block; margin-bottom: 7px; color: #cf4e42; font-size: 11px; font-weight: 900; letter-spacing: 1.2px; }
+      .cert-field strong { display: block; min-height: 26px; color: #111; font-size: 20px; line-height: 1.28; word-break: keep-all; overflow-wrap: anywhere; }
+      .cert-field.serial { grid-column: 1 / -1; }
+      .cert-field.serial strong { font-size: 26px; letter-spacing: 0.5px; }
+      .qr-panel { display: grid; justify-items: center; align-content: start; gap: 12px; padding: 18px; border: 1px solid #111; }
+      .qr-panel img { width: 188px; height: 188px; image-rendering: pixelated; }
+      .qr-panel strong { font-size: 13px; letter-spacing: 1.5px; }
+      .qr-panel small { color: #555; text-align: center; line-height: 1.45; }
+      .quality { margin-top: 36px; padding-top: 18px; border-top: 1px solid #111; display: grid; grid-template-columns: 1fr 240px; gap: 30px; align-items: end; }
+      .quality h2 { margin: 0 0 8px; font-size: 19px; letter-spacing: 1px; }
+      .quality p { margin: 0; color: #333; font-size: 13px; line-height: 1.6; }
+      .signature { text-align: center; border-top: 1px solid #111; padding-top: 12px; font-weight: 900; }
+      .actions { display: flex; justify-content: center; gap: 8px; margin: 18px auto 0; }
+      .actions button { min-height: 42px; padding: 0 18px; border: 0; border-radius: 8px; background: #cf4e42; color: #fff; font-weight: 900; cursor: pointer; }
+      .actions button.secondary { background: #111; }
+      @media print {
+        @page { size: A4 landscape; margin: 10mm; }
+        body { padding: 0; background: #fff; }
+        .certificate-sheet { width: 100%; min-height: auto; border-color: #111; box-shadow: none; }
+        .actions { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="certificate-sheet">
+      <header class="cert-head">
+        <img class="cert-logo" src="gloc-logo-banner.png" alt="GLOC" />
+        <div class="cert-title">
+          <p>GLOC PREMIUM FILM</p>
+          <h1>CERTIFICATE OF<br />AUTHENTICITY</h1>
+        </div>
+      </header>
+      <section class="cert-body">
+        <div class="cert-grid">
+          ${certificateField("PRODUCT TYPE", certificate.product_type)}
+          ${certificateField("PRODUCT NAME", certificate.product_name)}
+          ${certificateField("SERIAL NUMBER", certificate.certificate_number, "serial")}
+          ${certificateField("VEHICLE NUMBER", certificate.vehicle_number || "-")}
+          ${certificateField("VEHICLE MODEL", certificate.vehicle_model || "-")}
+          ${certificateField("INSTALLATION DATE", installDate)}
+          ${certificateField("CUSTOMER NAME", certificate.customer_name || "-")}
+          ${certificateField("AUTHORIZED DEALER", certificate.dealer_name || certificate.dealer_code || "-")}
+          ${certificateField("ISSUED DATE", issuedDate)}
+          ${certificateField("ISSUED BY", certificate.issued_by || "GLOC")}
+        </div>
+        <aside class="qr-panel">
+          <img src="${escapeAttr(qrSrc)}" alt="GLOC 정품인증 QR" />
+          <strong>VERIFY AUTHENTICITY</strong>
+          <small>QR 스캔 후 인증서에 인쇄된 시리얼번호를 직접 입력해 주세요.</small>
+        </aside>
+      </section>
+      <section class="quality">
+        <div>
+          <h2>QUALITY GUARANTEE</h2>
+          <p>본 인증서는 GLOC 공식 대리점을 통해 시공된 제품에 한해 발급됩니다. QR 코드는 인증 페이지 접속용이며, 정품 여부는 시리얼번호 입력으로 확인됩니다.</p>
+        </div>
+        <div class="signature">AUTHORIZED SIGNATURE</div>
+      </section>
+    </main>
+    <div class="actions">
+      <button type="button" onclick="window.print()">인쇄</button>
+      <button class="secondary" type="button" onclick="window.close()">닫기</button>
+    </div>
+  </body>
+</html>`;
+}
+
+function certificateField(label, value, className = "") {
+  return `<div class="cert-field ${escapeAttr(className)}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "-")}</strong></div>`;
+}
+
+function certificateVerifyUrl(dealerCode) {
+  const base = appPublicBase().replace(/\/index\.html$/i, "").replace(/\/login$/i, "").replace(/\/$/, "");
+  const dealer = dealerCode ? `?dealer=${encodeURIComponent(dealerCode)}` : "";
+  return `${base}/verify${dealer}`;
+}
+
+function certificateQrUrl(url) {
+  const base = appPublicBase().replace(/\/index\.html$/i, "").replace(/\/login$/i, "").replace(/\/$/, "");
+  return `${base}/api/qr?data=${encodeURIComponent(url)}`;
+}
+
 async function receiveOrder(orderId) {
   const order = state.orders.find((item) => item.order_id === orderId);
   if (!order) throw new Error("입고 처리할 발주를 찾을 수 없습니다.");
@@ -4474,6 +4936,8 @@ async function createReservation() {
       qty,
       customer_name: state.forms.reservationCustomerName,
       customer_phone: state.forms.reservationCustomerPhone,
+      vehicle_number: state.forms.reservationVehicleNumber,
+      vehicle_model: state.forms.reservationVehicleModel,
       reservation_date: state.forms.reservationDate || dateInputValue(),
       memo: state.forms.reservationMemo
     });
@@ -4486,6 +4950,8 @@ async function createReservation() {
       created_by_login_id: state.session.login_id,
       customer_name: state.forms.reservationCustomerName,
       customer_phone: state.forms.reservationCustomerPhone,
+      vehicle_number: state.forms.reservationVehicleNumber,
+      vehicle_model: state.forms.reservationVehicleModel,
       reservation_date: state.forms.reservationDate || dateInputValue(),
       product_name: product.product_name,
       sku: product.sku,
@@ -4499,6 +4965,8 @@ async function createReservation() {
 
   state.forms.reservationCustomerName = "";
   state.forms.reservationCustomerPhone = "";
+  state.forms.reservationVehicleNumber = "";
+  state.forms.reservationVehicleModel = "";
   state.forms.reservationDate = dateInputValue();
   state.forms.reservationQty = 1;
   state.forms.reservationMemo = "";
@@ -4517,17 +4985,21 @@ async function completeReservation(reservationId) {
     if (data?.reservation) {
       state.reservations = state.reservations.map((item) => (item.reservation_id === reservationId ? data.reservation : item));
     }
+    if (data?.certificate) upsertCertificate(data.certificate);
     if (data?.inventory) upsertInventory(data.inventory);
   } else {
     adjustLocalInventory(reservation.dealer_code, reservation.sku, -Number(reservation.qty || 0), { requireEnoughStock: true });
+    const completedAt = nowText();
     state.reservations = state.reservations.map((item) => (
       item.reservation_id === reservationId
-        ? { ...item, status: "시공완료", completed_at: nowText(), updated_at: nowText() }
+        ? { ...item, status: "시공완료", completed_at: completedAt, updated_at: completedAt }
         : item
     ));
+    const updatedReservation = state.reservations.find((item) => item.reservation_id === reservationId);
+    upsertCertificate(await createLocalCertificateForReservation(updatedReservation));
   }
   render();
-  showToast("시공완료 처리했습니다. 재고에서 차감되었습니다.");
+  showToast("시공완료 처리했습니다. 정품인증서가 자동 발급되었습니다.");
 }
 
 async function cancelOrder(orderId) {
@@ -5039,6 +5511,49 @@ function visibleReservations() {
   return state.reservations
     .filter((reservation) => state.session?.role !== "dealer" || reservation.dealer_code === state.session.dealer_code)
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+}
+
+function visibleCertificates() {
+  const query = normalize(state.filters.certificateQuery);
+  return state.certificates
+    .filter((certificate) => state.session?.role !== "dealer" || certificate.dealer_code === state.session.dealer_code)
+    .filter((certificate) => state.session?.role !== "admin" || state.filters.certificateDealerCode === "전체" || certificate.dealer_code === state.filters.certificateDealerCode)
+    .filter((certificate) => {
+      if (!query) return true;
+      return [certificate.certificate_number, certificate.dealer_name, certificate.dealer_code, certificate.vehicle_number, certificate.vehicle_model, certificate.product_name, certificate.customer_name]
+        .some((value) => normalize(value).includes(query));
+    })
+    .sort((a, b) => String(b.issued_at || b.created_at || "").localeCompare(String(a.issued_at || a.created_at || "")));
+}
+
+function certificateDealerOptions() {
+  const dealers = new Map();
+  state.certificates.forEach((certificate) => {
+    if (!certificate.dealer_code) return;
+    dealers.set(certificate.dealer_code, {
+      dealer_code: certificate.dealer_code,
+      dealer_name: certificate.dealer_name || dealerNameByCode(certificate.dealer_code)
+    });
+  });
+  return Array.from(dealers.values()).sort((a, b) => String(a.dealer_name).localeCompare(String(b.dealer_name), "ko"));
+}
+
+function certificateForReservation(reservationId) {
+  return state.certificates.find((certificate) => String(certificate.reservation_id) === String(reservationId));
+}
+
+function upsertCertificate(certificate) {
+  if (!certificate) return;
+  const index = state.certificates.findIndex((item) => item.id === certificate.id || item.certificate_number === certificate.certificate_number || item.reservation_id === certificate.reservation_id);
+  if (index >= 0) state.certificates[index] = { ...state.certificates[index], ...certificate };
+  else state.certificates.unshift(certificate);
+}
+
+function certificateStatusLabel(status) {
+  if (status === "active") return "정상";
+  if (status === "revoked") return "사용중지";
+  if (status === "reissued") return "재발급";
+  return status || "대기";
 }
 
 function salesRowsBase() {

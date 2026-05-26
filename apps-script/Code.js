@@ -4,6 +4,8 @@ const SHEETS = {
   orders: "발주현황",
   sales: "판매현황",
   reservations: "예약현황",
+  certificates: "정품인증서",
+  certificateLogs: "인증로그",
   products: "제품등록",
   settings: "settings",
   pushSubscriptions: "푸시구독"
@@ -14,7 +16,9 @@ const HEADERS = {
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
   orders: ["order_id", "agency_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "courier", "tracking_no", "shipping_receipt_no", "shipping_error", "approved_at", "print_status", "printed_at", "print_count", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
-  reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "reservation_date", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
+  reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "reservation_date", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
+  certificates: ["id", "reservation_id", "dealer_id", "dealer_code", "dealer_name", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "product_type", "product_name", "product_serial", "certificate_number", "random_code", "check_digit", "installation_date", "issued_at", "issued_by", "verified_count", "last_verified_at", "status", "created_at"],
+  certificateLogs: ["id", "certificate_number", "verified_at", "ip_address", "user_agent", "result"],
   products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
@@ -90,6 +94,7 @@ function doPost(e) {
     const token = body.token || "";
 
     if (action === "login") return ok_(handleLogin_(payload));
+    if (action === "verifyCertificate") return ok_(handleVerifyCertificate_(payload, e));
 
     const user = requireSession_(token);
     if (action === "changePassword") return ok_(handleChangePassword_(payload, user, token));
@@ -109,6 +114,7 @@ function doPost(e) {
     if (action === "createReservation") return ok_(handleCreateReservation_(payload, user));
     if (action === "completeReservation") return ok_(handleCompleteReservation_(payload, user));
     if (action === "getReservations") return ok_(handleGetReservations_(payload, user));
+    if (action === "getCertificates") return ok_(handleGetCertificates_(payload, user));
     if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
     if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
     if (action === "updateDealerDiscount") return ok_(handleUpdateDealerDiscount_(payload, user));
@@ -229,6 +235,7 @@ function handleLogin_(payload) {
   const orderData = handleGetOrders_({}, user);
   const salesData = handleGetSales_({}, user);
   const reservationData = handleGetReservations_({}, user);
+  const certificateData = handleGetCertificates_({}, user);
   return {
     session,
     user,
@@ -238,6 +245,7 @@ function handleLogin_(payload) {
     orders: orderData.orders,
     sales: salesData.sales,
     reservations: reservationData.reservations,
+    certificates: certificateData.certificates,
     label_settings: user.role === "admin" ? labelSettings_() : {}
   };
 }
@@ -647,6 +655,8 @@ function handleCreateReservation_(payload, user) {
     created_by_login_id: user.login_id,
     customer_name: payload.customer_name || "",
     customer_phone: payload.customer_phone || "",
+    vehicle_number: payload.vehicle_number || "",
+    vehicle_model: payload.vehicle_model || "",
     reservation_date: payload.reservation_date || "",
     product_name: product.product_name,
     sku: product.sku,
@@ -687,8 +697,10 @@ function handleCompleteReservation_(payload, user) {
     completed_at: now,
     updated_at: now
   });
+  const certificate = createCertificateForReservation_(updated, user, product);
   return {
     reservation: updated,
+    certificate: certificate,
     inventory: publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_())
   };
 }
@@ -701,6 +713,70 @@ function handleGetReservations_(payload, user) {
   return { reservations: reservations.reverse() };
 }
 
+function handleGetCertificates_(payload, user) {
+  let certificates = readRows_(SHEETS.certificates);
+  if (user.role === "dealer") {
+    certificates = certificates.filter((certificate) => String(certificate.dealer_code).toUpperCase() === String(user.dealer_code).toUpperCase());
+  }
+  const query = String(payload.query || "").toLowerCase().trim();
+  if (query) {
+    certificates = certificates.filter((certificate) => (
+      [certificate.certificate_number, certificate.dealer_name, certificate.dealer_code, certificate.vehicle_number, certificate.product_name, certificate.customer_name]
+        .some((value) => String(value || "").toLowerCase().indexOf(query) >= 0)
+    ));
+  }
+  return { certificates: certificates.reverse() };
+}
+
+function handleVerifyCertificate_(payload, event) {
+  const certificateNumber = normalizeCertificateNumber_(required_(payload.certificate_number, "certificate_number"));
+  const userAgent = payload.user_agent || "";
+  const ipAddress = event && event.parameter && event.parameter.ip ? event.parameter.ip : "";
+  const now = isoNow_();
+
+  if (!isCertificateNumberFormat_(certificateNumber) || !isCertificateCheckDigitValid_(certificateNumber)) {
+    appendCertificateLog_(certificateNumber, now, ipAddress, userAgent, "malformed");
+    throw new Error("올바른 인증번호 형식이 아닙니다.");
+  }
+
+  const certificate = readRows_(SHEETS.certificates).find((row) => String(row.certificate_number).toUpperCase() === certificateNumber);
+  if (!certificate) {
+    appendCertificateLog_(certificateNumber, now, ipAddress, userAgent, "invalid");
+    return {
+      result: "invalid",
+      message: "등록되지 않은 인증번호입니다."
+    };
+  }
+
+  if (certificate.status === "revoked") {
+    appendCertificateLog_(certificateNumber, now, ipAddress, userAgent, "revoked");
+    return {
+      result: "revoked",
+      message: "사용 중지된 인증서입니다."
+    };
+  }
+
+  if (certificate.status === "reissued") {
+    appendCertificateLog_(certificateNumber, now, ipAddress, userAgent, "reissued");
+    return {
+      result: "reissued",
+      message: "재발급된 인증서입니다."
+    };
+  }
+
+  const verifiedCount = Number(certificate.verified_count || 0) + 1;
+  const updated = updateRowByKey_(SHEETS.certificates, "certificate_number", certificateNumber, {
+    verified_count: verifiedCount,
+    last_verified_at: now
+  });
+  appendCertificateLog_(certificateNumber, now, ipAddress, userAgent, "success");
+  return {
+    result: "success",
+    message: "GLOC 정품 인증 완료",
+    certificate: publicVerificationCertificate_(updated)
+  };
+}
+
 function pendingReservationQty_(dealerCode, sku) {
   return readRows_(SHEETS.reservations)
     .filter((reservation) => (
@@ -709,6 +785,139 @@ function pendingReservationQty_(dealerCode, sku) {
       reservation.status !== "시공완료"
     ))
     .reduce((total, reservation) => total + Number(reservation.qty || 0), 0);
+}
+
+function createCertificateForReservation_(reservation, user, product) {
+  const existing = readRows_(SHEETS.certificates).find((row) => String(row.reservation_id) === String(reservation.reservation_id));
+  if (existing) return existing;
+
+  const dealerCode = String(reservation.dealer_code || user.dealer_code || "").toUpperCase();
+  const issueDate = dateCompactFromIso_(reservation.completed_at || isoNow_());
+  const serial = generateUniqueCertificateNumber_(dealerCode, issueDate);
+  const now = isoNow_();
+  const certificate = {
+    id: makeCertificateId_(),
+    reservation_id: reservation.reservation_id,
+    dealer_id: dealerCode,
+    dealer_code: dealerCode,
+    dealer_name: reservation.dealer_name || user.dealer_name || "",
+    customer_name: reservation.customer_name || "",
+    customer_phone: reservation.customer_phone || "",
+    vehicle_number: reservation.vehicle_number || "",
+    vehicle_model: reservation.vehicle_model || "",
+    product_type: productTypeFor_(product || reservation),
+    product_name: reservation.product_name || product.product_name || "",
+    product_serial: serial.certificate_number,
+    certificate_number: serial.certificate_number,
+    random_code: serial.random_code,
+    check_digit: serial.check_digit,
+    installation_date: reservation.completed_at || now,
+    issued_at: now,
+    issued_by: user.login_id || "",
+    verified_count: 0,
+    last_verified_at: "",
+    status: "active",
+    created_at: now
+  };
+  appendObject_(SHEETS.certificates, certificate);
+  return certificate;
+}
+
+function generateUniqueCertificateNumber_(dealerCode, issueDate) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const randomCode = certificateRandomCode_();
+    const base = ["GLOC", dealerCode, issueDate, randomCode].join("-");
+    const checkDigit = certificateCheckDigit_(base);
+    const certificateNumber = base + "-" + checkDigit;
+    const exists = readRows_(SHEETS.certificates).some((row) => String(row.certificate_number).toUpperCase() === certificateNumber);
+    if (!exists) {
+      return {
+        certificate_number: certificateNumber,
+        random_code: randomCode,
+        check_digit: checkDigit
+      };
+    }
+  }
+  throw new Error("인증번호 중복이 반복되어 생성하지 못했습니다. 다시 시도해 주세요.");
+}
+
+function certificateRandomCode_() {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let index = 0; index < 6; index += 1) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+function certificateCheckDigit_(base) {
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(base), Utilities.Charset.UTF_8);
+  const last = digest[digest.length - 1];
+  const normalized = last < 0 ? last + 256 : last;
+  return "ABCDEFGHIJKLMNOPQRSTUVWXYZ".charAt(normalized % 26);
+}
+
+function isCertificateNumberFormat_(value) {
+  return /^GLOC-[A-Z0-9]{4}-\d{8}-[A-Z0-9]{6}-[A-Z]{1}$/.test(String(value || "").toUpperCase());
+}
+
+function isCertificateCheckDigitValid_(value) {
+  const parts = String(value || "").toUpperCase().split("-");
+  if (parts.length !== 5) return false;
+  const checkDigit = parts.pop();
+  return certificateCheckDigit_(parts.join("-")) === checkDigit;
+}
+
+function normalizeCertificateNumber_(value) {
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function productTypeFor_(source) {
+  const text = [source.category, source.product_name, source.sku].join(" ").toLowerCase();
+  if (text.indexOf("ppf") >= 0) return "PPF";
+  if (text.indexOf("틴팅") >= 0 || text.indexOf("tint") >= 0 || text.indexOf("tn-") >= 0) return "틴팅";
+  return source.category || "필름";
+}
+
+function publicVerificationCertificate_(certificate) {
+  return {
+    status: certificate.status,
+    product_type: certificate.product_type,
+    product_name: certificate.product_name,
+    installation_date: certificate.installation_date,
+    dealer_name: certificate.dealer_name,
+    vehicle_number_masked: maskVehicleNumber_(certificate.vehicle_number),
+    verified_count: certificate.verified_count,
+    last_verified_at: certificate.last_verified_at
+  };
+}
+
+function appendCertificateLog_(certificateNumber, verifiedAt, ipAddress, userAgent, result) {
+  appendObject_(SHEETS.certificateLogs, {
+    id: "LOG-" + Utilities.getUuid(),
+    certificate_number: certificateNumber,
+    verified_at: verifiedAt,
+    ip_address: ipAddress || "",
+    user_agent: userAgent || "",
+    result: result
+  });
+}
+
+function maskVehicleNumber_(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const digits = text.match(/\d{4}$/);
+  if (digits) return "****" + digits[0];
+  return text.length <= 2 ? text[0] + "*" : text.slice(0, 2) + "****";
+}
+
+function makeCertificateId_() {
+  return "CERT-" + Utilities.getUuid();
+}
+
+function dateCompactFromIso_(value) {
+  const date = String(value || "").slice(0, 10).replace(/-/g, "");
+  return /^\d{8}$/.test(date) ? date : Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd");
 }
 
 function handleSaveInventory_(payload, user) {

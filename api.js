@@ -164,6 +164,21 @@
     return request("getReservations", filters);
   }
 
+  async function getCertificates(filters = {}) {
+    return request("getCertificates", filters);
+  }
+
+  async function verifyCertificate({ certificateNumber, userAgent }) {
+    return request(
+      "verifyCertificate",
+      {
+        certificate_number: certificateNumber,
+        user_agent: userAgent || ""
+      },
+      { session: null }
+    );
+  }
+
   async function updateDealerDiscount({ dealerCode, discountRate }) {
     return request("updateDealerDiscount", {
       dealer_code: dealerCode,
@@ -245,6 +260,8 @@
     createReservation,
     completeReservation,
     getReservations,
+    getCertificates,
+    verifyCertificate,
     updateDealerDiscount,
     updateDealerProfile,
     createDealerAccount,
