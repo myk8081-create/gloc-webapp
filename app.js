@@ -5326,8 +5326,17 @@ function printCertificate(certificateId) {
 function buildCertificateHtml(certificate) {
   const verifyUrl = certificateVerifyUrl(certificate.dealer_code);
   const qrSrc = certificateQrUrl(verifyUrl);
-  const issuedDate = formatDateOnly(certificate.issued_at || nowText());
   const installDate = formatDateOnly(certificate.installation_date || certificate.issued_at || nowText());
+  const publicRoot = appPublicBase()
+    .replace(/\/index\.html$/i, "")
+    .replace(/\/login$/i, "")
+    .replace(/\/verify$/i, "")
+    .replace(/\/$/, "");
+  const templateSrc = `${publicRoot}/certificates/gloc-certificate-template.png`;
+  const localTemplateSrc = `${publicRoot}/public/certificates/gloc-certificate-template.png`;
+  const productType = String(certificate.product_type || "").toUpperCase();
+  const isPpf = productType.includes("PPF");
+  const isTinting = productType.includes("TINT") || productType.includes("틴팅");
   return `<!doctype html>
 <html lang="ko">
   <head>
@@ -5336,89 +5345,195 @@ function buildCertificateHtml(certificate) {
     <title>GLOC 정품인증서</title>
     <style>
       * { box-sizing: border-box; }
-      html, body { margin: 0; background: #fff; color: #111; font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
-      body { padding: 24px; }
-      .certificate-sheet {
-        width: min(1120px, 100%);
-        min-height: 720px;
-        margin: 0 auto;
-        padding: 52px;
-        border: 1.5px solid #111;
-        outline: 6px solid #fff;
-        background: #fff;
-        page-break-inside: avoid;
+      html, body {
+        margin: 0;
+        background: #f4f0ea;
+        color: #222;
+        font-family: "Times New Roman", Georgia, "Apple SD Gothic Neo", "Noto Sans KR", serif;
       }
-      .cert-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; border-bottom: 3px solid #cf4e42; padding-bottom: 28px; }
-      .cert-logo { width: 190px; height: auto; display: block; }
-      .cert-title { text-align: right; }
-      .cert-title p { margin: 0 0 8px; color: #cf4e42; font-weight: 900; letter-spacing: 2px; }
-      .cert-title h1 { margin: 0; font-size: 36px; line-height: 1.05; letter-spacing: 1px; }
-      .cert-body { display: grid; grid-template-columns: 1.1fr 260px; gap: 36px; margin-top: 38px; }
-      .cert-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; }
-      .cert-field { border-bottom: 1px solid #cfc9c0; padding: 0 0 12px; }
-      .cert-field span { display: block; margin-bottom: 7px; color: #cf4e42; font-size: 11px; font-weight: 900; letter-spacing: 1.2px; }
-      .cert-field strong { display: block; min-height: 26px; color: #111; font-size: 20px; line-height: 1.28; word-break: keep-all; overflow-wrap: anywhere; }
-      .cert-field.serial { grid-column: 1 / -1; }
-      .cert-field.serial strong { font-size: 26px; letter-spacing: 0.5px; }
-      .qr-panel { display: grid; justify-items: center; align-content: start; gap: 12px; padding: 18px; border: 1px solid #111; }
-      .qr-panel img { width: 188px; height: 188px; image-rendering: pixelated; }
-      .qr-panel strong { font-size: 13px; letter-spacing: 1.5px; }
-      .qr-panel small { color: #555; text-align: center; line-height: 1.45; }
-      .quality { margin-top: 36px; padding-top: 18px; border-top: 1px solid #111; display: grid; grid-template-columns: 1fr 240px; gap: 30px; align-items: end; }
-      .quality h2 { margin: 0 0 8px; font-size: 19px; letter-spacing: 1px; }
-      .quality p { margin: 0; color: #333; font-size: 13px; line-height: 1.6; }
-      .signature { text-align: center; border-top: 1px solid #111; padding-top: 12px; font-weight: 900; }
-      .actions { display: flex; justify-content: center; gap: 8px; margin: 18px auto 0; }
-      .actions button { min-height: 42px; padding: 0 18px; border: 0; border-radius: 8px; background: #cf4e42; color: #fff; font-weight: 900; cursor: pointer; }
-      .actions button.secondary { background: #111; }
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        gap: 14px;
+        padding: 20px;
+      }
+      .certificate-viewport {
+        position: relative;
+        width: min(297mm, calc(100vw - 40px));
+        height: 210mm;
+      }
+      .certificate-wrapper {
+        position: relative;
+        width: 297mm;
+        height: 210mm;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+        page-break-inside: avoid;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .certificate-background {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .overlay-data {
+        position: absolute;
+        inset: 0;
+        color: #222;
+        letter-spacing: 0.04em;
+      }
+      .cert-value {
+        position: absolute;
+        left: 80mm;
+        width: 88mm;
+        color: #222;
+        font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+        font-size: 4.1mm;
+        font-weight: 600;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .cert-serial {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 3.7mm;
+        letter-spacing: 0.02em;
+      }
+      .cert-product-name { top: 119.3mm; }
+      .cert-serial-number { top: 127.8mm; }
+      .cert-vehicle-number { top: 136.4mm; }
+      .cert-install-date { top: 145.1mm; }
+      .cert-dealer { top: 153.8mm; }
+      .cert-check {
+        position: absolute;
+        top: 107.8mm;
+        width: 4.7mm;
+        height: 4.7mm;
+        display: grid;
+        place-items: center;
+        color: #222;
+        font-family: Arial, "Apple SD Gothic Neo", sans-serif;
+        font-size: 4mm;
+        font-weight: 900;
+        line-height: 1;
+      }
+      .cert-check.ppf { left: 74.4mm; }
+      .cert-check.tinting { left: 102.8mm; }
+      .cert-qr {
+        position: absolute;
+        left: 203.1mm;
+        top: 119.8mm;
+        width: 31.2mm;
+        height: 31.2mm;
+        display: block;
+        background: #fff;
+        image-rendering: pixelated;
+      }
+      .print-guide {
+        width: min(297mm, calc(100vw - 40px));
+        padding: 12px 14px;
+        border: 1px solid #d8c9b2;
+        border-radius: 10px;
+        background: #fff8ef;
+        color: #4d3720;
+        font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        text-align: center;
+      }
+      .actions { display: flex; justify-content: center; gap: 8px; }
+      .actions button {
+        min-height: 44px;
+        padding: 0 20px;
+        border: 0;
+        border-radius: 8px;
+        background: #cf4e42;
+        color: #fff;
+        font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+        font-weight: 900;
+        cursor: pointer;
+      }
+      .actions button.secondary { background: #222; }
       @media print {
-        @page { size: A4 landscape; margin: 10mm; }
-        body { padding: 0; background: #fff; }
-        .certificate-sheet { width: 100%; min-height: auto; border-color: #111; box-shadow: none; }
-        .actions { display: none; }
+        @page { size: A4 landscape; margin: 0; }
+        html, body {
+          width: 297mm;
+          height: 210mm;
+          min-height: 210mm;
+          padding: 0;
+          background: #fff;
+        }
+        body { display: block; }
+        .certificate-viewport {
+          width: 297mm;
+          height: 210mm;
+        }
+        .certificate-wrapper {
+          position: relative;
+          width: 297mm;
+          height: 210mm;
+          box-shadow: none;
+          transform: none !important;
+        }
+        .print-guide, .actions { display: none; }
+      }
+      @media screen and (max-width: 1180px) {
+        body { place-items: start center; overflow: auto; }
+        .certificate-wrapper { transform-origin: top left; }
       }
     </style>
   </head>
   <body>
-    <main class="certificate-sheet">
-      <header class="cert-head">
-        <img class="cert-logo" src="gloc-logo-banner.png" alt="GLOC" />
-        <div class="cert-title">
-          <p>GLOC PREMIUM FILM</p>
-          <h1>CERTIFICATE OF<br />AUTHENTICITY</h1>
-        </div>
-      </header>
-      <section class="cert-body">
-        <div class="cert-grid">
-          ${certificateField("PRODUCT TYPE", certificate.product_type)}
-          ${certificateField("PRODUCT NAME", certificate.product_name)}
-          ${certificateField("SERIAL NUMBER", certificate.certificate_number, "serial")}
-          ${certificateField("VEHICLE NUMBER", certificate.vehicle_number || "-")}
-          ${certificateField("VEHICLE MODEL", certificate.vehicle_model || "-")}
-          ${certificateField("INSTALLATION DATE", installDate)}
-          ${certificateField("CUSTOMER NAME", certificate.customer_name || "-")}
-          ${certificateField("AUTHORIZED DEALER", certificate.dealer_name || certificate.dealer_code || "-")}
-          ${certificateField("ISSUED DATE", issuedDate)}
-          ${certificateField("ISSUED BY", certificate.issued_by || "GLOC")}
-        </div>
-        <aside class="qr-panel">
-          <img src="${escapeAttr(qrSrc)}" alt="GLOC 정품인증 QR" />
-          <strong>VERIFY AUTHENTICITY</strong>
-          <small>QR 스캔 후 인증서에 인쇄된 시리얼번호를 직접 입력해 주세요.</small>
-        </aside>
-      </section>
-      <section class="quality">
-        <div>
-          <h2>QUALITY GUARANTEE</h2>
-          <p>본 인증서는 GLOC 공식 대리점을 통해 시공된 제품에 한해 발급됩니다. QR 코드는 인증 페이지 접속용이며, 정품 여부는 시리얼번호 입력으로 확인됩니다.</p>
-        </div>
-        <div class="signature">AUTHORIZED SIGNATURE</div>
-      </section>
+    <main class="certificate-viewport">
+      <div class="certificate-wrapper">
+        <img
+          class="certificate-background"
+          src="${escapeAttr(templateSrc)}"
+          onerror="this.onerror=null;this.src='${escapeAttr(localTemplateSrc)}';"
+          alt=""
+        />
+        <section class="overlay-data" aria-label="GLOC 정품인증서 데이터">
+          ${isPpf ? '<span class="cert-check ppf">✓</span>' : ""}
+          ${isTinting ? '<span class="cert-check tinting">✓</span>' : ""}
+          <div class="cert-value cert-product-name">${escapeHtml(certificate.product_name || "-")}</div>
+          <div class="cert-value cert-serial cert-serial-number">${escapeHtml(certificate.certificate_number || "-")}</div>
+          <div class="cert-value cert-vehicle-number">${escapeHtml(certificate.vehicle_number || "-")}</div>
+          <div class="cert-value cert-install-date">${escapeHtml(installDate || "-")}</div>
+          <div class="cert-value cert-dealer">${escapeHtml(certificate.dealer_name || certificate.dealer_code || "-")}</div>
+          <img class="cert-qr" src="${escapeAttr(qrSrc)}" alt="GLOC 정품인증 QR" />
+        </section>
+      </div>
     </main>
+    <div class="print-guide">인쇄 전 브라우저 인쇄 설정에서 “배경 그래픽” 옵션을 활성화하세요.</div>
     <div class="actions">
-      <button type="button" onclick="window.print()">인쇄</button>
+      <button type="button" onclick="showPrintGuideAndPrint()">인쇄</button>
       <button class="secondary" type="button" onclick="window.close()">닫기</button>
     </div>
+    <script>
+      function fitCertificatePreview() {
+        if (window.matchMedia("print").matches) return;
+        const viewport = document.querySelector(".certificate-viewport");
+        const sheet = document.querySelector(".certificate-wrapper");
+        if (!viewport || !sheet) return;
+        const scale = Math.min(1, viewport.clientWidth / sheet.offsetWidth);
+        viewport.style.height = (sheet.offsetHeight * scale) + "px";
+        sheet.style.transform = "scale(" + scale + ")";
+      }
+      function showPrintGuideAndPrint() {
+        alert("인쇄 설정에서 '배경 그래픽' 옵션을 활성화하세요.");
+        window.print();
+      }
+      window.addEventListener("load", fitCertificatePreview);
+      window.addEventListener("resize", fitCertificatePreview);
+    </script>
   </body>
 </html>`;
 }
