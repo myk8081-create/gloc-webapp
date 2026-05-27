@@ -1838,8 +1838,33 @@ h3 {
   gap: 8px;
 }
 
+.consultation-tint-area-list {
+  display: grid;
+  gap: 10px;
+}
+
+.consultation-tint-area-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.consultation-tint-area-row > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.consultation-tint-area-row > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
 .consultation-color-grid button,
 .consultation-part-grid button,
+.consultation-tint-area-row button,
 .consultation-product-choice,
 .vehicle-admin-row {
   min-height: 54px;
@@ -1868,6 +1893,7 @@ h3 {
 
 .consultation-color-grid button.active,
 .consultation-part-grid button.active,
+.consultation-tint-area-row button.active,
 .consultation-product-choice.active,
 .vehicle-admin-row.active {
   border-color: var(--primary);
@@ -2565,6 +2591,11 @@ h3 {
     align-items: start;
   }
 
+  .consultation-viewer-panel {
+    position: sticky;
+    top: 18px;
+  }
+
   .consultation-stage {
     min-height: 560px;
   }
@@ -2670,8 +2701,13 @@ h3 {
   }
 
   .consultation-color-grid,
-  .consultation-part-grid {
+  .consultation-part-grid,
+  .consultation-tint-area-row {
     grid-template-columns: 1fr;
+  }
+
+  .consultation-tint-area-row > div {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .consultation-product-choice {

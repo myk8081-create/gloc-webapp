@@ -244,8 +244,7 @@ const consultationRenderSettings = {
   mobileBackgroundIntensity: 0.74,
   backgroundBlurriness: 0.08,
   mobileBackgroundBlurriness: 0,
-  autoRotateSpeed: 0.35,
-  autoRotateResumeMs: 2400
+  showroomRotationY: Math.PI / 4
 };
 
 const ppfPartOptions = [
@@ -264,6 +263,15 @@ const ppfPartOptions = [
   { key: "door_cup", label: "도어컵", price: 60000 },
   { key: "door_edge", label: "도어엣지", price: 60000 },
   { key: "full_body", label: "전체 시공", price: 2500000, full: true }
+];
+
+const tintVltOptions = [5, 15, 30, 50];
+const tintAreaOptions = [
+  { key: "frontGlass", label: "전면 유리", shortLabel: "전면", defaultVlt: 30 },
+  { key: "frontSideGlass", label: "1열 측면", shortLabel: "1열", defaultVlt: 15 },
+  { key: "rearSideGlass", label: "2열 측면", shortLabel: "2열", defaultVlt: 15 },
+  { key: "rearGlass", label: "후면 유리", shortLabel: "후면", defaultVlt: 15 },
+  { key: "roofGlass", label: "글라스 루프", shortLabel: "루프", defaultVlt: 30 }
 ];
 
 const consultationVehicleMeshMaps = {
@@ -305,7 +313,8 @@ const consultationVehicleMeshMaps = {
     },
     tint: {
       frontGlass: ["glass_front"],
-      sideGlass: ["glass_side_front", "glass_side_rear"],
+      frontSideGlass: ["glass_side_front"],
+      rearSideGlass: ["glass_side_rear"],
       rearGlass: ["glass_rear"],
       roofGlass: ["glass_roof"]
     }
@@ -529,6 +538,13 @@ const state = {
     color: "Pearl White",
     renderMode: "3d",
     tintSku: "TN-CH-035",
+    tintAreas: {
+      frontGlass: 30,
+      frontSideGlass: 15,
+      rearSideGlass: 15,
+      rearGlass: 15,
+      roofGlass: 30
+    },
     ppfSku: "PPF-CL-150",
     ppfParts: ["hood", "front_bumper"],
     customerName: "",
@@ -2270,6 +2286,7 @@ function renderConsultation() {
           ${renderConsultationVehicleControls(vehicle)}
           ${renderConsultationColorControls()}
           ${renderConsultationProductControls()}
+          ${renderConsultationTintAreaControls()}
           ${renderConsultationPartControls()}
           ${renderConsultationCustomerForm()}
           ${renderConsultationQuotePanel(quote)}
@@ -2291,8 +2308,7 @@ function renderConsultation() {
 
 function renderConsultationVehicleStage(vehicle) {
   const color = vehicleColorByName(state.consultation.color);
-  const tint = selectedConsultationTintProduct();
-  const tintOpacity = consultationTintOpacity(tint);
+  const tintOpacity = consultationAverageTintOpacity();
   const ppfProduct = selectedConsultationPpfProduct();
   const ppfTone = ppfProduct && /매트|matte/i.test(ppfProduct.product_name || "") ? "matte" : /카본|carbon/i.test(ppfProduct?.product_name || "") ? "carbon" : "gloss";
   return `
@@ -2468,6 +2484,35 @@ function renderConsultationProductControls() {
       </div>
       <div class="consultation-product-list">
         ${ppfProducts.map((product) => renderConsultationProductChoice(product, "ppf")).join("") || `<div class="empty">활성 PPF 제품이 없습니다.</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderConsultationTintAreaControls() {
+  const areas = consultationTintAreas();
+  return `
+    <section class="consultation-control-section">
+      <div class="control-section-head">
+        <span class="eyebrow">03-1 Tint Density</span>
+        <strong>유리별 농도</strong>
+      </div>
+      <div class="consultation-tint-area-list">
+        ${tintAreaOptions.map((area) => `
+          <div class="consultation-tint-area-row">
+            <span>${escapeHtml(area.label)}</span>
+            <div>
+              ${tintVltOptions.map((vlt) => `
+                <button
+                  type="button"
+                  class="${Number(areas[area.key]) === vlt ? "active" : ""}"
+                  data-consultation-tint-area="${escapeAttr(area.key)}"
+                  data-tint-vlt="${vlt}"
+                >${vlt}%</button>
+              `).join("")}
+            </div>
+          </div>
+        `).join("")}
       </div>
     </section>
   `;
@@ -3712,6 +3757,19 @@ function bindDynamicListEvents(root) {
     });
   });
 
+  root.querySelectorAll("[data-consultation-tint-area]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const area = button.dataset.consultationTintArea;
+      const vlt = Number(button.dataset.tintVlt || 0);
+      if (!area || !vlt) return;
+      state.consultation.tintAreas = {
+        ...consultationTintAreas(),
+        [area]: vlt
+      };
+      render();
+    });
+  });
+
   root.querySelectorAll("[data-consultation-part]").forEach((button) => {
     button.addEventListener("click", () => {
       toggleConsultationPpfPart(button.dataset.consultationPart);
@@ -3847,6 +3905,7 @@ async function initConsultation3dViewer() {
     state.consultation.color,
     state.consultation.view,
     state.consultation.tintSku,
+    JSON.stringify(consultationTintAreas()),
     state.consultation.ppfSku,
     (state.consultation.ppfParts || []).join(",")
   ].join("|");
@@ -3914,21 +3973,6 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
   controls.enablePan = false;
   controls.minDistance = 1.2;
   controls.maxDistance = 8;
-  controls.autoRotate = true;
-  controls.autoRotateSpeed = consultationRenderSettings.autoRotateSpeed;
-  let autoRotateTimer = 0;
-  const pauseAutoRotate = () => {
-    controls.autoRotate = false;
-    window.clearTimeout(autoRotateTimer);
-  };
-  const resumeAutoRotateSoon = () => {
-    window.clearTimeout(autoRotateTimer);
-    autoRotateTimer = window.setTimeout(() => {
-      controls.autoRotate = true;
-    }, consultationRenderSettings.autoRotateResumeMs);
-  };
-  controls.addEventListener("start", pauseAutoRotate);
-  controls.addEventListener("end", resumeAutoRotateSoon);
 
   const hemiLight = new THREE.HemisphereLight(0xffffff, 0x111111, mobile ? 0.95 : 1.15);
   scene.add(hemiLight);
@@ -3942,14 +3986,23 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
   rimLight.position.set(-4, 2.5, -3);
   scene.add(rimLight);
 
-  const floor = new THREE.Mesh(
-    new THREE.CircleGeometry(6, 96),
+  const showroomFloor = new THREE.Mesh(
+    new THREE.PlaneGeometry(16, 16),
+    createShowroomFloorMaterial(THREE)
+  );
+  showroomFloor.rotation.x = -Math.PI / 2;
+  showroomFloor.position.y = -0.018;
+  showroomFloor.receiveShadow = true;
+  scene.add(showroomFloor);
+
+  const floorShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(4.8, 96),
     new THREE.ShadowMaterial({ color: 0x000000, opacity: mobile ? 0.17 : 0.22 })
   );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -0.02;
-  floor.receiveShadow = true;
-  scene.add(floor);
+  floorShadow.rotation.x = -Math.PI / 2;
+  floorShadow.position.y = -0.01;
+  floorShadow.receiveShadow = true;
+  scene.add(floorShadow);
 
   const setSize = () => {
     const width = Math.max(320, host.clientWidth || container.clientWidth || 720);
@@ -4007,15 +4060,15 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
     dispose() {
       cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", setSize);
-      window.clearTimeout(autoRotateTimer);
-      controls.removeEventListener("start", pauseAutoRotate);
-      controls.removeEventListener("end", resumeAutoRotateSoon);
       controls.dispose();
       environmentTexture?.dispose?.();
       scene.traverse((object) => {
         if (object.geometry) object.geometry.dispose();
         const materials = Array.isArray(object.material) ? object.material : object.material ? [object.material] : [];
-        materials.forEach((material) => material.dispose?.());
+        materials.forEach((material) => {
+          ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap", "alphaMap"].forEach((key) => material[key]?.dispose?.());
+          material.dispose?.();
+        });
       });
       renderer.dispose();
       renderer.domElement.remove();
@@ -4026,6 +4079,7 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
 function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
   if (!environmentUrl) return null;
   const mobile = isMobileViewport();
+  applyShowroomEnvironmentTransform(THREE, scene);
   const texture = new THREE.TextureLoader().load(
     environmentUrl,
     (loadedTexture) => {
@@ -4037,6 +4091,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
       scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
       scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
       scene.environmentIntensity = mobile ? 1.05 : 1.28;
+      applyShowroomEnvironmentTransform(THREE, scene);
     },
     undefined,
     () => {
@@ -4051,6 +4106,59 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
   scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
   scene.environmentIntensity = mobile ? 1.05 : 1.28;
   return texture;
+}
+
+function applyShowroomEnvironmentTransform(THREE, scene) {
+  const rotation = new THREE.Euler(0, consultationRenderSettings.showroomRotationY, 0);
+  scene.backgroundRotation = rotation;
+  scene.environmentRotation = rotation;
+}
+
+function createShowroomFloorMaterial(THREE) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#eef2f6";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "rgba(76, 84, 96, 0.16)";
+  context.lineWidth = 1.4;
+  const seededWave = (seed, scale = 1) => {
+    const value = Math.sin(seed * 12.9898) * 43758.5453;
+    return (value - Math.floor(value)) * scale;
+  };
+  for (let index = 0; index < 18; index += 1) {
+    context.beginPath();
+    const startX = seededWave(index + 1, canvas.width);
+    const startY = seededWave(index + 21, canvas.height);
+    context.moveTo(startX, startY);
+    context.bezierCurveTo(
+      startX + seededWave(index + 41, 180) - 90,
+      startY + seededWave(index + 61, 120) - 60,
+      startX + seededWave(index + 81, 220) - 110,
+      startY + seededWave(index + 101, 180) - 90,
+      startX + seededWave(index + 121, 260) - 130,
+      startY + seededWave(index + 141, 220) - 110
+    );
+    context.stroke();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(4, 4);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshPhysicalMaterial({
+    color: 0xf7f8fb,
+    map: texture,
+    roughness: 0.24,
+    metalness: 0.06,
+    clearcoat: 0.65,
+    clearcoatRoughness: 0.12,
+    envMapIntensity: 0.9,
+    transparent: true,
+    opacity: 0.46,
+    depthWrite: false
+  });
 }
 
 function disposeConsultation3dViewer() {
@@ -4096,7 +4204,6 @@ function isMobileViewport() {
 function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
   const bodyColor = new THREE.Color(vehicleColorByName(state.consultation.color).hex);
   const tint = selectedConsultationTintProduct();
-  const tintOpacity = consultationTintOpacity(tint);
   const selectedParts = new Set(state.consultation.ppfParts || []);
   const fullBodyPpf = selectedParts.has("full_body");
   const ppfStyle = consultationPpfVisualStyle(selectedConsultationPpfProduct());
@@ -4106,6 +4213,8 @@ function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     materials.forEach((material) => {
       if (meshInfo.isGlass) {
+        const tintVlt = consultationTintVltForMesh(meshInfo, tint);
+        const tintOpacity = consultationTintOpacityFromVlt(tintVlt);
         material.transparent = true;
         material.opacity = Math.max(0.36, Math.min(0.88, tintOpacity + 0.18));
         material.color = consultationTintColor(THREE, tint);
@@ -4326,6 +4435,7 @@ function consultationMeshInfo(object, vehicleId = "") {
   const map = consultationVehicleMeshMaps[vehicleId] || null;
   const exactMap = Boolean(map);
   const ppfParts = consultationMappedPpfParts(directName, name, map);
+  const tintAreas = consultationMappedTintAreas(directName, name, map);
   const mappedBodyNames = new Set((map?.body || []).map(normalizeMeshName));
   const mappedGlassNames = new Set((map?.glass || []).map(normalizeMeshName));
   return {
@@ -4333,7 +4443,8 @@ function consultationMeshInfo(object, vehicleId = "") {
     directName,
     isBody: exactMap ? mappedBodyNames.has(directName) || ppfParts.some((part) => part !== "headlight" && part !== "pillar") : isBodyMeshName(name),
     isGlass: exactMap ? mappedGlassNames.has(directName) : isGlassMeshName(name),
-    ppfParts
+    ppfParts,
+    tintAreas
   };
 }
 
@@ -4342,6 +4453,19 @@ function consultationMappedPpfParts(directName, combinedName, map) {
   return Object.entries(map.ppf)
     .filter(([, names]) => names.map(normalizeMeshName).some((meshName) => directName === meshName || combinedName.includes(meshName)))
     .map(([part]) => part);
+}
+
+function consultationMappedTintAreas(directName, combinedName, map) {
+  if (!map?.tint) return [];
+  return Object.entries(map.tint)
+    .filter(([, names]) => names.map(normalizeMeshName).some((meshName) => directName === meshName || combinedName.includes(meshName)))
+    .map(([area]) => area);
+}
+
+function consultationTintVltForMesh(meshInfo, product) {
+  const areas = consultationTintAreas();
+  const area = meshInfo.tintAreas?.find((key) => Number.isFinite(Number(areas[key])));
+  return area ? Number(areas[area]) : parseTintVlt(product);
 }
 
 function consultationOverlayFallbackParts(vehicleId, selectedParts) {
@@ -4374,10 +4498,12 @@ function frameConsultationModel(THREE, camera, controls, model, view) {
   }
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
-  model.position.sub(center);
+  model.position.x -= center.x;
+  model.position.y -= box.min.y;
+  model.position.z -= center.z;
   const maxDim = Math.max(size.x, size.y, size.z) || 1;
   const distance = Math.max(2.4, maxDim * 1.45);
-  const height = Math.max(0.8, size.y * 0.42);
+  const height = Math.max(0.8, size.y * 0.48);
   const cameraPositions = {
     front: [0, height, distance],
     front45: [distance * 0.72, height, distance * 0.72],
@@ -4389,7 +4515,7 @@ function frameConsultationModel(THREE, camera, controls, model, view) {
   camera.near = 0.01;
   camera.far = distance * 10;
   camera.updateProjectionMatrix();
-  controls.target.set(0, Math.max(0.2, size.y * 0.18), 0);
+  controls.target.set(0, Math.max(0.28, size.y * 0.34), 0);
   controls.update();
 }
 
@@ -7176,8 +7302,28 @@ function parseTintVlt(product) {
 }
 
 function consultationTintOpacity(product) {
-  const vlt = parseTintVlt(product);
+  return consultationTintOpacityFromVlt(parseTintVlt(product));
+}
+
+function consultationTintOpacityFromVlt(vltValue) {
+  const vlt = Math.min(80, Math.max(5, Number(vltValue) || 35));
   return Math.min(0.82, Math.max(0.18, 0.9 - vlt / 100));
+}
+
+function consultationTintAreas() {
+  const saved = state.consultation?.tintAreas || {};
+  return Object.fromEntries(
+    tintAreaOptions.map((area) => {
+      const value = Number(saved[area.key]);
+      return [area.key, Number.isFinite(value) && value > 0 ? value : area.defaultVlt];
+    })
+  );
+}
+
+function consultationAverageTintOpacity() {
+  const areas = Object.values(consultationTintAreas());
+  const average = areas.reduce((sum, value) => sum + Number(value || 0), 0) / Math.max(1, areas.length);
+  return consultationTintOpacityFromVlt(average);
 }
 
 function consultationProductStock(product) {
@@ -7254,8 +7400,10 @@ function selectedConsultationSummary() {
   const tint = selectedConsultationTintProduct();
   const ppf = selectedConsultationPpfProduct();
   const parts = selectedPpfPartObjects().map((part) => part.label).join(", ");
+  const tintAreas = consultationTintAreas();
+  const tintAreaText = tintAreaOptions.map((area) => `${area.shortLabel} ${tintAreas[area.key]}%`).join(" / ");
   return [
-    tint ? `틴팅 ${tint.product_name}` : "",
+    tint ? `틴팅 ${tint.product_name} (${tintAreaText})` : "",
     ppf && parts ? `PPF ${parts}` : ""
   ].filter(Boolean).join(" · ") || "제품을 선택해 상담을 시작하세요";
 }
@@ -7291,7 +7439,7 @@ function consultationPayload() {
     vehicle_id: vehicle?.id || "",
     vehicle_model: vehicleDisplayName(vehicle),
     vehicle_color: vehicleColorByName(state.consultation.color).label,
-    selected_tint_products: tintProduct ? JSON.stringify([{ sku: tintProduct.sku, product_name: tintProduct.product_name, vlt: parseTintVlt(tintProduct) }]) : "[]",
+    selected_tint_products: tintProduct ? JSON.stringify([{ sku: tintProduct.sku, product_name: tintProduct.product_name, vlt: parseTintVlt(tintProduct), areas: consultationTintAreas() }]) : "[]",
     selected_ppf_products: ppfProduct ? JSON.stringify([{ sku: ppfProduct.sku, product_name: ppfProduct.product_name }]) : "[]",
     selected_ppf_parts: JSON.stringify(selectedParts.map((part) => ({ key: part.key, label: part.label, price: part.price }))),
     quote_total: quote.total,
