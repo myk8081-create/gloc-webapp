@@ -1708,6 +1708,7 @@ h3 {
 
 .consultation-stage-caption {
   position: absolute;
+  z-index: 4;
   left: 18px;
   right: 18px;
   bottom: 16px;
@@ -1737,6 +1738,19 @@ h3 {
   place-items: center;
 }
 
+.consultation-3d-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.consultation-3d-canvas canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
 .consultation-orbit-grid {
   position: absolute;
   inset: 0;
@@ -1746,20 +1760,40 @@ h3 {
   opacity: 0.5;
 }
 
-.consultation-3d-copy {
+.consultation-3d-copy,
+.consultation-3d-loader {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   max-width: 440px;
   padding: 24px;
   text-align: center;
 }
 
-.consultation-3d-copy code {
+.consultation-3d-stage.is-ready .consultation-orbit-grid {
+  opacity: 0.28;
+}
+
+.consultation-3d-stage.is-ready .consultation-stage-caption {
+  z-index: 4;
+}
+
+.consultation-3d-stage.has-error {
+  border-color: rgba(207, 78, 66, 0.75);
+}
+
+.consultation-3d-copy code,
+.consultation-3d-loader code {
   display: block;
   margin-top: 12px;
   overflow-wrap: anywhere;
   color: var(--amber);
   font-size: 12px;
+}
+
+.consultation-3d-loader p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
 }
 
 .consultation-view-tabs {

@@ -201,7 +201,7 @@ const baseProducts = [
 
 const teslaVehicleSeed = [
   { id: "tesla-model3-legacy", brand: "Tesla", model_name: "Model 3", generation_name: "Legacy", facelift_type: "Legacy", body_code: "M3-L", model_year: "2017-2023", vehicle_type: "sedan", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/model3-legacy.glb" },
-  { id: "tesla-model3-highland", brand: "Tesla", model_name: "Model 3", generation_name: "Highland", facelift_type: "Highland", body_code: "M3-H", model_year: "2024-", vehicle_type: "sedan", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/model3-highland.glb" },
+  { id: "tesla-model3-highland", brand: "Tesla", model_name: "Model 3", generation_name: "Highland", facelift_type: "Highland", body_code: "M3-H", model_year: "2024-", vehicle_type: "sedan", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: true, glb_file_url: "/models/tesla/model3-highland.glb" },
   { id: "tesla-modely-legacy", brand: "Tesla", model_name: "Model Y", generation_name: "Legacy", facelift_type: "Legacy", body_code: "MY-L", model_year: "2020-2024", vehicle_type: "suv", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/modely-legacy.glb" },
   { id: "tesla-modely-juniper", brand: "Tesla", model_name: "Model Y", generation_name: "Juniper", facelift_type: "Juniper", body_code: "MY-J", model_year: "2025-", vehicle_type: "suv", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/modely-juniper.glb" },
   { id: "tesla-models", brand: "Tesla", model_name: "Model S", generation_name: "Current", facelift_type: "Current", body_code: "MS", model_year: "2021-", vehicle_type: "sedan", default_color: "Pearl White", thumbnail_url: "", image_mode_enabled: true, three_d_enabled: false, glb_file_url: "/models/tesla/models.glb" },
@@ -226,6 +226,12 @@ const vehicleViewOptions = [
   { value: "rear45", label: "Rear 45" },
   { value: "rear", label: "Rear" }
 ];
+
+const threeModuleUrls = {
+  core: "https://esm.sh/three@0.161.0",
+  gltfLoader: "https://esm.sh/three@0.161.0/examples/jsm/loaders/GLTFLoader.js",
+  orbitControls: "https://esm.sh/three@0.161.0/examples/jsm/controls/OrbitControls.js"
+};
 
 const ppfPartOptions = [
   { key: "hood", label: "후드", price: 220000 },
@@ -460,7 +466,7 @@ const state = {
     vehicleId: "tesla-model3-highland",
     view: "front45",
     color: "Pearl White",
-    renderMode: "image",
+    renderMode: "3d",
     tintSku: "TN-CH-035",
     ppfSku: "PPF-CL-150",
     ppfParts: ["hood", "front_bumper"],
@@ -573,6 +579,9 @@ const state = {
   }
 };
 
+let consultation3dRuntime = null;
+let consultation3dModulesPromise = null;
+
 let searchRefreshTimer = null;
 let accountFormRefreshTimer = null;
 let daumPostcodeLoading = null;
@@ -632,6 +641,7 @@ function render() {
     </div>
   `;
   bindEvents();
+  requestAnimationFrame(initConsultation3dViewer);
 }
 
 function renderTopbar() {
@@ -2155,7 +2165,7 @@ function renderConsultation() {
   const vehicle = selectedConsultationVehicle();
   const quote = consultationQuote();
   const color = vehicleColorByName(state.consultation.color);
-  const canUse3d = toBool(vehicle?.three_d_enabled) && String(vehicle?.glb_file_url || "").trim();
+  const canUse3d = consultationCanUse3d(vehicle);
   const mode = state.consultation.renderMode === "3d" && canUse3d ? "3d" : "image";
   const recent = visibleConsultations().slice(0, 4);
   return `
@@ -2308,14 +2318,26 @@ function renderPpfSvgOverlays(ppfTone) {
 }
 
 function renderConsultation3dSlot(vehicle) {
+  const glbUrl = publicAssetUrl(vehicle?.glb_file_url || "");
   return `
-    <div class="consultation-stage consultation-3d-stage">
+    <div
+      class="consultation-stage consultation-3d-stage"
+      id="consultation3dViewer"
+      data-glb-url="${escapeAttr(glbUrl)}"
+      data-view="${escapeAttr(state.consultation.view)}"
+      data-body-color="${escapeAttr(vehicleColorByName(state.consultation.color).hex)}"
+      data-vehicle-name="${escapeAttr(vehicleDisplayName(vehicle))}"
+    >
       <div class="consultation-orbit-grid"></div>
-      <div class="consultation-3d-copy">
-        <span class="badge warn">GLB 확장 모드</span>
+      <div class="consultation-3d-loader">
+        <span class="badge warn">3D GLB 로딩</span>
         <h2>${escapeHtml(vehicleDisplayName(vehicle))}</h2>
-        <p>GLB 파일이 등록되면 이 영역에서 Orbit/Zoom/Front/Side/Rear 뷰어로 확장됩니다.</p>
-        <code>${escapeHtml(vehicle?.glb_file_url || "/public/models/tesla/*.glb")}</code>
+        <p>등록된 3D 모델을 불러오고 있습니다. 화면을 드래그하면 회전하고, 손가락 두 개로 확대/축소할 수 있습니다.</p>
+        <code>${escapeHtml(vehicle?.glb_file_url || "/models/tesla/*.glb")}</code>
+      </div>
+      <div class="consultation-stage-caption">
+        <strong>${escapeHtml(vehicleDisplayName(vehicle))}</strong>
+        <span>3D GLB · ${escapeHtml(selectedConsultationSummary())}</span>
       </div>
     </div>
   `;
@@ -2535,7 +2557,7 @@ function renderVehicleAdminRow(vehicle) {
     <button type="button" class="vehicle-admin-row ${state.forms.vehicleId === vehicle.id ? "active" : ""}" data-edit-vehicle="${escapeAttr(vehicle.id)}">
       <span>
         <strong>${escapeHtml(vehicleDisplayName(vehicle))}</strong>
-        <small>${escapeHtml(vehicle.id)} · ${toBool(vehicle.three_d_enabled) ? "3D 사용" : "2.5D 우선"}</small>
+        <small>${escapeHtml(vehicle.id)} · ${consultationCanUse3d(vehicle) ? "3D 사용" : "2.5D 우선"}</small>
       </span>
       <em>${escapeHtml(vehicle.body_code || vehicle.model_year || "")}</em>
     </button>
@@ -3742,6 +3764,290 @@ function replaceHtml(selector, html) {
   if (!target) return;
   target.innerHTML = html;
   bindDynamicListEvents(target);
+}
+
+async function initConsultation3dViewer() {
+  const container = document.querySelector("#consultation3dViewer");
+  if (!container || state.screen !== "consultation" || state.consultation.renderMode !== "3d") {
+    disposeConsultation3dViewer();
+    return;
+  }
+
+  const glbUrl = container.dataset.glbUrl || "";
+  const key = `${glbUrl}|${state.consultation.color}|${state.consultation.view}|${(state.consultation.ppfParts || []).join(",")}`;
+  if (consultation3dRuntime?.container === container && consultation3dRuntime?.key === key) return;
+  disposeConsultation3dViewer();
+
+  if (!glbUrl) {
+    showConsultation3dError(container, "등록된 GLB 파일 경로가 없습니다. 차량/3D 관리에서 파일 경로를 입력해 주세요.");
+    return;
+  }
+
+  try {
+    container.classList.add("is-loading");
+    const modules = await loadThreeModules();
+    if (!document.body.contains(container)) return;
+    mountConsultation3dViewer(container, modules, glbUrl, key);
+  } catch (error) {
+    showConsultation3dError(container, error.message || "3D 뷰어 모듈을 불러오지 못했습니다.");
+  }
+}
+
+function loadThreeModules() {
+  if (!consultation3dModulesPromise) {
+    consultation3dModulesPromise = Promise.all([
+      import(threeModuleUrls.core),
+      import(threeModuleUrls.gltfLoader),
+      import(threeModuleUrls.orbitControls)
+    ]).then(([THREE, loaderModule, controlsModule]) => ({
+      THREE,
+      GLTFLoader: loaderModule.GLTFLoader,
+      OrbitControls: controlsModule.OrbitControls
+    }));
+  }
+  return consultation3dModulesPromise;
+}
+
+function mountConsultation3dViewer(container, modules, glbUrl, key) {
+  const { THREE, GLTFLoader, OrbitControls } = modules;
+  const host = document.createElement("div");
+  host.className = "consultation-3d-canvas";
+  container.prepend(host);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 1000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  host.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.enablePan = false;
+  controls.minDistance = 1.2;
+  controls.maxDistance = 8;
+
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x111111, 1.8);
+  scene.add(hemiLight);
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+  keyLight.position.set(4, 5, 5);
+  keyLight.castShadow = true;
+  scene.add(keyLight);
+  const rimLight = new THREE.DirectionalLight(0xd6ad55, 1.1);
+  rimLight.position.set(-4, 2.5, -3);
+  scene.add(rimLight);
+
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(6, 96),
+    new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.25 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.02;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const setSize = () => {
+    const width = Math.max(320, host.clientWidth || container.clientWidth || 720);
+    const height = Math.max(300, host.clientHeight || container.clientHeight || 460);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  };
+
+  let animationFrame = 0;
+  let model = null;
+  const animate = () => {
+    controls.update();
+    renderer.render(scene, camera);
+    animationFrame = requestAnimationFrame(animate);
+  };
+
+  const loader = new GLTFLoader();
+  loader.load(
+    glbUrl,
+    (gltf) => {
+      if (!document.body.contains(container)) return;
+      model = gltf.scene;
+      prepareConsultationModel(THREE, model);
+      applyConsultation3dMaterials(THREE, model);
+      scene.add(model);
+      setSize();
+      frameConsultationModel(THREE, camera, controls, model, container.dataset.view || state.consultation.view);
+      container.classList.remove("is-loading");
+      container.classList.add("is-ready");
+      const loaderNode = container.querySelector(".consultation-3d-loader");
+      if (loaderNode) loaderNode.remove();
+      animate();
+    },
+    undefined,
+    (error) => {
+      showConsultation3dError(container, `GLB 파일을 불러오지 못했습니다: ${error.message || glbUrl}`);
+    }
+  );
+
+  window.addEventListener("resize", setSize);
+  setSize();
+  consultation3dRuntime = {
+    key,
+    container,
+    scene,
+    renderer,
+    controls,
+    get model() {
+      return model;
+    },
+    animationFrame,
+    dispose() {
+      cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", setSize);
+      controls.dispose();
+      scene.traverse((object) => {
+        if (object.geometry) object.geometry.dispose();
+        const materials = Array.isArray(object.material) ? object.material : object.material ? [object.material] : [];
+        materials.forEach((material) => material.dispose?.());
+      });
+      renderer.dispose();
+      renderer.domElement.remove();
+    }
+  };
+}
+
+function disposeConsultation3dViewer() {
+  if (!consultation3dRuntime) return;
+  consultation3dRuntime.dispose();
+  consultation3dRuntime = null;
+}
+
+function showConsultation3dError(container, message) {
+  container.classList.remove("is-loading");
+  container.classList.add("has-error");
+  const loader = container.querySelector(".consultation-3d-loader") || container;
+  loader.innerHTML = `
+    <span class="badge danger">3D 로딩 실패</span>
+    <h2>2.5D 화면으로 전환해 주세요</h2>
+    <p>${escapeHtml(message)}</p>
+    <button type="button" class="secondary-button" data-consultation-mode="image">2.5D로 보기</button>
+  `;
+  loader.querySelector("[data-consultation-mode]")?.addEventListener("click", () => {
+    state.consultation.renderMode = "image";
+    render();
+  });
+}
+
+function prepareConsultationModel(THREE, model) {
+  model.traverse((object) => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = true;
+    if (object.material) object.material = cloneThreeMaterial(object.material);
+  });
+}
+
+function cloneThreeMaterial(material) {
+  if (Array.isArray(material)) return material.map((item) => item.clone());
+  return material.clone();
+}
+
+function applyConsultation3dMaterials(THREE, model) {
+  const bodyColor = new THREE.Color(vehicleColorByName(state.consultation.color).hex);
+  const tint = selectedConsultationTintProduct();
+  const tintOpacity = consultationTintOpacity(tint);
+  const selectedParts = new Set(state.consultation.ppfParts || []);
+  const fullBodyPpf = selectedParts.has("full_body");
+  model.traverse((object) => {
+    if (!object.isMesh || !object.material) return;
+    const name = normalizeMeshName(object.name || object.parent?.name || "");
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.forEach((material) => {
+      if (isGlassMeshName(name)) {
+        material.transparent = true;
+        material.opacity = Math.max(0.28, Math.min(0.82, tintOpacity + 0.1));
+        material.color = new THREE.Color("#151b20");
+        material.roughness = 0.08;
+        material.metalness = 0.18;
+        return;
+      }
+      if (isBodyMeshName(name)) {
+        material.color = bodyColor.clone();
+        material.roughness = 0.36;
+        material.metalness = 0.25;
+        material.clearcoat = 0.85;
+        material.clearcoatRoughness = 0.18;
+      }
+      if (fullBodyPpf || consultationPartMatchesMesh(name, selectedParts)) {
+        material.roughness = Math.max(0.08, /matte|매트/i.test(selectedConsultationPpfProduct()?.product_name || "") ? 0.72 : 0.18);
+        material.clearcoat = 1;
+        material.clearcoatRoughness = 0.08;
+      }
+      material.needsUpdate = true;
+    });
+  });
+}
+
+function normalizeMeshName(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9가-힣]+/g, "_");
+}
+
+function isGlassMeshName(name) {
+  return /glass|window|windshield|sunroof|유리/.test(name);
+}
+
+function isBodyMeshName(name) {
+  return /body|hood|bumper|door|fender|trunk|roof|mirror|quarter|panel|차체|본넷|도어|범퍼/.test(name);
+}
+
+function consultationPartMatchesMesh(meshName, selectedParts) {
+  const aliases = {
+    hood: ["hood", "bonnet", "본넷", "후드"],
+    front_bumper: ["front_bumper", "bumper_front", "프론트_범퍼"],
+    rear_bumper: ["rear_bumper", "bumper_rear", "리어_범퍼"],
+    front_fender: ["front_fender", "fender_front"],
+    rear_fender: ["rear_fender", "fender_rear"],
+    front_door: ["front_door", "door_front"],
+    rear_door: ["rear_door", "door_rear"],
+    mirror: ["mirror", "미러"],
+    roof: ["roof", "루프"],
+    trunk: ["trunk", "tailgate", "boot", "트렁크"],
+    headlight: ["headlight", "lamp", "라이트"],
+    pillar: ["pillar", "필러"],
+    door_cup: ["door_cup", "handle"],
+    door_edge: ["door_edge", "edge"]
+  };
+  return Array.from(selectedParts).some((part) => (aliases[part] || [part]).some((alias) => meshName.includes(alias)));
+}
+
+function frameConsultationModel(THREE, camera, controls, model, view) {
+  const box = new THREE.Box3().setFromObject(model);
+  if (box.isEmpty()) {
+    camera.position.set(3, 1.5, 4);
+    controls.target.set(0, 0.5, 0);
+    controls.update();
+    return;
+  }
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  model.position.sub(center);
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  const distance = Math.max(2.4, maxDim * 1.45);
+  const height = Math.max(0.8, size.y * 0.42);
+  const cameraPositions = {
+    front: [0, height, distance],
+    front45: [distance * 0.72, height, distance * 0.72],
+    side: [distance, height, 0],
+    rear45: [-distance * 0.72, height, -distance * 0.72],
+    rear: [0, height, -distance]
+  };
+  camera.position.set(...(cameraPositions[view] || cameraPositions.front45));
+  camera.near = 0.01;
+  camera.far = distance * 10;
+  camera.updateProjectionMatrix();
+  controls.target.set(0, Math.max(0.2, size.y * 0.18), 0);
+  controls.update();
 }
 
 function refreshReservationStockPanel() {
@@ -6449,6 +6755,23 @@ function activeVehicles() {
 function selectedConsultationVehicle() {
   const vehicles = activeVehicles();
   return vehicles.find((vehicle) => vehicle.id === state.consultation.vehicleId) || vehicles[0] || teslaVehicleSeed[0];
+}
+
+function consultationCanUse3d(vehicle) {
+  if (!vehicle || !String(vehicle.glb_file_url || "").trim()) return false;
+  return toBool(vehicle.three_d_enabled) || vehicle.id === "tesla-model3-highland";
+}
+
+function publicAssetUrl(path) {
+  const value = String(path || "").trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:") || value.startsWith("blob:")) return value;
+  const appRoot = appPublicBase()
+    .replace(/\/index\.html$/i, "")
+    .replace(/\/login$/i, "")
+    .replace(/\/verify$/i, "")
+    .replace(/\/$/, "");
+  return value.startsWith("/") ? `${appRoot}${value}` : `${appRoot}/${value}`;
 }
 
 function vehicleColorByName(name) {

@@ -2010,7 +2010,7 @@ function seedVehiclesIfEmpty_() {
       default_color: row[7],
       thumbnail_url: "",
       image_mode_enabled: true,
-      three_d_enabled: false,
+      three_d_enabled: row[0] === "tesla-model3-highland",
       glb_file_url: row[8],
       created_at: now,
       updated_at: now,
