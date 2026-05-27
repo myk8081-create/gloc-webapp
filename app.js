@@ -266,6 +266,52 @@ const ppfPartOptions = [
   { key: "full_body", label: "전체 시공", price: 2500000, full: true }
 ];
 
+const consultationVehicleMeshMaps = {
+  "tesla-model3-highland": {
+    body: [
+      "body",
+      "hood",
+      "front_bumper",
+      "rear_bumper",
+      "front_doors",
+      "rear_doors",
+      "front_fenders",
+      "roof",
+      "side_body_panels",
+      "trunk",
+      "mirror_body"
+    ],
+    glass: [
+      "glass_front",
+      "glass_rear",
+      "glass_roof",
+      "glass_side_front",
+      "glass_side_rear",
+      "mirrors_glass"
+    ],
+    ppf: {
+      hood: ["hood"],
+      front_bumper: ["front_bumper"],
+      rear_bumper: ["rear_bumper"],
+      front_fender: ["front_fenders"],
+      rear_fender: ["side_body_panels"],
+      front_door: ["front_doors"],
+      rear_door: ["rear_doors"],
+      mirror: ["mirror_body"],
+      roof: ["roof"],
+      trunk: ["trunk"],
+      headlight: ["headlight_lens"],
+      pillar: ["window_trim"]
+    },
+    tint: {
+      frontGlass: ["glass_front"],
+      sideGlass: ["glass_side_front", "glass_side_rear"],
+      rearGlass: ["glass_rear"],
+      roofGlass: ["glass_roof"]
+    }
+  }
+};
+
 const consultationStatusLabels = {
   saved: "상담저장",
   quote: "견적완료",
@@ -2341,6 +2387,7 @@ function renderConsultation3dSlot(vehicle) {
       id="consultation3dViewer"
       data-glb-url="${escapeAttr(glbUrl)}"
       data-env-url="${escapeAttr(environmentUrl)}"
+      data-vehicle-id="${escapeAttr(vehicle?.id || "")}"
       data-view="${escapeAttr(state.consultation.view)}"
       data-body-color="${escapeAttr(vehicleColorByName(state.consultation.color).hex)}"
       data-vehicle-name="${escapeAttr(vehicleDisplayName(vehicle))}"
@@ -3792,9 +3839,11 @@ async function initConsultation3dViewer() {
 
   const glbUrl = container.dataset.glbUrl || "";
   const environmentUrl = container.dataset.envUrl || publicAssetUrl(showroomEnvironmentPath);
+  const vehicleId = container.dataset.vehicleId || selectedConsultationVehicle()?.id || "";
   const key = [
     glbUrl,
     environmentUrl,
+    vehicleId,
     state.consultation.color,
     state.consultation.view,
     state.consultation.tintSku,
@@ -3925,11 +3974,12 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
       if (!document.body.contains(container)) return;
       model = gltf.scene;
       prepareConsultationModel(THREE, model);
-      applyConsultation3dMaterials(THREE, model);
+      applyConsultation3dMaterials(THREE, model, container.dataset.vehicleId || "");
       scene.add(model);
       setSize();
       frameConsultationModel(THREE, camera, controls, model, container.dataset.view || state.consultation.view);
-      addConsultationPpfSelectionOverlays(THREE, scene, model);
+      addConsultationPpfMeshHighlights(THREE, model, container.dataset.vehicleId || "");
+      addConsultationPpfSelectionOverlays(THREE, scene, model, container.dataset.vehicleId || "");
       container.classList.remove("is-loading");
       container.classList.add("is-ready");
       const loaderNode = container.querySelector(".consultation-3d-loader");
@@ -4043,7 +4093,7 @@ function isMobileViewport() {
   return window.matchMedia?.("(max-width: 759px), (pointer: coarse)")?.matches || window.innerWidth < 760;
 }
 
-function applyConsultation3dMaterials(THREE, model) {
+function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
   const bodyColor = new THREE.Color(vehicleColorByName(state.consultation.color).hex);
   const tint = selectedConsultationTintProduct();
   const tintOpacity = consultationTintOpacity(tint);
@@ -4052,11 +4102,10 @@ function applyConsultation3dMaterials(THREE, model) {
   const ppfStyle = consultationPpfVisualStyle(selectedConsultationPpfProduct());
   model.traverse((object) => {
     if (!object.isMesh || !object.material) return;
-    const materialName = Array.isArray(object.material) ? object.material.map((item) => item?.name).join("_") : object.material?.name;
-    const name = normalizeMeshName([object.name, object.parent?.name, materialName].filter(Boolean).join("_"));
+    const meshInfo = consultationMeshInfo(object, vehicleId);
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     materials.forEach((material) => {
-      if (isGlassMeshName(name)) {
+      if (meshInfo.isGlass) {
         material.transparent = true;
         material.opacity = Math.max(0.36, Math.min(0.88, tintOpacity + 0.18));
         material.color = consultationTintColor(THREE, tint);
@@ -4066,7 +4115,7 @@ function applyConsultation3dMaterials(THREE, model) {
         material.depthWrite = false;
         return;
       }
-      if (isBodyMeshName(name)) {
+      if (meshInfo.isBody) {
         material.color = bodyColor.clone();
         material.roughness = 0.22;
         material.metalness = 0.34;
@@ -4074,7 +4123,7 @@ function applyConsultation3dMaterials(THREE, model) {
         material.clearcoatRoughness = 0.1;
         material.envMapIntensity = consultationRenderSettings.bodyEnvMapIntensity;
       }
-      if (fullBodyPpf || consultationPartMatchesMesh(name, selectedParts)) {
+      if ((fullBodyPpf && meshInfo.isBody) || meshInfo.ppfParts.some((part) => selectedParts.has(part))) {
         material.color = material.color instanceof THREE.Color ? material.color.lerp(new THREE.Color(ppfStyle.tint), ppfStyle.mix) : new THREE.Color(ppfStyle.tint);
         material.roughness = ppfStyle.roughness;
         material.metalness = Math.max(material.metalness || 0, ppfStyle.metalness);
@@ -4163,9 +4212,33 @@ function consultationPpfVisualStyle(product) {
   };
 }
 
-function addConsultationPpfSelectionOverlays(THREE, scene, model) {
+function addConsultationPpfMeshHighlights(THREE, model, vehicleId = "") {
+  const selectedParts = new Set(state.consultation.ppfParts || []);
+  if (!selectedParts.size || selectedParts.has("full_body")) return;
+  const ppfStyle = consultationPpfVisualStyle(selectedConsultationPpfProduct());
+  const highlightMaterial = new THREE.LineBasicMaterial({
+    color: new THREE.Color(ppfStyle.tint),
+    transparent: true,
+    opacity: 0.7,
+    depthTest: true
+  });
+  model.traverse((object) => {
+    if (!object.isMesh || !object.geometry) return;
+    const meshInfo = consultationMeshInfo(object, vehicleId);
+    if (!meshInfo.ppfParts.some((part) => selectedParts.has(part))) return;
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(object.geometry), highlightMaterial.clone());
+    edges.name = `consultation_mesh_highlight_${object.name || "part"}`;
+    edges.renderOrder = 22;
+    edges.scale.multiplyScalar(1.002);
+    object.add(edges);
+  });
+}
+
+function addConsultationPpfSelectionOverlays(THREE, scene, model, vehicleId = "") {
   const selectedParts = new Set(state.consultation.ppfParts || []);
   if (!selectedParts.size) return;
+  const fallbackParts = consultationOverlayFallbackParts(vehicleId, selectedParts);
+  if (!fallbackParts.size) return;
   const box = new THREE.Box3().setFromObject(model);
   if (box.isEmpty()) return;
 
@@ -4188,9 +4261,7 @@ function addConsultationPpfSelectionOverlays(THREE, scene, model) {
   });
 
   const partSpecs = consultationOverlaySpecs(size, center);
-  const activeSpecs = selectedParts.has("full_body")
-    ? partSpecs.filter((spec) => spec.key !== "full_body")
-    : partSpecs.filter((spec) => selectedParts.has(spec.key));
+  const activeSpecs = partSpecs.filter((spec) => fallbackParts.has(spec.key));
 
   activeSpecs.forEach((spec) => {
     const geometry = new THREE.PlaneGeometry(spec.width, spec.height, 1, 1);
@@ -4247,6 +4318,40 @@ function consultationOverlaySpecs(size, center) {
   return specs;
 }
 
+function consultationMeshInfo(object, vehicleId = "") {
+  const materialName = Array.isArray(object.material) ? object.material.map((item) => item?.name).join("_") : object.material?.name;
+  const rawName = [object.name, object.parent?.name, materialName].filter(Boolean).join("_");
+  const name = normalizeMeshName(rawName);
+  const directName = normalizeMeshName(object.name || "");
+  const map = consultationVehicleMeshMaps[vehicleId] || null;
+  const exactMap = Boolean(map);
+  const ppfParts = consultationMappedPpfParts(directName, name, map);
+  const mappedBodyNames = new Set((map?.body || []).map(normalizeMeshName));
+  const mappedGlassNames = new Set((map?.glass || []).map(normalizeMeshName));
+  return {
+    name,
+    directName,
+    isBody: exactMap ? mappedBodyNames.has(directName) || ppfParts.some((part) => part !== "headlight" && part !== "pillar") : isBodyMeshName(name),
+    isGlass: exactMap ? mappedGlassNames.has(directName) : isGlassMeshName(name),
+    ppfParts
+  };
+}
+
+function consultationMappedPpfParts(directName, combinedName, map) {
+  if (!map?.ppf) return [];
+  return Object.entries(map.ppf)
+    .filter(([, names]) => names.map(normalizeMeshName).some((meshName) => directName === meshName || combinedName.includes(meshName)))
+    .map(([part]) => part);
+}
+
+function consultationOverlayFallbackParts(vehicleId, selectedParts) {
+  if (selectedParts.has("full_body")) return new Set();
+  const map = consultationVehicleMeshMaps[vehicleId] || null;
+  if (!map?.ppf) return selectedParts;
+  const mappedParts = new Set(Object.keys(map.ppf));
+  return new Set(Array.from(selectedParts).filter((part) => !mappedParts.has(part)));
+}
+
 function normalizeMeshName(name) {
   return String(name || "").toLowerCase().replace(/[^a-z0-9가-힣]+/g, "_");
 }
@@ -4257,26 +4362,6 @@ function isGlassMeshName(name) {
 
 function isBodyMeshName(name) {
   return /body|hood|bumper|door|fender|trunk|roof|mirror|quarter|panel|차체|본넷|도어|범퍼/.test(name);
-}
-
-function consultationPartMatchesMesh(meshName, selectedParts) {
-  const aliases = {
-    hood: ["hood", "bonnet", "본넷", "후드"],
-    front_bumper: ["front_bumper", "bumper_front", "프론트_범퍼"],
-    rear_bumper: ["rear_bumper", "bumper_rear", "리어_범퍼"],
-    front_fender: ["front_fender", "fender_front"],
-    rear_fender: ["rear_fender", "fender_rear"],
-    front_door: ["front_door", "door_front"],
-    rear_door: ["rear_door", "door_rear"],
-    mirror: ["mirror", "미러"],
-    roof: ["roof", "루프"],
-    trunk: ["trunk", "tailgate", "boot", "트렁크"],
-    headlight: ["headlight", "lamp", "라이트"],
-    pillar: ["pillar", "필러"],
-    door_cup: ["door_cup", "handle"],
-    door_edge: ["door_edge", "edge"]
-  };
-  return Array.from(selectedParts).some((part) => (aliases[part] || [part]).some((alias) => meshName.includes(alias)));
 }
 
 function frameConsultationModel(THREE, camera, controls, model, view) {
