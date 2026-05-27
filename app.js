@@ -3774,7 +3774,14 @@ async function initConsultation3dViewer() {
   }
 
   const glbUrl = container.dataset.glbUrl || "";
-  const key = `${glbUrl}|${state.consultation.color}|${state.consultation.view}|${(state.consultation.ppfParts || []).join(",")}`;
+  const key = [
+    glbUrl,
+    state.consultation.color,
+    state.consultation.view,
+    state.consultation.tintSku,
+    state.consultation.ppfSku,
+    (state.consultation.ppfParts || []).join(",")
+  ].join("|");
   if (consultation3dRuntime?.container === container && consultation3dRuntime?.key === key) return;
   disposeConsultation3dViewer();
 
@@ -3878,6 +3885,7 @@ function mountConsultation3dViewer(container, modules, glbUrl, key) {
       scene.add(model);
       setSize();
       frameConsultationModel(THREE, camera, controls, model, container.dataset.view || state.consultation.view);
+      addConsultationPpfSelectionOverlays(THREE, scene, model);
       container.classList.remove("is-loading");
       container.classList.add("is-ready");
       const loaderNode = container.querySelector(".consultation-3d-loader");
@@ -3959,17 +3967,20 @@ function applyConsultation3dMaterials(THREE, model) {
   const tintOpacity = consultationTintOpacity(tint);
   const selectedParts = new Set(state.consultation.ppfParts || []);
   const fullBodyPpf = selectedParts.has("full_body");
+  const ppfStyle = consultationPpfVisualStyle(selectedConsultationPpfProduct());
   model.traverse((object) => {
     if (!object.isMesh || !object.material) return;
-    const name = normalizeMeshName(object.name || object.parent?.name || "");
+    const materialName = Array.isArray(object.material) ? object.material.map((item) => item?.name).join("_") : object.material?.name;
+    const name = normalizeMeshName([object.name, object.parent?.name, materialName].filter(Boolean).join("_"));
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     materials.forEach((material) => {
       if (isGlassMeshName(name)) {
         material.transparent = true;
-        material.opacity = Math.max(0.28, Math.min(0.82, tintOpacity + 0.1));
-        material.color = new THREE.Color("#151b20");
+        material.opacity = Math.max(0.36, Math.min(0.88, tintOpacity + 0.18));
+        material.color = consultationTintColor(THREE, tint);
         material.roughness = 0.08;
-        material.metalness = 0.18;
+        material.metalness = consultationTintReflectivity(tint);
+        material.depthWrite = false;
         return;
       }
       if (isBodyMeshName(name)) {
@@ -3980,13 +3991,171 @@ function applyConsultation3dMaterials(THREE, model) {
         material.clearcoatRoughness = 0.18;
       }
       if (fullBodyPpf || consultationPartMatchesMesh(name, selectedParts)) {
-        material.roughness = Math.max(0.08, /matte|매트/i.test(selectedConsultationPpfProduct()?.product_name || "") ? 0.72 : 0.18);
-        material.clearcoat = 1;
-        material.clearcoatRoughness = 0.08;
+        material.color = material.color instanceof THREE.Color ? material.color.lerp(new THREE.Color(ppfStyle.tint), ppfStyle.mix) : new THREE.Color(ppfStyle.tint);
+        material.roughness = ppfStyle.roughness;
+        material.metalness = Math.max(material.metalness || 0, ppfStyle.metalness);
+        material.clearcoat = ppfStyle.clearcoat;
+        material.clearcoatRoughness = ppfStyle.clearcoatRoughness;
+        if ("emissive" in material) {
+          material.emissive = new THREE.Color(ppfStyle.emissive);
+          material.emissiveIntensity = ppfStyle.emissiveIntensity;
+        }
       }
       material.needsUpdate = true;
     });
   });
+}
+
+function consultationTintColor(THREE, product) {
+  const text = normalize([product?.product_name, product?.sku, product?.color].filter(Boolean).join(" "));
+  if (text.includes("블루") || text.includes("blue")) return new THREE.Color("#102a4e");
+  if (text.includes("차콜") || text.includes("charcoal")) return new THREE.Color("#101820");
+  if (text.includes("브론즈") || text.includes("bronze")) return new THREE.Color("#322313");
+  return new THREE.Color("#11171c");
+}
+
+function consultationTintReflectivity(product) {
+  const text = normalize([product?.product_name, product?.sku, product?.color].filter(Boolean).join(" "));
+  if (text.includes("반사") || text.includes("reflect") || text.includes("metal")) return 0.45;
+  return 0.18;
+}
+
+function consultationPpfVisualStyle(product) {
+  const text = normalize([product?.product_name, product?.sku, product?.color].filter(Boolean).join(" "));
+  if (text.includes("매트") || text.includes("matte")) {
+    return {
+      tint: "#d7d0bd",
+      emissive: "#5a503a",
+      opacity: 0.32,
+      mix: 0.34,
+      roughness: 0.78,
+      metalness: 0.08,
+      clearcoat: 0.35,
+      clearcoatRoughness: 0.75,
+      emissiveIntensity: 0.08
+    };
+  }
+  if (text.includes("블랙") || text.includes("black")) {
+    return {
+      tint: "#111111",
+      emissive: "#1f1a12",
+      opacity: 0.34,
+      mix: 0.42,
+      roughness: 0.3,
+      metalness: 0.18,
+      clearcoat: 0.95,
+      clearcoatRoughness: 0.12,
+      emissiveIntensity: 0.06
+    };
+  }
+  if (text.includes("카본") || text.includes("carbon")) {
+    return {
+      tint: "#252525",
+      emissive: "#6b5427",
+      opacity: 0.36,
+      mix: 0.38,
+      roughness: 0.46,
+      metalness: 0.22,
+      clearcoat: 0.7,
+      clearcoatRoughness: 0.28,
+      emissiveIntensity: 0.12
+    };
+  }
+  return {
+    tint: "#ffd36d",
+    emissive: "#a56d1b",
+    opacity: 0.26,
+    mix: 0.24,
+    roughness: 0.14,
+    metalness: 0.18,
+    clearcoat: 1,
+    clearcoatRoughness: 0.04,
+    emissiveIntensity: 0.08
+  };
+}
+
+function addConsultationPpfSelectionOverlays(THREE, scene, model) {
+  const selectedParts = new Set(state.consultation.ppfParts || []);
+  if (!selectedParts.size) return;
+  const box = new THREE.Box3().setFromObject(model);
+  if (box.isEmpty()) return;
+
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const ppfStyle = consultationPpfVisualStyle(selectedConsultationPpfProduct());
+  const material = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(ppfStyle.tint),
+    transparent: true,
+    opacity: ppfStyle.opacity,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    depthTest: true
+  });
+  const edgeMaterial = new THREE.LineBasicMaterial({
+    color: new THREE.Color(ppfStyle.tint),
+    transparent: true,
+    opacity: Math.min(0.95, ppfStyle.opacity + 0.42),
+    depthTest: true
+  });
+
+  const partSpecs = consultationOverlaySpecs(size, center);
+  const activeSpecs = selectedParts.has("full_body")
+    ? partSpecs.filter((spec) => spec.key !== "full_body")
+    : partSpecs.filter((spec) => selectedParts.has(spec.key));
+
+  activeSpecs.forEach((spec) => {
+    const geometry = new THREE.PlaneGeometry(spec.width, spec.height, 1, 1);
+    const mesh = new THREE.Mesh(geometry, material.clone());
+    mesh.name = `consultation_ppf_overlay_${spec.key}`;
+    mesh.position.set(...spec.position);
+    mesh.rotation.set(...spec.rotation);
+    mesh.renderOrder = 20;
+    scene.add(mesh);
+
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial.clone());
+    edges.name = `consultation_ppf_edge_${spec.key}`;
+    edges.position.copy(mesh.position);
+    edges.rotation.copy(mesh.rotation);
+    edges.renderOrder = 21;
+    scene.add(edges);
+  });
+}
+
+function consultationOverlaySpecs(size, center) {
+  const x = size.x || 1;
+  const y = size.y || 1;
+  const z = size.z || 1;
+  const topY = center.y + y * 0.42;
+  const sideY = center.y + y * 0.08;
+  const sideZ = z * 0.5 + 0.012;
+  const frontX = center.x - x * 0.45;
+  const rearX = center.x + x * 0.45;
+  const specs = [
+    { key: "hood", width: x * 0.28, height: z * 0.7, position: [center.x - x * 0.27, topY, center.z], rotation: [-Math.PI / 2, 0, 0] },
+    { key: "roof", width: x * 0.26, height: z * 0.74, position: [center.x + x * 0.02, center.y + y * 0.62, center.z], rotation: [-Math.PI / 2, 0, 0] },
+    { key: "trunk", width: x * 0.22, height: z * 0.68, position: [center.x + x * 0.34, center.y + y * 0.38, center.z], rotation: [-Math.PI / 2, 0, 0] },
+    { key: "front_bumper", width: z * 0.78, height: y * 0.26, position: [frontX, center.y - y * 0.1, center.z], rotation: [0, Math.PI / 2, 0] },
+    { key: "rear_bumper", width: z * 0.78, height: y * 0.26, position: [rearX, center.y - y * 0.08, center.z], rotation: [0, Math.PI / 2, 0] },
+    { key: "front_fender", width: x * 0.16, height: y * 0.34, position: [center.x - x * 0.29, sideY, center.z + sideZ], rotation: [0, 0, 0] },
+    { key: "front_fender", width: x * 0.16, height: y * 0.34, position: [center.x - x * 0.29, sideY, center.z - sideZ], rotation: [0, Math.PI, 0] },
+    { key: "rear_fender", width: x * 0.18, height: y * 0.34, position: [center.x + x * 0.33, sideY, center.z + sideZ], rotation: [0, 0, 0] },
+    { key: "rear_fender", width: x * 0.18, height: y * 0.34, position: [center.x + x * 0.33, sideY, center.z - sideZ], rotation: [0, Math.PI, 0] },
+    { key: "front_door", width: x * 0.2, height: y * 0.38, position: [center.x - x * 0.08, sideY, center.z + sideZ], rotation: [0, 0, 0] },
+    { key: "front_door", width: x * 0.2, height: y * 0.38, position: [center.x - x * 0.08, sideY, center.z - sideZ], rotation: [0, Math.PI, 0] },
+    { key: "rear_door", width: x * 0.2, height: y * 0.38, position: [center.x + x * 0.14, sideY, center.z + sideZ], rotation: [0, 0, 0] },
+    { key: "rear_door", width: x * 0.2, height: y * 0.38, position: [center.x + x * 0.14, sideY, center.z - sideZ], rotation: [0, Math.PI, 0] },
+    { key: "mirror", width: x * 0.08, height: y * 0.11, position: [center.x - x * 0.16, center.y + y * 0.26, center.z + sideZ * 1.06], rotation: [0, 0, 0] },
+    { key: "mirror", width: x * 0.08, height: y * 0.11, position: [center.x - x * 0.16, center.y + y * 0.26, center.z - sideZ * 1.06], rotation: [0, Math.PI, 0] },
+    { key: "headlight", width: z * 0.34, height: y * 0.09, position: [frontX - x * 0.006, center.y + y * 0.1, center.z + z * 0.23], rotation: [0, Math.PI / 2, 0] },
+    { key: "headlight", width: z * 0.34, height: y * 0.09, position: [frontX - x * 0.006, center.y + y * 0.1, center.z - z * 0.23], rotation: [0, Math.PI / 2, 0] },
+    { key: "pillar", width: x * 0.08, height: y * 0.36, position: [center.x - x * 0.18, center.y + y * 0.22, center.z + sideZ], rotation: [0, 0, 0] },
+    { key: "pillar", width: x * 0.08, height: y * 0.36, position: [center.x - x * 0.18, center.y + y * 0.22, center.z - sideZ], rotation: [0, Math.PI, 0] },
+    { key: "door_cup", width: x * 0.11, height: y * 0.05, position: [center.x + x * 0.02, center.y + y * 0.16, center.z + sideZ * 1.02], rotation: [0, 0, 0] },
+    { key: "door_cup", width: x * 0.11, height: y * 0.05, position: [center.x + x * 0.02, center.y + y * 0.16, center.z - sideZ * 1.02], rotation: [0, Math.PI, 0] },
+    { key: "door_edge", width: x * 0.025, height: y * 0.42, position: [center.x + x * 0.05, sideY, center.z + sideZ * 1.025], rotation: [0, 0, 0] },
+    { key: "door_edge", width: x * 0.025, height: y * 0.42, position: [center.x + x * 0.05, sideY, center.z - sideZ * 1.025], rotation: [0, Math.PI, 0] }
+  ];
+  return specs;
 }
 
 function normalizeMeshName(name) {
