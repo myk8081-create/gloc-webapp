@@ -242,6 +242,8 @@ const consultationRenderSettings = {
   ppfEnvMapIntensity: 1.65,
   backgroundIntensity: 0.9,
   mobileBackgroundIntensity: 0.74,
+  backgroundBlurriness: 0.08,
+  mobileBackgroundBlurriness: 0,
   autoRotateSpeed: 0.35,
   autoRotateResumeMs: 2400
 };
@@ -3983,6 +3985,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
       scene.environment = loadedTexture;
       scene.background = loadedTexture;
       scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
+      scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
       scene.environmentIntensity = mobile ? 1.05 : 1.28;
     },
     undefined,
@@ -3995,6 +3998,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
   scene.environment = texture;
   scene.background = texture;
   scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
+  scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
   scene.environmentIntensity = mobile ? 1.05 : 1.28;
   return texture;
 }
