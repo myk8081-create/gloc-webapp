@@ -1736,6 +1736,7 @@ h3 {
 .consultation-3d-stage {
   display: grid;
   place-items: center;
+  overflow: hidden;
 }
 
 .consultation-3d-canvas {
@@ -1771,6 +1772,10 @@ h3 {
 
 .consultation-3d-stage.is-ready .consultation-orbit-grid {
   opacity: 0.28;
+}
+
+.consultation-3d-stage.has-showroom .consultation-orbit-grid {
+  opacity: 0;
 }
 
 .consultation-3d-stage.is-ready .consultation-stage-caption {

@@ -233,6 +233,19 @@ const threeModuleUrls = {
   orbitControls: "https://esm.sh/three@0.161.0/examples/jsm/controls/OrbitControls.js"
 };
 
+const showroomEnvironmentPath = "/env/gloc-showroom-360.jpg";
+const consultationRenderSettings = {
+  desktopPixelRatio: 2,
+  mobilePixelRatio: 1.35,
+  bodyEnvMapIntensity: 1.45,
+  glassEnvMapIntensity: 1.85,
+  ppfEnvMapIntensity: 1.65,
+  backgroundIntensity: 0.9,
+  mobileBackgroundIntensity: 0.74,
+  autoRotateSpeed: 0.35,
+  autoRotateResumeMs: 2400
+};
+
 const ppfPartOptions = [
   { key: "hood", label: "후드", price: 220000 },
   { key: "front_bumper", label: "프론트 범퍼", price: 280000 },
@@ -2319,11 +2332,13 @@ function renderPpfSvgOverlays(ppfTone) {
 
 function renderConsultation3dSlot(vehicle) {
   const glbUrl = publicAssetUrl(vehicle?.glb_file_url || "");
+  const environmentUrl = publicAssetUrl(showroomEnvironmentPath);
   return `
     <div
       class="consultation-stage consultation-3d-stage"
       id="consultation3dViewer"
       data-glb-url="${escapeAttr(glbUrl)}"
+      data-env-url="${escapeAttr(environmentUrl)}"
       data-view="${escapeAttr(state.consultation.view)}"
       data-body-color="${escapeAttr(vehicleColorByName(state.consultation.color).hex)}"
       data-vehicle-name="${escapeAttr(vehicleDisplayName(vehicle))}"
@@ -3774,8 +3789,10 @@ async function initConsultation3dViewer() {
   }
 
   const glbUrl = container.dataset.glbUrl || "";
+  const environmentUrl = container.dataset.envUrl || publicAssetUrl(showroomEnvironmentPath);
   const key = [
     glbUrl,
+    environmentUrl,
     state.consultation.color,
     state.consultation.view,
     state.consultation.tintSku,
@@ -3794,7 +3811,7 @@ async function initConsultation3dViewer() {
     container.classList.add("is-loading");
     const modules = await loadThreeModules();
     if (!document.body.contains(container)) return;
-    mountConsultation3dViewer(container, modules, glbUrl, key);
+    mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, key);
   } catch (error) {
     showConsultation3dError(container, error.message || "3D 뷰어 모듈을 불러오지 못했습니다.");
   }
@@ -3815,22 +3832,30 @@ function loadThreeModules() {
   return consultation3dModulesPromise;
 }
 
-function mountConsultation3dViewer(container, modules, glbUrl, key) {
+function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, key) {
   const { THREE, GLTFLoader, OrbitControls } = modules;
+  const mobile = isMobileViewport();
   const host = document.createElement("div");
   host.className = "consultation-3d-canvas";
   container.prepend(host);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 1000);
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const renderer = new THREE.WebGLRenderer({
+    antialias: !mobile,
+    alpha: false,
+    powerPreference: "high-performance"
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? consultationRenderSettings.mobilePixelRatio : consultationRenderSettings.desktopPixelRatio));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = mobile ? 0.95 : 1.02;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   host.appendChild(renderer.domElement);
+
+  const environmentTexture = loadShowroomEnvironment(THREE, scene, renderer, environmentUrl);
+  if (environmentTexture) container.classList.add("has-showroom");
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -3838,20 +3863,37 @@ function mountConsultation3dViewer(container, modules, glbUrl, key) {
   controls.enablePan = false;
   controls.minDistance = 1.2;
   controls.maxDistance = 8;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = consultationRenderSettings.autoRotateSpeed;
+  let autoRotateTimer = 0;
+  const pauseAutoRotate = () => {
+    controls.autoRotate = false;
+    window.clearTimeout(autoRotateTimer);
+  };
+  const resumeAutoRotateSoon = () => {
+    window.clearTimeout(autoRotateTimer);
+    autoRotateTimer = window.setTimeout(() => {
+      controls.autoRotate = true;
+    }, consultationRenderSettings.autoRotateResumeMs);
+  };
+  controls.addEventListener("start", pauseAutoRotate);
+  controls.addEventListener("end", resumeAutoRotateSoon);
 
-  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x111111, 1.8);
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x111111, mobile ? 0.95 : 1.15);
   scene.add(hemiLight);
-  const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+  const keyLight = new THREE.DirectionalLight(0xffffff, mobile ? 1.5 : 1.9);
   keyLight.position.set(4, 5, 5);
   keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
+  keyLight.shadow.radius = 4;
   scene.add(keyLight);
-  const rimLight = new THREE.DirectionalLight(0xd6ad55, 1.1);
+  const rimLight = new THREE.DirectionalLight(0xffffff, 0.55);
   rimLight.position.set(-4, 2.5, -3);
   scene.add(rimLight);
 
   const floor = new THREE.Mesh(
     new THREE.CircleGeometry(6, 96),
-    new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.25 })
+    new THREE.ShadowMaterial({ color: 0x000000, opacity: mobile ? 0.17 : 0.22 })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -0.02;
@@ -3913,7 +3955,11 @@ function mountConsultation3dViewer(container, modules, glbUrl, key) {
     dispose() {
       cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", setSize);
+      window.clearTimeout(autoRotateTimer);
+      controls.removeEventListener("start", pauseAutoRotate);
+      controls.removeEventListener("end", resumeAutoRotateSoon);
       controls.dispose();
+      environmentTexture?.dispose?.();
       scene.traverse((object) => {
         if (object.geometry) object.geometry.dispose();
         const materials = Array.isArray(object.material) ? object.material : object.material ? [object.material] : [];
@@ -3923,6 +3969,34 @@ function mountConsultation3dViewer(container, modules, glbUrl, key) {
       renderer.domElement.remove();
     }
   };
+}
+
+function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
+  if (!environmentUrl) return null;
+  const mobile = isMobileViewport();
+  const texture = new THREE.TextureLoader().load(
+    environmentUrl,
+    (loadedTexture) => {
+      loadedTexture.mapping = THREE.EquirectangularReflectionMapping;
+      loadedTexture.colorSpace = THREE.SRGBColorSpace;
+      loadedTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 1);
+      scene.environment = loadedTexture;
+      scene.background = loadedTexture;
+      scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
+      scene.environmentIntensity = mobile ? 1.05 : 1.28;
+    },
+    undefined,
+    () => {
+      scene.background = new THREE.Color(0xf4f6fb);
+    }
+  );
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  scene.environment = texture;
+  scene.background = texture;
+  scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
+  scene.environmentIntensity = mobile ? 1.05 : 1.28;
+  return texture;
 }
 
 function disposeConsultation3dViewer() {
@@ -3961,6 +4035,10 @@ function cloneThreeMaterial(material) {
   return material.clone();
 }
 
+function isMobileViewport() {
+  return window.matchMedia?.("(max-width: 759px), (pointer: coarse)")?.matches || window.innerWidth < 760;
+}
+
 function applyConsultation3dMaterials(THREE, model) {
   const bodyColor = new THREE.Color(vehicleColorByName(state.consultation.color).hex);
   const tint = selectedConsultationTintProduct();
@@ -3978,17 +4056,19 @@ function applyConsultation3dMaterials(THREE, model) {
         material.transparent = true;
         material.opacity = Math.max(0.36, Math.min(0.88, tintOpacity + 0.18));
         material.color = consultationTintColor(THREE, tint);
-        material.roughness = 0.08;
+        material.roughness = 0.06;
         material.metalness = consultationTintReflectivity(tint);
+        material.envMapIntensity = consultationRenderSettings.glassEnvMapIntensity;
         material.depthWrite = false;
         return;
       }
       if (isBodyMeshName(name)) {
         material.color = bodyColor.clone();
-        material.roughness = 0.36;
-        material.metalness = 0.25;
-        material.clearcoat = 0.85;
-        material.clearcoatRoughness = 0.18;
+        material.roughness = 0.22;
+        material.metalness = 0.34;
+        material.clearcoat = 1;
+        material.clearcoatRoughness = 0.1;
+        material.envMapIntensity = consultationRenderSettings.bodyEnvMapIntensity;
       }
       if (fullBodyPpf || consultationPartMatchesMesh(name, selectedParts)) {
         material.color = material.color instanceof THREE.Color ? material.color.lerp(new THREE.Color(ppfStyle.tint), ppfStyle.mix) : new THREE.Color(ppfStyle.tint);
@@ -3996,6 +4076,7 @@ function applyConsultation3dMaterials(THREE, model) {
         material.metalness = Math.max(material.metalness || 0, ppfStyle.metalness);
         material.clearcoat = ppfStyle.clearcoat;
         material.clearcoatRoughness = ppfStyle.clearcoatRoughness;
+        material.envMapIntensity = ppfStyle.envMapIntensity;
         if ("emissive" in material) {
           material.emissive = new THREE.Color(ppfStyle.emissive);
           material.emissiveIntensity = ppfStyle.emissiveIntensity;
@@ -4032,6 +4113,7 @@ function consultationPpfVisualStyle(product) {
       metalness: 0.08,
       clearcoat: 0.35,
       clearcoatRoughness: 0.75,
+      envMapIntensity: 0.85,
       emissiveIntensity: 0.08
     };
   }
@@ -4045,6 +4127,7 @@ function consultationPpfVisualStyle(product) {
       metalness: 0.18,
       clearcoat: 0.95,
       clearcoatRoughness: 0.12,
+      envMapIntensity: 1.45,
       emissiveIntensity: 0.06
     };
   }
@@ -4058,6 +4141,7 @@ function consultationPpfVisualStyle(product) {
       metalness: 0.22,
       clearcoat: 0.7,
       clearcoatRoughness: 0.28,
+      envMapIntensity: 1.15,
       emissiveIntensity: 0.12
     };
   }
@@ -4070,6 +4154,7 @@ function consultationPpfVisualStyle(product) {
     metalness: 0.18,
     clearcoat: 1,
     clearcoatRoughness: 0.04,
+    envMapIntensity: consultationRenderSettings.ppfEnvMapIntensity,
     emissiveIntensity: 0.08
   };
 }
