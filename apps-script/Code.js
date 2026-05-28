@@ -24,8 +24,8 @@ const HEADERS = {
   certificateLogs: ["id", "certificate_number", "verified_at", "ip_address", "user_agent", "result"],
   vehicles: ["id", "brand", "model_name", "generation_name", "facelift_type", "body_code", "model_year", "vehicle_type", "default_color", "thumbnail_url", "image_mode_enabled", "three_d_enabled", "glb_file_url", "created_at", "updated_at", "is_active"],
   vehicle3dParts: ["id", "vehicle_id", "part_key", "mesh_name", "part_type", "tint_available", "ppf_available", "material_group", "created_at", "updated_at"],
-  consultations: ["consultation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_id", "vehicle_model", "vehicle_color", "selected_tint_products", "selected_ppf_products", "selected_ppf_parts", "quote_total", "screenshot_url", "memo", "status", "created_at", "updated_at"],
-  products: ["sku", "product_name", "category", "unit", "retail_price", "purchase_price", "is_active"],
+  consultations: ["consultation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_id", "vehicle_model", "vehicle_color", "selected_tint_products", "selected_ppf_products", "selected_ppf_parts", "applications", "quote_total", "screenshot_url", "memo", "status", "created_at", "updated_at"],
+  products: ["sku", "product_name", "category", "brand", "product_code", "color_name", "color_hex", "color_chart_image_url", "finish_type", "transparency_type", "opacity", "shade_percent", "available_parts", "description", "unit", "retail_price", "purchase_price", "is_active"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
 };
@@ -766,7 +766,7 @@ function handleSaveConsultation_(payload, user) {
   const customerPhone = required_(payload.customer_phone, "customer_phone");
   const vehicleModel = required_(payload.vehicle_model, "vehicle_model");
   const quoteTotal = Number(payload.quote_total || 0);
-  if (quoteTotal <= 0) throw new Error("견적 금액이 없습니다.");
+  if (quoteTotal < 0) throw new Error("견적 금액이 올바르지 않습니다.");
 
   const now = isoNow_();
   const consultation = {
@@ -782,6 +782,7 @@ function handleSaveConsultation_(payload, user) {
     selected_tint_products: payload.selected_tint_products || "[]",
     selected_ppf_products: payload.selected_ppf_products || "[]",
     selected_ppf_parts: payload.selected_ppf_parts || "[]",
+    applications: payload.applications || "[]",
     quote_total: quoteTotal,
     screenshot_url: payload.screenshot_url || "",
     memo: payload.memo || "",
@@ -1049,6 +1050,17 @@ function handleSaveProduct_(payload, user) {
     sku: sku,
     product_name: required_(payload.product_name, "product_name"),
     category: required_(payload.category, "category"),
+    brand: payload.brand || "GLOC",
+    product_code: payload.product_code || sku,
+    color_name: payload.color_name || "",
+    color_hex: payload.color_hex || "",
+    color_chart_image_url: payload.color_chart_image_url || "",
+    finish_type: payload.finish_type || "",
+    transparency_type: payload.transparency_type || "",
+    opacity: payload.opacity === undefined ? "" : Number(payload.opacity || 0),
+    shade_percent: payload.shade_percent === undefined ? "" : payload.shade_percent,
+    available_parts: payload.available_parts || "",
+    description: payload.description || "",
     unit: payload.unit || "롤",
     retail_price: Number(payload.retail_price || DEFAULT_RETAIL_PRICE),
     purchase_price: Number(payload.purchase_price || DEFAULT_PURCHASE_PRICE),
@@ -1829,7 +1841,18 @@ function publicProduct_(product) {
     sku: product.sku,
     product_name: product.product_name,
     category: product.category,
-    color: inferColor_(product.product_name),
+    brand: product.brand || "GLOC",
+    product_code: product.product_code || product.sku,
+    color: product.color_name || inferColor_(product.product_name),
+    color_name: product.color_name || inferColor_(product.product_name),
+    color_hex: product.color_hex || "",
+    color_chart_image_url: product.color_chart_image_url || "",
+    finish_type: product.finish_type || "",
+    transparency_type: product.transparency_type || "",
+    opacity: product.opacity || "",
+    shade_percent: product.shade_percent || "",
+    available_parts: product.available_parts || "",
+    description: product.description || "",
     unit: product.unit,
     retail_price: productRetailPrice_(product),
     purchase_price: productPurchasePrice_(product),
@@ -1846,7 +1869,7 @@ function publicInventoryRow_(row, productMap, accountMap) {
     product_name: productName,
     sku: row.sku,
     category: product.category || "",
-    color: inferColor_(productName),
+    color: product.color_name || inferColor_(productName),
     stock_qty: Number(row.stock_qty || 0),
     safety_stock: Number(row.safety_stock || 0),
     location: row.location || "",
