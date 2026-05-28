@@ -610,8 +610,9 @@ const state = {
     applications: [],
     tintProductQuery: "",
     ppfProductQuery: "",
-    tintFilter: "전체",
+    tintFilter: "part:frontGlass",
     ppfFilter: "전체",
+    tintTarget: "frontGlass",
     customerName: "",
     customerPhone: "",
     memo: ""
@@ -2438,11 +2439,11 @@ function renderConsultation() {
           ${renderConsultationVehicleControls(vehicle)}
           ${renderConsultationColorControls()}
           ${renderConsultationProductControls()}
-          ${renderConsultationTintAreaControls()}
-          ${renderConsultationPartControls()}
-          ${renderConsultationAppliedParts()}
+          <div id="consultationTintAreaMount">${renderConsultationTintAreaControls()}</div>
+          <div id="consultationPartMount">${renderConsultationPartControls()}</div>
+          <div id="consultationAppliedPartsMount">${renderConsultationAppliedParts()}</div>
           ${renderConsultationCustomerForm()}
-          ${renderConsultationQuotePanel(quote)}
+          <div id="consultationQuoteMount">${renderConsultationQuotePanel(quote)}</div>
         </aside>
       </section>
 
@@ -2626,30 +2627,43 @@ function renderConsultationProductControls() {
 
 function renderConsultationProductStep(type) {
   const config = consultationProductTypeConfig[type];
-  const products = consultationFilteredProducts(type).slice(0, 12);
+  const query = type === "tint" ? state.consultation.tintProductQuery : state.consultation.ppfProductQuery;
+  const hasQuery = normalize(query).length > 0;
+  const products = hasQuery ? consultationFilteredProducts(type).slice(0, 8) : [];
   const enabled = type === "tint" ? state.consultation.tintEnabled !== false : state.consultation.ppfEnabled !== false;
   const searchId = type === "tint" ? "consultationTintProductQuery" : "consultationPpfProductQuery";
-  const query = type === "tint" ? state.consultation.tintProductQuery : state.consultation.ppfProductQuery;
-  const filters = type === "tint" ? consultationTintFilterOptions() : consultationPpfFilterOptions();
-  const filterValue = type === "tint" ? state.consultation.tintFilter : state.consultation.ppfFilter;
+  const targetArea = selectedConsultationTintTarget();
   return `
-    <section class="consultation-control-section">
+    <section class="consultation-control-section" id="consultation${type === "tint" ? "Tint" : "Ppf"}ProductStep">
       <div class="control-section-head">
         <span class="eyebrow">${type === "tint" ? "03 Film" : "04 PPF"}</span>
         <strong>${config.label} 제품</strong>
       </div>
-      <div class="product-search-stack">
-        <input class="search-input compact-search" id="${searchId}" type="search" placeholder="브랜드, 제품명, 코드, 색상, HEX 검색" value="${escapeAttr(query || "")}" />
-        <div class="consultation-filter-row">
-          ${filters.map((item) => `<button type="button" class="${filterValue === item.value ? "active" : ""}" data-consultation-product-filter="${type}" data-filter-value="${escapeAttr(item.value)}">${escapeHtml(item.label)}</button>`).join("")}
+      ${type === "tint" ? `
+        <div class="consultation-tint-target-row" aria-label="틴팅 적용 유리 선택">
+          ${tintAreaOptions.map((area) => `
+            <button type="button" class="${targetArea === area.key ? "active" : ""}" data-consultation-tint-target="${escapeAttr(area.key)}">
+              ${escapeHtml(area.shortLabel || area.label)}
+            </button>
+          `).join("")}
         </div>
+      ` : ""}
+      <div class="product-search-stack">
+        <input class="search-input compact-search" id="${searchId}" type="search" placeholder="${type === "tint" ? `${consultationPartLabel(targetArea)} 제품 검색` : "PPF 제품 검색"}" value="${escapeAttr(query || "")}" />
       </div>
       <div class="consultation-product-list" id="consultation${type === "tint" ? "Tint" : "Ppf"}ProductList">
         ${renderNoProductOption(type, enabled)}
-        ${enabled ? products.map((product) => renderConsultationProductChoice(product, type)).join("") || `<div class="empty">검색 결과가 없습니다.</div>` : `<div class="empty">선택 안함 상태입니다.</div>`}
+        ${enabled ? renderConsultationProductResults(type, products, hasQuery) : `<div class="empty">선택 안함 상태입니다.</div>`}
       </div>
     </section>
   `;
+}
+
+function renderConsultationProductResults(type, products, hasQuery) {
+  if (!hasQuery) {
+    return `<div class="empty compact-empty">${type === "tint" ? "적용 유리를 선택한 뒤 제품명을 검색해 주세요." : "제품명, 브랜드, 코드, 색상으로 검색하면 결과가 표시됩니다."}</div>`;
+  }
+  return products.map((product) => renderConsultationProductChoice(product, type)).join("") || `<div class="empty">검색 결과가 없습니다.</div>`;
 }
 
 function renderNoProductOption(type, enabled) {
@@ -3907,6 +3921,17 @@ function bindInput(id, update) {
   document.querySelector(`#${id}`)?.addEventListener("input", (event) => update(event.target.value));
 }
 
+function bindConsultationProductSearchInputs(root = document) {
+  root.querySelector("#consultationTintProductQuery")?.addEventListener("input", (event) => {
+    state.consultation.tintProductQuery = event.target.value;
+    refreshConsultationProductList("tint");
+  });
+  root.querySelector("#consultationPpfProductQuery")?.addEventListener("input", (event) => {
+    state.consultation.ppfProductQuery = event.target.value;
+    refreshConsultationProductList("ppf");
+  });
+}
+
 function bindPhoneInput(id, update) {
   const input = document.querySelector(`#${id}`);
   if (!input) return;
@@ -4015,28 +4040,42 @@ function bindDynamicListEvents(root) {
       if (type === "tint") {
         state.consultation.tintEnabled = true;
         state.consultation.tintSku = button.dataset.consultationProduct;
+        applySelectedTintProductToTarget();
       }
       if (type === "ppf") {
         state.consultation.ppfEnabled = true;
         state.consultation.ppfSku = button.dataset.consultationProduct;
       }
-      render();
+      refreshConsultationAfterOptionChange(type);
     });
   });
 
   root.querySelectorAll("[data-consultation-no-product]").forEach((button) => {
     button.addEventListener("click", () => {
       setConsultationNoProduct(button.dataset.consultationNoProduct);
-      render();
+      refreshConsultationAfterOptionChange(button.dataset.consultationNoProduct);
+    });
+  });
+
+  root.querySelectorAll("[data-consultation-tint-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.consultation.tintTarget = button.dataset.consultationTintTarget || "frontGlass";
+      state.consultation.tintFilter = `part:${state.consultation.tintTarget}`;
+      refreshConsultationAfterOptionChange("tint");
     });
   });
 
   root.querySelectorAll("[data-consultation-product-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       const type = button.dataset.consultationProductFilter;
-      if (type === "tint") state.consultation.tintFilter = button.dataset.filterValue || "전체";
+      if (type === "tint") {
+        state.consultation.tintFilter = button.dataset.filterValue || "전체";
+        if (state.consultation.tintFilter.startsWith("part:")) {
+          state.consultation.tintTarget = state.consultation.tintFilter.replace("part:", "");
+        }
+      }
       if (type === "ppf") state.consultation.ppfFilter = button.dataset.filterValue || "전체";
-      render();
+      refreshConsultationProductStep(type);
     });
   });
 
@@ -4056,14 +4095,14 @@ function bindDynamicListEvents(root) {
   root.querySelectorAll("[data-consultation-part]").forEach((button) => {
     button.addEventListener("click", () => {
       toggleConsultationPpfPart(button.dataset.consultationPart);
-      render();
+      refreshConsultationAfterOptionChange("ppf");
     });
   });
 
   root.querySelectorAll("[data-remove-application]").forEach((button) => {
     button.addEventListener("click", () => {
       removeConsultationApplication(button.dataset.removeApplication, button.dataset.removeCategory);
-      render();
+      refreshConsultationAfterOptionChange(button.dataset.removeCategory === "TINTING" ? "tint" : "ppf");
     });
   });
 
@@ -4178,18 +4217,47 @@ function replaceHtml(selector, html) {
   bindDynamicListEvents(target);
 }
 
+function replaceElementHtml(selector, html) {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  const template = document.createElement("template");
+  template.innerHTML = html.trim();
+  const next = template.content.firstElementChild;
+  if (!next) return;
+  target.replaceWith(next);
+  bindDynamicListEvents(next);
+  bindConsultationProductSearchInputs(next);
+}
+
 function refreshProductManageRows() {
   replaceHtml("#productManageRows", productManageRows().slice(0, 60).map(renderProductManageRow).join("") || `<div class="empty">등록된 제품이 없습니다.</div>`);
 }
 
 function refreshConsultationProductList(type) {
   const enabled = type === "tint" ? state.consultation.tintEnabled !== false : state.consultation.ppfEnabled !== false;
-  const products = consultationFilteredProducts(type).slice(0, 12);
+  const query = type === "tint" ? state.consultation.tintProductQuery : state.consultation.ppfProductQuery;
+  const hasQuery = normalize(query).length > 0;
+  const products = hasQuery ? consultationFilteredProducts(type).slice(0, 8) : [];
   const selector = type === "tint" ? "#consultationTintProductList" : "#consultationPpfProductList";
   replaceHtml(
     selector,
-    `${renderNoProductOption(type, enabled)}${enabled ? products.map((product) => renderConsultationProductChoice(product, type)).join("") || `<div class="empty">검색 결과가 없습니다.</div>` : `<div class="empty">선택 안함 상태입니다.</div>`}`
+    `${renderNoProductOption(type, enabled)}${enabled ? renderConsultationProductResults(type, products, hasQuery) : `<div class="empty">선택 안함 상태입니다.</div>`}`
   );
+}
+
+function refreshConsultationProductStep(type) {
+  const selector = type === "tint" ? "#consultationTintProductStep" : "#consultationPpfProductStep";
+  replaceElementHtml(selector, renderConsultationProductStep(type));
+}
+
+function refreshConsultationAfterOptionChange(type) {
+  if (type === "tint") refreshConsultationProductStep("tint");
+  if (type === "ppf") refreshConsultationProductStep("ppf");
+  replaceHtml("#consultationTintAreaMount", renderConsultationTintAreaControls());
+  replaceHtml("#consultationPartMount", renderConsultationPartControls());
+  replaceHtml("#consultationAppliedPartsMount", renderConsultationAppliedParts());
+  replaceHtml("#consultationQuoteMount", renderConsultationQuotePanel(consultationQuote()));
+  refreshConsultation3dRuntimeVisuals();
 }
 
 async function initConsultation3dViewer() {
@@ -4359,6 +4427,8 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
   consultation3dRuntime = {
     key,
     container,
+    THREE,
+    vehicleId: container.dataset.vehicleId || "",
     scene,
     renderer,
     controls,
@@ -4475,6 +4545,34 @@ function disposeConsultation3dViewer() {
   if (!consultation3dRuntime) return;
   consultation3dRuntime.dispose();
   consultation3dRuntime = null;
+}
+
+function refreshConsultation3dRuntimeVisuals() {
+  const runtime = consultation3dRuntime;
+  if (!runtime?.model || !runtime?.THREE || !document.body.contains(runtime.container)) return;
+  cleanupConsultation3dHelpers(runtime);
+  applyConsultation3dMaterials(runtime.THREE, runtime.model, runtime.vehicleId || "");
+  addConsultationPpfMeshHighlights(runtime.THREE, runtime.model, runtime.vehicleId || "");
+  addConsultationPpfSelectionOverlays(runtime.THREE, runtime.scene, runtime.model, runtime.vehicleId || "");
+}
+
+function cleanupConsultation3dHelpers(runtime) {
+  const removable = [];
+  runtime.scene.traverse((object) => {
+    if (
+      String(object.name || "").startsWith("consultation_mesh_highlight_")
+      || String(object.name || "").startsWith("consultation_ppf_overlay_")
+      || String(object.name || "").startsWith("consultation_ppf_edge_")
+    ) {
+      removable.push(object);
+    }
+  });
+  removable.forEach((object) => {
+    object.parent?.remove(object);
+    object.geometry?.dispose?.();
+    const materials = Array.isArray(object.material) ? object.material : object.material ? [object.material] : [];
+    materials.forEach((material) => material.dispose?.());
+  });
 }
 
 function showConsultation3dError(container, message) {
@@ -4950,7 +5048,7 @@ function applyConsultationProductToPart(part) {
     next.add(part.partId);
     state.consultation.ppfParts = Array.from(next);
     upsertConsultationApplication(productApplicationRecord(part.partId, "PPF", product));
-    render();
+    refreshConsultationAfterOptionChange("ppf");
     showToast(`${part.partName}에 ${product.product_name} 적용`);
     return;
   }
@@ -4969,7 +5067,9 @@ function applyConsultationProductToPart(part) {
       [part.partId]: parseTintVlt(product)
     };
     upsertConsultationApplication(productApplicationRecord(part.partId, "TINTING", product));
-    render();
+    state.consultation.tintTarget = part.partId;
+    state.consultation.tintFilter = `part:${part.partId}`;
+    refreshConsultationAfterOptionChange("tint");
     showToast(`${part.partName}에 ${product.product_name} 적용`);
   }
 }
@@ -7858,11 +7958,17 @@ function selectedConsultationPpfProduct() {
   return products.find((product) => product.sku === state.consultation.ppfSku) || null;
 }
 
+function selectedConsultationTintTarget() {
+  const key = state.consultation.tintTarget || "frontGlass";
+  return tintAreaOptions.some((area) => area.key === key) ? key : "frontGlass";
+}
+
 function consultationFilteredProducts(type) {
   const products = type === "tint" ? consultationTintProducts() : consultationPpfProducts();
   const query = normalize(type === "tint" ? state.consultation.tintProductQuery : state.consultation.ppfProductQuery);
   const filterValue = type === "tint" ? state.consultation.tintFilter : state.consultation.ppfFilter;
   return products.filter((product) => {
+    if (type === "tint" && !productAvailableParts(product).includes(selectedConsultationTintTarget())) return false;
     if (!consultationProductMatchesFilter(product, type, filterValue)) return false;
     if (!query) return true;
     return productSearchFields(product).some((value) => normalize(value).includes(query));
@@ -8047,6 +8153,21 @@ function productApplicationRecord(partId, category, product) {
   };
 }
 
+function applySelectedTintProductToTarget() {
+  const product = selectedConsultationTintProduct();
+  if (!product) return;
+  const target = selectedConsultationTintTarget();
+  if (!productAvailableParts(product).includes(target)) {
+    showToast(`${product.product_name}은(는) ${consultationPartLabel(target)} 적용 가능 제품이 아닙니다.`);
+    return;
+  }
+  state.consultation.tintAreas = {
+    ...consultationTintAreas(),
+    [target]: parseTintVlt(product)
+  };
+  upsertConsultationApplication(productApplicationRecord(target, "TINTING", product));
+}
+
 function upsertConsultationApplication(record) {
   state.consultation.applications = [
     ...consultationApplications().filter((item) => !(item.partId === record.partId && item.category === record.category)),
@@ -8095,14 +8216,14 @@ function consultationApplyAll() {
       upsertConsultationApplication(productApplicationRecord(area.key, "TINTING", tintProduct));
     });
   }
-  render();
+  refreshConsultationAfterOptionChange("ppf");
   showToast("선택 가능한 전체 부위에 적용했습니다.");
 }
 
 function consultationClearAll() {
   state.consultation.ppfParts = [];
   state.consultation.applications = [];
-  render();
+  refreshConsultationAfterOptionChange("ppf");
   showToast("부위별 적용 내역을 모두 해제했습니다.");
 }
 
@@ -8134,11 +8255,24 @@ function toggleConsultationPpfPart(partKey) {
   const selected = new Set(state.consultation.ppfParts || []);
   if (partKey === "full_body") {
     state.consultation.ppfParts = selected.has("full_body") ? [] : ["full_body"];
+    if (state.consultation.ppfParts.length) {
+      const product = selectedConsultationPpfProduct();
+      if (product) upsertConsultationApplication(productApplicationRecord(partKey, "PPF", product));
+    } else {
+      state.consultation.applications = consultationApplications().filter((item) => item.category !== "PPF");
+    }
     return;
   }
   selected.delete("full_body");
-  if (selected.has(partKey)) selected.delete(partKey);
-  else selected.add(partKey);
+  state.consultation.applications = consultationApplications().filter((item) => !(item.partId === "full_body" && item.category === "PPF"));
+  if (selected.has(partKey)) {
+    selected.delete(partKey);
+    state.consultation.applications = consultationApplications().filter((item) => !(item.partId === partKey && item.category === "PPF"));
+  } else {
+    selected.add(partKey);
+    const product = selectedConsultationPpfProduct();
+    if (product) upsertConsultationApplication(productApplicationRecord(partKey, "PPF", product));
+  }
   state.consultation.ppfParts = Array.from(selected);
 }
 

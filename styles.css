@@ -1650,6 +1650,13 @@ h3 {
   overflow: hidden;
 }
 
+.consultation-viewer-panel {
+  position: sticky;
+  top: 10px;
+  z-index: 6;
+  align-self: start;
+}
+
 .consultation-viewer-head,
 .control-section-head,
 .consultation-history-card,
@@ -1866,6 +1873,7 @@ h3 {
   display: grid;
   gap: 16px;
   align-content: start;
+  min-height: 0;
 }
 
 .consultation-control-section {
@@ -1922,6 +1930,29 @@ h3 {
   gap: 7px;
   overflow-x: auto;
   padding-bottom: 2px;
+}
+
+.consultation-tint-target-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.consultation-tint-target-row button {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.consultation-tint-target-row button.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff8ed;
 }
 
 .consultation-filter-row button {
@@ -1983,6 +2014,14 @@ h3 {
 .consultation-product-list {
   display: grid;
   gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.compact-empty {
+  min-height: 52px;
+  padding: 14px;
 }
 
 .consultation-product-choice {
@@ -2709,8 +2748,13 @@ h3 {
   }
 
   .consultation-viewer-panel {
-    position: sticky;
     top: 18px;
+  }
+
+  .consultation-control-panel {
+    max-height: calc(100dvh - 36px);
+    overflow-y: auto;
+    padding-right: 2px;
   }
 
   .consultation-stage {
@@ -2810,7 +2854,7 @@ h3 {
   }
 
   .consultation-stage {
-    min-height: 330px;
+    min-height: 280px;
   }
 
   .consultation-bottom-actions {
@@ -2820,6 +2864,7 @@ h3 {
   .consultation-color-grid,
   .consultation-part-grid,
   .consultation-tint-area-row,
+  .consultation-tint-target-row,
   .inline-check-grid {
     grid-template-columns: 1fr;
   }
