@@ -735,6 +735,7 @@ const state = {
 
 let consultation3dRuntime = null;
 let consultation3dModulesPromise = null;
+let consultationOriginalMaterials = new Map();
 
 let searchRefreshTimer = null;
 let accountFormRefreshTimer = null;
@@ -4545,6 +4546,7 @@ function disposeConsultation3dViewer() {
   if (!consultation3dRuntime) return;
   consultation3dRuntime.dispose();
   consultation3dRuntime = null;
+  consultationOriginalMaterials.clear();
 }
 
 function refreshConsultation3dRuntimeVisuals() {
@@ -4681,6 +4683,8 @@ function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
   const fullBodyPpf = selectedParts.has("full_body");
   model.traverse((object) => {
     if (!object.isMesh || !object.material) return;
+    storeConsultationOriginalMaterial(object);
+    restoreConsultationBaseMaterial(object);
     const meshInfo = consultationMeshInfo(object, vehicleId);
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     materials.forEach((material) => {
@@ -4716,21 +4720,71 @@ function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
         material.clearcoatRoughness = 0.1;
         material.envMapIntensity = consultationRenderSettings.bodyEnvMapIntensity;
       }
-      if ((fullBodyPpf && meshInfo.isBody) || meshInfo.ppfParts.some((part) => selectedParts.has(part))) {
-        const ppfStyle = consultationPpfVisualStyle(consultationPpfProductForMesh(meshInfo));
-        material.color = material.color instanceof THREE.Color ? material.color.lerp(new THREE.Color(ppfStyle.tint), ppfStyle.mix) : new THREE.Color(ppfStyle.tint);
-        material.roughness = ppfStyle.roughness;
-        material.metalness = Math.max(material.metalness || 0, ppfStyle.metalness);
-        material.clearcoat = ppfStyle.clearcoat;
-        material.clearcoatRoughness = ppfStyle.clearcoatRoughness;
-        material.envMapIntensity = ppfStyle.envMapIntensity;
-        if ("emissive" in material) {
-          material.emissive = new THREE.Color(ppfStyle.emissive);
-          material.emissiveIntensity = ppfStyle.emissiveIntensity;
-        }
-      }
       material.needsUpdate = true;
     });
+    if ((fullBodyPpf && meshInfo.isBody) || meshInfo.ppfParts.some((part) => selectedParts.has(part))) {
+      const product = consultationPpfProductForMesh(meshInfo);
+      applyConsultationPpfMaterialToMesh(THREE, object, product, bodyColor);
+    }
+  });
+}
+
+function storeConsultationOriginalMaterial(object) {
+  if (!object?.uuid || consultationOriginalMaterials.has(object.uuid)) return;
+  consultationOriginalMaterials.set(object.uuid, cloneThreeMaterial(object.material));
+}
+
+function restoreConsultationBaseMaterial(object) {
+  const original = consultationOriginalMaterials.get(object.uuid);
+  if (!original) return;
+  if (!isConsultationPpfMaterial(object.material)) return;
+  disposeObjectMaterial(object.material);
+  object.material = cloneThreeMaterial(original);
+}
+
+function isConsultationPpfMaterial(material) {
+  const materials = Array.isArray(material) ? material : material ? [material] : [];
+  return materials.some((item) => item?.userData?.consultationMaterialKind === "ppf");
+}
+
+function disposeObjectMaterial(material) {
+  const materials = Array.isArray(material) ? material : material ? [material] : [];
+  materials.forEach((item) => item?.dispose?.());
+}
+
+function applyConsultationPpfMaterialToMesh(THREE, object, product, bodyColor) {
+  if (!object?.material || !product) return;
+  storeConsultationOriginalMaterial(object);
+  const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material];
+  disposeObjectMaterial(object.material);
+  const baseMaterial = createConsultationPpfMaterial(THREE, product, bodyColor);
+  const nextMaterials = sourceMaterials.map(() => baseMaterial.clone());
+  nextMaterials.forEach((material) => {
+    material.userData.consultationMaterialKind = "ppf";
+    material.needsUpdate = true;
+  });
+  object.material = Array.isArray(object.material) ? nextMaterials : nextMaterials[0];
+  baseMaterial.dispose?.();
+}
+
+function createConsultationPpfMaterial(THREE, product, bodyColor) {
+  const style = consultationPpfMaterialStyle(product);
+  const color = new THREE.Color(style.colorHex);
+  const visualColor = style.transparencyType === "opaque"
+    ? color
+    : bodyColor.clone().lerp(color, style.opacity);
+  return new THREE.MeshPhysicalMaterial({
+    color: visualColor,
+    transparent: style.opacity < 0.98,
+    opacity: style.opacity,
+    roughness: style.roughness,
+    metalness: style.metalness,
+    clearcoat: style.clearcoat,
+    clearcoatRoughness: style.clearcoatRoughness,
+    envMapIntensity: style.envMapIntensity,
+    transmission: style.transparencyType === "transparent" ? 0.08 : 0,
+    thickness: style.transparencyType === "transparent" ? 0.18 : 0.04,
+    depthWrite: style.opacity >= 0.95
   });
 }
 
@@ -4750,125 +4804,81 @@ function consultationTintReflectivity(product) {
 }
 
 function consultationPpfVisualStyle(product) {
-  const colorHex = validHexColor(product?.color_hex, "#ffd36d");
-  const finishType = product?.finish_type || "";
-  const transparencyType = product?.transparency_type || "";
-  const opacityValue = Math.min(100, Math.max(0, Number(product?.opacity || 0))) / 100;
-  if (transparencyType === "opaque" || opacityValue >= 0.88) {
-    const finish = ppfFinishMaterialPreset(finishType);
-    return {
-      tint: colorHex,
-      emissive: colorHex,
-      opacity: 0.48,
-      mix: 0.92,
-      ...finish
-    };
-  }
-  if (transparencyType === "semi_transparent" || opacityValue >= 0.45) {
-    const finish = ppfFinishMaterialPreset(finishType || "satin");
-    return {
-      tint: colorHex,
-      emissive: colorHex,
-      opacity: 0.36,
-      mix: Math.max(0.38, opacityValue * 0.68),
-      ...finish
-    };
-  }
-  const text = normalize([product?.product_name, product?.sku, product?.color].filter(Boolean).join(" "));
-  if (text.includes("매트") || text.includes("matte")) {
-    return {
-      tint: "#d7d0bd",
-      emissive: "#5a503a",
-      opacity: 0.32,
-      mix: 0.34,
-      roughness: 0.78,
-      metalness: 0.08,
-      clearcoat: 0.35,
-      clearcoatRoughness: 0.75,
-      envMapIntensity: 0.85,
-      emissiveIntensity: 0.08
-    };
-  }
-  if (text.includes("블랙") || text.includes("black")) {
-    return {
-      tint: "#111111",
-      emissive: "#1f1a12",
-      opacity: 0.34,
-      mix: 0.42,
-      roughness: 0.3,
-      metalness: 0.18,
-      clearcoat: 0.95,
-      clearcoatRoughness: 0.12,
-      envMapIntensity: 1.45,
-      emissiveIntensity: 0.06
-    };
-  }
-  if (text.includes("카본") || text.includes("carbon")) {
-    return {
-      tint: "#252525",
-      emissive: "#6b5427",
-      opacity: 0.36,
-      mix: 0.38,
-      roughness: 0.46,
-      metalness: 0.22,
-      clearcoat: 0.7,
-      clearcoatRoughness: 0.28,
-      envMapIntensity: 1.15,
-      emissiveIntensity: 0.12
-    };
-  }
+  const style = consultationPpfMaterialStyle(product);
   return {
-    tint: colorHex,
-    emissive: colorHex,
-    opacity: Math.max(0.18, opacityValue || 0.24),
-    mix: Math.max(0.18, Math.min(0.32, opacityValue || 0.24)),
-    roughness: 0.14,
-    metalness: 0.18,
-    clearcoat: 1,
-    clearcoatRoughness: 0.04,
-    envMapIntensity: consultationRenderSettings.ppfEnvMapIntensity,
-    emissiveIntensity: 0.08
+    tint: style.colorHex,
+    emissive: style.colorHex,
+    opacity: style.opacity,
+    mix: style.opacity,
+    roughness: style.roughness,
+    metalness: style.metalness,
+    clearcoat: style.clearcoat,
+    clearcoatRoughness: style.clearcoatRoughness,
+    envMapIntensity: style.envMapIntensity,
+    emissiveIntensity: 0
   };
+}
+
+function consultationPpfMaterialStyle(product) {
+  const colorHex = validHexColor(product?.colorHex || product?.color_hex, "#f7fbf9");
+  const finishType = normalizePpfFinishType(product?.finishType || product?.finish_type);
+  const transparencyType = normalizePpfTransparencyType(product?.transparencyType || product?.transparency_type);
+  const opacityPercent = Number(product?.opacityPercent ?? product?.opacity_percent ?? product?.opacity ?? 0);
+  return {
+    colorHex,
+    finishType,
+    transparencyType,
+    opacity: ppfOpacityFromProduct(transparencyType, opacityPercent),
+    ...ppfFinishMaterialPreset(finishType)
+  };
+}
+
+function normalizePpfFinishType(value) {
+  const text = String(value || "").trim().replace(/-/g, "_");
+  if (text === "matte") return "matte";
+  if (text === "satin" || text === "semi_matte" || text === "semiMatte") return "satin";
+  return "gloss";
+}
+
+function normalizePpfTransparencyType(value) {
+  const text = String(value || "").trim().replace(/-/g, "_");
+  if (text === "opaque") return "opaque";
+  if (text === "semiTransparent" || text === "semi_transparent") return "semiTransparent";
+  return "transparent";
+}
+
+function ppfOpacityFromProduct(transparencyType, opacityPercent) {
+  const raw = Math.min(100, Math.max(0, Number(opacityPercent) || 0)) / 100;
+  if (transparencyType === "opaque") return Math.min(1, Math.max(0.95, raw || 1));
+  if (transparencyType === "semiTransparent") return Math.min(0.75, Math.max(0.45, raw || 0.55));
+  return Math.min(0.35, Math.max(0.15, raw || 0.25));
 }
 
 function ppfFinishMaterialPreset(finishType) {
   if (finishType === "matte") {
     return {
-      roughness: 0.82,
-      metalness: 0.08,
-      clearcoat: 0.2,
-      clearcoatRoughness: 0.82,
-      envMapIntensity: 0.75,
-      emissiveIntensity: 0.06
-    };
-  }
-  if (finishType === "semi_matte") {
-    return {
-      roughness: 0.62,
-      metalness: 0.1,
-      clearcoat: 0.32,
-      clearcoatRoughness: 0.58,
-      envMapIntensity: 0.92,
-      emissiveIntensity: 0.07
+      roughness: 0.85,
+      metalness: 0.05,
+      clearcoat: 0,
+      clearcoatRoughness: 0.9,
+      envMapIntensity: 0.72
     };
   }
   if (finishType === "satin") {
     return {
-      roughness: 0.44,
-      metalness: 0.14,
-      clearcoat: 0.58,
-      clearcoatRoughness: 0.34,
-      envMapIntensity: 1.12,
-      emissiveIntensity: 0.08
+      roughness: 0.45,
+      metalness: 0.08,
+      clearcoat: 0.35,
+      clearcoatRoughness: 0.42,
+      envMapIntensity: 1.08
     };
   }
   return {
     roughness: 0.12,
-    metalness: 0.18,
+    metalness: 0.12,
     clearcoat: 1,
-    clearcoatRoughness: 0.04,
-    envMapIntensity: consultationRenderSettings.ppfEnvMapIntensity,
-    emissiveIntensity: 0.08
+    clearcoatRoughness: 0.06,
+    envMapIntensity: consultationRenderSettings.ppfEnvMapIntensity
   };
 }
 
