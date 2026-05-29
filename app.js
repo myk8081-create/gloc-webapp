@@ -274,6 +274,34 @@ const tintAreaOptions = [
   { key: "roofGlass", label: "글라스 루프", shortLabel: "루프", defaultVlt: 30 }
 ];
 
+const consultationBodyPartOptions = [
+  { key: "hood", legacyKey: "hood", label: "후드" },
+  { key: "frontBumper", legacyKey: "front_bumper", label: "프론트 범퍼" },
+  { key: "rearBumper", legacyKey: "rear_bumper", label: "리어 범퍼" },
+  { key: "frontDoorLeft", legacyKey: "front_door", label: "1열 좌측 도어" },
+  { key: "frontDoorRight", legacyKey: "front_door", label: "1열 우측 도어" },
+  { key: "rearDoorLeft", legacyKey: "rear_door", label: "2열 좌측 도어" },
+  { key: "rearDoorRight", legacyKey: "rear_door", label: "2열 우측 도어" },
+  { key: "rearQuarterLeft", legacyKey: "rear_fender", label: "좌측 리어 쿼터" },
+  { key: "rearQuarterRight", legacyKey: "rear_fender", label: "우측 리어 쿼터" },
+  { key: "trunk", legacyKey: "trunk", label: "트렁크" },
+  { key: "roof", legacyKey: "roof", label: "루프" },
+  { key: "sideSkirtLeft", legacyKey: "side_skirt", label: "좌측 사이드스커트" },
+  { key: "sideSkirtRight", legacyKey: "side_skirt", label: "우측 사이드스커트" },
+  { key: "fenderLeft", legacyKey: "front_fender", label: "좌측 프론트 휀더" },
+  { key: "fenderRight", legacyKey: "front_fender", label: "우측 프론트 휀더" }
+];
+
+const consultationGlassPartOptions = [
+  { key: "frontWindshield", legacyKey: "frontGlass", label: "앞유리", shortLabel: "전면" },
+  { key: "frontDoorGlassLeft", legacyKey: "frontSideGlass", label: "1열 좌측 유리", shortLabel: "1열 좌" },
+  { key: "frontDoorGlassRight", legacyKey: "frontSideGlass", label: "1열 우측 유리", shortLabel: "1열 우" },
+  { key: "rearDoorGlassLeft", legacyKey: "rearSideGlass", label: "2열 좌측 유리", shortLabel: "2열 좌" },
+  { key: "rearDoorGlassRight", legacyKey: "rearSideGlass", label: "2열 우측 유리", shortLabel: "2열 우" },
+  { key: "rearWindshield", legacyKey: "rearGlass", label: "후면유리", shortLabel: "후면" },
+  { key: "roofGlass", legacyKey: "roofGlass", label: "루프유리", shortLabel: "루프" }
+];
+
 const productFinishOptions = [
   { value: "gloss", label: "유광" },
   { value: "matte", label: "무광" },
@@ -613,6 +641,10 @@ const state = {
     tintFilter: "part:frontGlass",
     ppfFilter: "전체",
     tintTarget: "frontGlass",
+    selectedPartId: null,
+    selectedCategory: null,
+    appliedPpfMap: {},
+    appliedTintMap: {},
     customerName: "",
     customerPhone: "",
     memo: ""
@@ -2439,7 +2471,7 @@ function renderConsultation() {
         <aside class="panel consultation-control-panel">
           ${renderConsultationVehicleControls(vehicle)}
           ${renderConsultationColorControls()}
-          ${renderConsultationProductControls()}
+          <div id="consultationProductControlsMount">${renderConsultationProductControls()}</div>
           <div id="consultationTintAreaMount">${renderConsultationTintAreaControls()}</div>
           <div id="consultationPartMount">${renderConsultationPartControls()}</div>
           <div id="consultationAppliedPartsMount">${renderConsultationAppliedParts()}</div>
@@ -2465,7 +2497,7 @@ function renderConsultationVehicleStage(vehicle) {
   const color = vehicleColorByName(state.consultation.color);
   const tintOpacity = consultationAverageTintOpacity();
   const ppfProduct = selectedConsultationPpfProduct();
-  const ppfTone = ppfProduct && /매트|matte/i.test(ppfProduct.product_name || "") ? "matte" : /카본|carbon/i.test(ppfProduct?.product_name || "") ? "carbon" : "gloss";
+  const ppfTone = ppfProduct && /매트|matte/i.test(productDisplayName(ppfProduct)) ? "matte" : /카본|carbon/i.test(productDisplayName(ppfProduct)) ? "carbon" : "gloss";
   return `
     <div class="consultation-stage" data-view="${escapeAttr(state.consultation.view)}">
       <div class="consultation-stage-bg"></div>
@@ -2620,9 +2652,45 @@ function renderConsultationColorControls() {
 }
 
 function renderConsultationProductControls() {
+  const category = state.consultation.selectedCategory;
   return `
-    ${renderConsultationProductStep("tint")}
-    ${renderConsultationProductStep("ppf")}
+    ${renderConsultationSelectedPartPanel()}
+    ${category === "glass" ? renderConsultationProductStep("tint") : ""}
+    ${category === "body" ? renderConsultationProductStep("ppf") : ""}
+    ${!category ? `
+      <section class="consultation-control-section">
+        <div class="control-section-head">
+          <span class="eyebrow">03 Product</span>
+          <strong>제품 적용</strong>
+        </div>
+        <div class="empty compact-empty">먼저 3D 차량에서 차체 또는 유리 부위를 클릭하세요.</div>
+      </section>
+    ` : ""}
+  `;
+}
+
+function renderConsultationSelectedPartPanel() {
+  const partId = state.consultation.selectedPartId;
+  const category = state.consultation.selectedCategory;
+  const categoryLabel = category === "body" ? "차체 PPF" : category === "glass" ? "유리 틴팅" : "대기";
+  const applied = category === "body"
+    ? consultationAppliedPpfMap()[partId]
+    : category === "glass"
+      ? consultationAppliedTintMap()[partId]
+      : null;
+  return `
+    <section class="consultation-control-section selected-part-panel">
+      <div class="control-section-head">
+        <span class="eyebrow">03 Target</span>
+        <strong>선택 부위</strong>
+      </div>
+      <div class="selected-part-summary ${category ? "active" : ""}">
+        <span>
+          <strong>${partId ? escapeHtml(consultationPartLabel(partId)) : "차량 부위를 선택하세요"}</strong>
+          <small>${escapeHtml(categoryLabel)}${applied ? ` · 적용됨: ${escapeHtml(applied.product_name || applied.name || "-")}` : ""}</small>
+        </span>
+      </div>
+    </section>
   `;
 }
 
@@ -2633,28 +2701,19 @@ function renderConsultationProductStep(type) {
   const products = hasQuery ? consultationFilteredProducts(type).slice(0, 8) : [];
   const enabled = type === "tint" ? state.consultation.tintEnabled !== false : state.consultation.ppfEnabled !== false;
   const searchId = type === "tint" ? "consultationTintProductQuery" : "consultationPpfProductQuery";
-  const targetArea = selectedConsultationTintTarget();
+  const targetPart = state.consultation.selectedPartId;
   return `
     <section class="consultation-control-section" id="consultation${type === "tint" ? "Tint" : "Ppf"}ProductStep">
       <div class="control-section-head">
         <span class="eyebrow">${type === "tint" ? "03 Film" : "04 PPF"}</span>
         <strong>${config.label} 제품</strong>
       </div>
-      ${type === "tint" ? `
-        <div class="consultation-tint-target-row" aria-label="틴팅 적용 유리 선택">
-          ${tintAreaOptions.map((area) => `
-            <button type="button" class="${targetArea === area.key ? "active" : ""}" data-consultation-tint-target="${escapeAttr(area.key)}">
-              ${escapeHtml(area.shortLabel || area.label)}
-            </button>
-          `).join("")}
-        </div>
-      ` : ""}
       <div class="product-search-stack">
-        <input class="search-input compact-search" id="${searchId}" type="search" placeholder="${type === "tint" ? `${consultationPartLabel(targetArea)} 제품 검색` : "PPF 제품 검색"}" value="${escapeAttr(query || "")}" />
+        <input class="search-input compact-search" id="${searchId}" type="search" placeholder="${type === "tint" ? `${consultationPartLabel(targetPart)} 틴팅 제품 검색` : `${consultationPartLabel(targetPart)} PPF 제품 검색`}" value="${escapeAttr(query || "")}" />
       </div>
       <div class="consultation-product-list" id="consultation${type === "tint" ? "Tint" : "Ppf"}ProductList">
         ${renderNoProductOption(type, enabled)}
-        ${enabled ? renderConsultationProductResults(type, products, hasQuery) : `<div class="empty">선택 안함 상태입니다.</div>`}
+        ${renderConsultationProductResults(type, products, hasQuery)}
       </div>
     </section>
   `;
@@ -2680,6 +2739,7 @@ function renderNoProductOption(type, enabled) {
 }
 
 function renderConsultationTintAreaControls() {
+  if (state.consultation.renderMode === "3d") return "";
   if (state.consultation.tintEnabled === false) return "";
   const areas = consultationTintAreas();
   return `
@@ -2711,13 +2771,15 @@ function renderConsultationTintAreaControls() {
 
 function renderConsultationProductChoice(product, type) {
   const currentSku = type === "tint" ? selectedConsultationTintProduct()?.sku : selectedConsultationPpfProduct()?.sku;
-  const selected = currentSku === product.sku;
+  const partId = state.consultation.selectedPartId;
+  const applied = type === "tint" ? consultationAppliedTintMap()[partId] : consultationAppliedPpfMap()[partId];
+  const selected = currentSku === product.sku || applied?.sku === product.sku;
   const stock = consultationProductStock(product);
-  const colorHex = validHexColor(product.color_hex, productCategoryMatches(product, "tint") ? "#11171c" : "#ffd36d");
+  const colorHex = validHexColor(product.colorHex || product.color_hex, productCategoryMatches(product, "tint") ? "#11171c" : "#ffd36d");
   return `
     <button type="button" class="consultation-product-choice ${selected ? "active" : ""}" data-consultation-product="${escapeAttr(product.sku)}" data-consultation-product-type="${type}" ${stock.disabled ? "disabled" : ""}>
       <span>
-        <strong><i class="product-color-dot" style="background:${escapeAttr(colorHex)}"></i>${escapeHtml(product.product_name)}</strong>
+        <strong><i class="product-color-dot" style="background:${escapeAttr(colorHex)}"></i>${escapeHtml(productDisplayName(product))}</strong>
         <small>${escapeHtml(productBrandText(product))} · ${escapeHtml(product.sku)} · ${escapeHtml(productMetaText(product))} · ${escapeHtml(stock.label)}</small>
       </span>
       <em>${money(consultationProductPrice(product, type))}</em>
@@ -2726,6 +2788,7 @@ function renderConsultationProductChoice(product, type) {
 }
 
 function renderConsultationPartControls() {
+  if (state.consultation.renderMode === "3d") return "";
   if (state.consultation.ppfEnabled === false) return "";
   const selected = new Set(state.consultation.ppfParts || []);
   return `
@@ -2747,7 +2810,39 @@ function renderConsultationPartControls() {
 }
 
 function renderConsultationAppliedParts() {
-  const rows = consultationApplications();
+  const tintMap = consultationAppliedTintMap();
+  const ppfMap = consultationAppliedPpfMap();
+  const hasTintApplied = Object.values(tintMap).some(Boolean);
+  const hasPpfApplied = Object.values(ppfMap).some(Boolean);
+  const tintRows = consultationGlassPartOptions.map((part) => {
+    const product = tintMap[part.key];
+    return `
+      <div class="applied-part-row applied-status-row selectable-status-row" role="button" tabindex="0" data-consultation-target-part="${escapeAttr(part.key)}" data-consultation-target-category="glass">
+        <span>
+          <strong>${escapeHtml(part.label)}</strong>
+          <small>${product ? escapeHtml(product.product_name || product.name || "-") : "미적용"}</small>
+        </span>
+        <span class="status-actions">
+          <button type="button" class="secondary-button small-button" data-consultation-target-part="${escapeAttr(part.key)}" data-consultation-target-category="glass">선택</button>
+          ${product ? `<button type="button" class="secondary-button small-button" data-remove-application="${escapeAttr(part.key)}" data-remove-category="TINTING">해제</button>` : ""}
+        </span>
+      </div>
+    `;
+  }).join("");
+  const ppfRows = consultationBodyPartOptions
+    .filter((part) => ppfMap[part.key])
+    .map((part) => `
+      <div class="applied-part-row applied-status-row selectable-status-row" role="button" tabindex="0" data-consultation-target-part="${escapeAttr(part.key)}" data-consultation-target-category="body">
+        <span>
+          <strong>${escapeHtml(part.label)}</strong>
+          <small>${escapeHtml(ppfMap[part.key]?.product_name || ppfMap[part.key]?.name || "-")}</small>
+        </span>
+        <span class="status-actions">
+          <button type="button" class="secondary-button small-button" data-consultation-target-part="${escapeAttr(part.key)}" data-consultation-target-category="body">선택</button>
+          <button type="button" class="secondary-button small-button" data-remove-application="${escapeAttr(part.key)}" data-remove-category="PPF">해제</button>
+        </span>
+      </div>
+    `).join("");
   return `
     <section class="consultation-control-section">
       <div class="control-section-head">
@@ -2755,15 +2850,10 @@ function renderConsultationAppliedParts() {
         <strong>부위별 적용 내역</strong>
       </div>
       <div class="applied-parts-list">
-        ${rows.map((row) => `
-          <div class="applied-part-row">
-            <span>
-              <strong>${escapeHtml(row.partName)}</strong>
-              <small>${escapeHtml(row.category)} · ${escapeHtml(row.productName || "-")}</small>
-            </span>
-            <button type="button" class="secondary-button small-button" data-remove-application="${escapeAttr(row.partId)}" data-remove-category="${escapeAttr(row.category)}">해제</button>
-          </div>
-        `).join("") || `<div class="empty">3D 차량 부위를 클릭하면 여기에 적용 내역이 표시됩니다.</div>`}
+        ${!hasTintApplied && !hasPpfApplied ? `<div class="empty">3D 차량 부위를 클릭하고 제품을 검색해 적용하세요.</div>` : ""}
+        <div class="applied-map-heading">유리별 틴팅</div>
+        ${tintRows}
+        ${ppfRows ? `<div class="applied-map-heading">차체 PPF</div>${ppfRows}` : ""}
       </div>
       <div class="consultation-inline-actions">
         <button type="button" class="secondary-button small-button" data-action="consultationApplyAll">전체 적용</button>
@@ -4038,14 +4128,16 @@ function bindDynamicListEvents(root) {
   root.querySelectorAll("[data-consultation-product]").forEach((button) => {
     button.addEventListener("click", () => {
       const type = button.dataset.consultationProductType;
+      const product = state.products.find((item) => item.sku === button.dataset.consultationProduct);
       if (type === "tint") {
         state.consultation.tintEnabled = true;
         state.consultation.tintSku = button.dataset.consultationProduct;
-        applySelectedTintProductToTarget();
+        applyConsultationProductToSelectedPart(product, "tint");
       }
       if (type === "ppf") {
         state.consultation.ppfEnabled = true;
         state.consultation.ppfSku = button.dataset.consultationProduct;
+        applyConsultationProductToSelectedPart(product, "ppf");
       }
       refreshConsultationAfterOptionChange(type);
     });
@@ -4062,7 +4154,23 @@ function bindDynamicListEvents(root) {
     button.addEventListener("click", () => {
       state.consultation.tintTarget = button.dataset.consultationTintTarget || "frontGlass";
       state.consultation.tintFilter = `part:${state.consultation.tintTarget}`;
+      const canonical = canonicalGlassPartFromLegacy(state.consultation.tintTarget);
+      state.consultation.selectedPartId = canonical;
+      state.consultation.selectedCategory = "glass";
       refreshConsultationAfterOptionChange("tint");
+    });
+  });
+
+  root.querySelectorAll("[data-consultation-target-part]").forEach((target) => {
+    target.addEventListener("click", (event) => {
+      if (event.target.closest("[data-remove-application]")) return;
+      event.stopPropagation();
+      selectConsultationTargetPart(target.dataset.consultationTargetPart, target.dataset.consultationTargetCategory);
+    });
+    target.addEventListener("keydown", (event) => {
+      if (!["Enter", " "].includes(event.key)) return;
+      event.preventDefault();
+      selectConsultationTargetPart(target.dataset.consultationTargetPart, target.dataset.consultationTargetCategory);
     });
   });
 
@@ -4216,6 +4324,7 @@ function replaceHtml(selector, html) {
   if (!target) return;
   target.innerHTML = html;
   bindDynamicListEvents(target);
+  bindConsultationProductSearchInputs(target);
 }
 
 function replaceElementHtml(selector, html) {
@@ -4242,7 +4351,7 @@ function refreshConsultationProductList(type) {
   const selector = type === "tint" ? "#consultationTintProductList" : "#consultationPpfProductList";
   replaceHtml(
     selector,
-    `${renderNoProductOption(type, enabled)}${enabled ? renderConsultationProductResults(type, products, hasQuery) : `<div class="empty">선택 안함 상태입니다.</div>`}`
+    `${renderNoProductOption(type, enabled)}${renderConsultationProductResults(type, products, hasQuery)}`
   );
 }
 
@@ -4252,8 +4361,7 @@ function refreshConsultationProductStep(type) {
 }
 
 function refreshConsultationAfterOptionChange(type) {
-  if (type === "tint") refreshConsultationProductStep("tint");
-  if (type === "ppf") refreshConsultationProductStep("ppf");
+  replaceHtml("#consultationProductControlsMount", renderConsultationProductControls());
   replaceHtml("#consultationTintAreaMount", renderConsultationTintAreaControls());
   replaceHtml("#consultationPartMount", renderConsultationPartControls());
   replaceHtml("#consultationAppliedPartsMount", renderConsultationAppliedParts());
@@ -4403,7 +4511,7 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
     (gltf) => {
       if (!document.body.contains(container)) return;
       model = gltf.scene;
-      prepareConsultationModel(THREE, model);
+      prepareConsultationModel(THREE, model, container.dataset.vehicleId || "");
       applyConsultation3dMaterials(THREE, model, container.dataset.vehicleId || "");
       scene.add(model);
       setSize();
@@ -4593,12 +4701,20 @@ function showConsultation3dError(container, message) {
   });
 }
 
-function prepareConsultationModel(THREE, model) {
+function prepareConsultationModel(THREE, model, vehicleId = "") {
   model.traverse((object) => {
     if (!object.isMesh) return;
     object.castShadow = true;
     object.receiveShadow = true;
     if (object.material) object.material = cloneThreeMaterial(object.material);
+    const meshInfo = consultationMeshInfo(object, vehicleId);
+    if (meshInfo.tintAreas?.length) {
+      object.userData.category = "glass";
+      object.userData.partId = meshInfo.tintAreas[0];
+    } else if (meshInfo.ppfParts?.length) {
+      object.userData.category = "body";
+      object.userData.partId = meshInfo.ppfParts[0];
+    }
   });
 }
 
@@ -4654,7 +4770,7 @@ function bindConsultation3dPartInteractions(THREE, camera, renderer, model, vehi
     if (!object) return;
     const part = resolveConsultationPartFromMesh(object, vehicleId);
     if (!part) return;
-    applyConsultationProductToPart(part);
+    handleConsultationPartClick(part);
   };
 
   renderer.domElement.addEventListener("pointermove", onMove);
@@ -4679,37 +4795,30 @@ function isMobileViewport() {
 
 function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
   const bodyColor = new THREE.Color(vehicleColorByName(state.consultation.color).hex);
-  const selectedParts = new Set(state.consultation.ppfParts || []);
-  const fullBodyPpf = selectedParts.has("full_body");
+  const appliedPpfMap = consultationAppliedPpfMap();
+  const appliedTintMap = consultationAppliedTintMap();
+  const selectedPpfParts = new Set(Object.keys(appliedPpfMap).filter((partId) => appliedPpfMap[partId]));
   model.traverse((object) => {
     if (!object.isMesh || !object.material) return;
     storeConsultationOriginalMaterial(object);
     restoreConsultationBaseMaterial(object);
     const meshInfo = consultationMeshInfo(object, vehicleId);
+    const appliedTintPart = meshInfo.tintAreas?.find((partId) => appliedTintMap[partId]);
+    if (appliedTintPart) {
+      applyConsultationTintMaterialToMesh(THREE, object, appliedTintMap[appliedTintPart]);
+      return;
+    }
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     materials.forEach((material) => {
       if (meshInfo.isGlass) {
-        const tint = consultationTintProductForMesh(meshInfo);
-        if (!tint) {
-          material.transparent = true;
-          material.opacity = 0.32;
-          material.color = new THREE.Color("#9fb0bb");
-          material.roughness = 0.04;
-          material.metalness = 0.08;
-          material.envMapIntensity = consultationRenderSettings.glassEnvMapIntensity;
-          material.depthWrite = false;
-          material.needsUpdate = true;
-          return;
-        }
-        const tintVlt = consultationTintVltForMesh(meshInfo, tint);
-        const tintOpacity = consultationTintOpacityFromVlt(tintVlt);
         material.transparent = true;
-        material.opacity = Math.max(0.36, Math.min(0.88, tintOpacity + 0.18));
-        material.color = consultationTintColor(THREE, tint);
-        material.roughness = 0.06;
-        material.metalness = consultationTintReflectivity(tint);
+        material.opacity = 0.32;
+        material.color = new THREE.Color("#9fb0bb");
+        material.roughness = 0.04;
+        material.metalness = 0.08;
         material.envMapIntensity = consultationRenderSettings.glassEnvMapIntensity;
         material.depthWrite = false;
+        material.needsUpdate = true;
         return;
       }
       if (meshInfo.isBody) {
@@ -4722,8 +4831,9 @@ function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
       }
       material.needsUpdate = true;
     });
-    if ((fullBodyPpf && meshInfo.isBody) || meshInfo.ppfParts.some((part) => selectedParts.has(part))) {
-      const product = consultationPpfProductForMesh(meshInfo);
+    const appliedPpfPart = meshInfo.ppfParts?.find((partId) => selectedPpfParts.has(partId));
+    if (appliedPpfPart) {
+      const product = appliedPpfMap[appliedPpfPart];
       applyConsultationPpfMaterialToMesh(THREE, object, product, bodyColor);
     }
   });
@@ -4737,14 +4847,14 @@ function storeConsultationOriginalMaterial(object) {
 function restoreConsultationBaseMaterial(object) {
   const original = consultationOriginalMaterials.get(object.uuid);
   if (!original) return;
-  if (!isConsultationPpfMaterial(object.material)) return;
+  if (!isConsultationAppliedMaterial(object.material)) return;
   disposeObjectMaterial(object.material);
   object.material = cloneThreeMaterial(original);
 }
 
-function isConsultationPpfMaterial(material) {
+function isConsultationAppliedMaterial(material) {
   const materials = Array.isArray(material) ? material : material ? [material] : [];
-  return materials.some((item) => item?.userData?.consultationMaterialKind === "ppf");
+  return materials.some((item) => ["ppf", "tint"].includes(item?.userData?.consultationMaterialKind));
 }
 
 function disposeObjectMaterial(material) {
@@ -4788,9 +4898,43 @@ function createConsultationPpfMaterial(THREE, product, bodyColor) {
   });
 }
 
+function applyConsultationTintMaterialToMesh(THREE, object, product) {
+  if (!object?.material || !product) return;
+  storeConsultationOriginalMaterial(object);
+  const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material];
+  disposeObjectMaterial(object.material);
+  const baseMaterial = createConsultationTintMaterial(THREE, product);
+  const nextMaterials = sourceMaterials.map(() => baseMaterial.clone());
+  nextMaterials.forEach((material) => {
+    material.userData.consultationMaterialKind = "tint";
+    material.needsUpdate = true;
+  });
+  object.material = Array.isArray(object.material) ? nextMaterials : nextMaterials[0];
+  baseMaterial.dispose?.();
+}
+
+function createConsultationTintMaterial(THREE, product) {
+  const vlt = Math.min(90, Math.max(1, Number(product?.visibleLightTransmission ?? product?.visible_light_transmission ?? product?.shade_percent ?? parseTintVlt(product)))) / 100;
+  const reflectivityRaw = Number(product?.reflectivity ?? consultationTintReflectivity(product));
+  const reflectivity = Math.min(1, Math.max(0, reflectivityRaw > 1 ? reflectivityRaw / 100 : reflectivityRaw));
+  return new THREE.MeshPhysicalMaterial({
+    color: consultationTintColor(THREE, product),
+    transparent: true,
+    opacity: Math.max(0.15, Math.min(0.88, 1 - vlt)),
+    transmission: vlt,
+    roughness: product?.finishType === "matte" || product?.finish_type === "matte" ? 0.45 : 0.08,
+    metalness: reflectivity,
+    clearcoat: 1,
+    clearcoatRoughness: 0.02,
+    envMapIntensity: consultationRenderSettings.glassEnvMapIntensity,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+}
+
 function consultationTintColor(THREE, product) {
-  if (product?.color_hex) return new THREE.Color(validHexColor(product.color_hex, "#11171c"));
-  const text = normalize([product?.product_name, product?.sku, product?.color].filter(Boolean).join(" "));
+  if (product?.colorHex || product?.color_hex) return new THREE.Color(validHexColor(product.colorHex || product.color_hex, "#11171c"));
+  const text = normalize([productDisplayName(product), product?.sku, product?.color].filter(Boolean).join(" "));
   if (text.includes("블루") || text.includes("blue")) return new THREE.Color("#102a4e");
   if (text.includes("차콜") || text.includes("charcoal")) return new THREE.Color("#101820");
   if (text.includes("브론즈") || text.includes("bronze")) return new THREE.Color("#322313");
@@ -4798,7 +4942,7 @@ function consultationTintColor(THREE, product) {
 }
 
 function consultationTintReflectivity(product) {
-  const text = normalize([product?.product_name, product?.sku, product?.color].filter(Boolean).join(" "));
+  const text = normalize([productDisplayName(product), product?.sku, product?.color].filter(Boolean).join(" "));
   if (text.includes("반사") || text.includes("reflect") || text.includes("metal")) return 0.45;
   return 0.18;
 }
@@ -4883,7 +5027,9 @@ function ppfFinishMaterialPreset(finishType) {
 }
 
 function addConsultationPpfMeshHighlights(THREE, model, vehicleId = "") {
-  const selectedParts = new Set(state.consultation.ppfParts || []);
+  const appliedMap = consultationAppliedPpfMap();
+  const selectedParts = new Set(Object.keys(appliedMap).filter((partId) => appliedMap[partId]));
+  if (state.consultation.selectedCategory === "body" && state.consultation.selectedPartId) selectedParts.add(state.consultation.selectedPartId);
   if (!selectedParts.size || selectedParts.has("full_body")) return;
   const ppfStyle = consultationPpfVisualStyle(selectedConsultationPpfProduct());
   const highlightMaterial = new THREE.LineBasicMaterial({
@@ -4905,7 +5051,8 @@ function addConsultationPpfMeshHighlights(THREE, model, vehicleId = "") {
 }
 
 function addConsultationPpfSelectionOverlays(THREE, scene, model, vehicleId = "") {
-  const selectedParts = new Set(state.consultation.ppfParts || []);
+  const appliedMap = consultationAppliedPpfMap();
+  const selectedParts = new Set(Object.keys(appliedMap).filter((partId) => appliedMap[partId]).map(legacyBodyPartFor));
   if (!selectedParts.size) return;
   const fallbackParts = consultationOverlayFallbackParts(vehicleId, selectedParts);
   if (!fallbackParts.size) return;
@@ -4995,116 +5142,209 @@ function consultationMeshInfo(object, vehicleId = "") {
   const directName = normalizeMeshName(object.name || "");
   const map = consultationVehicleMeshMaps[vehicleId] || null;
   const exactMap = Boolean(map);
-  const ppfParts = consultationMappedPpfParts(directName, name, map);
-  const tintAreas = consultationMappedTintAreas(directName, name, map);
+  const ppfParts = consultationUniqueParts([
+    ...consultationMappedPpfParts(directName, name, map),
+    ...consultationAliasPpfParts(directName, name)
+  ]);
+  const tintAreas = consultationUniqueParts([
+    ...consultationMappedTintAreas(directName, name, map),
+    ...consultationAliasTintAreas(directName, name)
+  ]);
   const mappedBodyNames = new Set((map?.body || []).map(normalizeMeshName));
   const mappedGlassNames = new Set((map?.glass || []).map(normalizeMeshName));
   return {
     name,
     directName,
-    isBody: exactMap ? mappedBodyNames.has(directName) || ppfParts.some((part) => part !== "headlight" && part !== "pillar") : isBodyMeshName(name),
-    isGlass: exactMap ? mappedGlassNames.has(directName) : isGlassMeshName(name),
+    isBody: exactMap ? mappedBodyNames.has(directName) || ppfParts.length > 0 : isBodyMeshName(name),
+    isGlass: exactMap ? mappedGlassNames.has(directName) || tintAreas.length > 0 : isGlassMeshName(name),
     ppfParts,
     tintAreas
   };
 }
 
+function consultationUniqueParts(parts) {
+  return Array.from(new Set(parts.filter(Boolean)));
+}
+
 function consultationMappedPpfParts(directName, combinedName, map) {
   if (!map?.ppf) return [];
+  if (isGlassMeshName(combinedName)) return [];
   return Object.entries(map.ppf)
     .filter(([, names]) => names.map(normalizeMeshName).some((meshName) => directName === meshName || combinedName.includes(meshName)))
-    .map(([part]) => part);
+    .map(([part]) => canonicalBodyPartFromLegacy(part, directName || combinedName))
+    .filter(Boolean);
 }
 
 function consultationMappedTintAreas(directName, combinedName, map) {
   if (!map?.tint) return [];
   return Object.entries(map.tint)
     .filter(([, names]) => names.map(normalizeMeshName).some((meshName) => directName === meshName || combinedName.includes(meshName)))
-    .map(([area]) => area);
+    .map(([area]) => canonicalGlassPartFromLegacy(area, directName || combinedName))
+    .filter(Boolean);
+}
+
+function consultationAliasPpfParts(directName, combinedName) {
+  if (isGlassMeshName(combinedName)) return [];
+  return Object.entries(consultationPartMapping)
+    .filter(([part]) => !tintAreaOptions.some((area) => area.key === part))
+    .filter(([, aliases]) => aliases.map(normalizeMeshName).some((alias) => directName === alias || combinedName.includes(alias)))
+    .map(([part]) => canonicalBodyPartFromLegacy(part, directName || combinedName))
+    .filter(Boolean);
+}
+
+function consultationAliasTintAreas(directName, combinedName) {
+  return Object.entries(consultationPartMapping)
+    .filter(([part]) => tintAreaOptions.some((area) => area.key === part))
+    .filter(([, aliases]) => aliases.map(normalizeMeshName).some((alias) => directName === alias || combinedName.includes(alias)))
+    .map(([part]) => canonicalGlassPartFromLegacy(part, directName || combinedName))
+    .filter(Boolean);
 }
 
 function resolveConsultationPartFromMesh(object, vehicleId = "") {
+  if (object?.userData?.category && object?.userData?.partId) {
+    const category = object.userData.category === "glass" ? "glass" : "body";
+    const partId = object.userData.partId;
+    return { partId, category, partName: consultationPartLabel(partId), meshName: object.name || "" };
+  }
   const meshInfo = consultationMeshInfo(object, vehicleId);
   if (meshInfo.tintAreas?.length) {
-    return { partId: meshInfo.tintAreas[0], category: "TINTING", partName: consultationPartLabel(meshInfo.tintAreas[0]), meshName: object.name || "" };
+    return { partId: meshInfo.tintAreas[0], category: "glass", partName: consultationPartLabel(meshInfo.tintAreas[0]), meshName: object.name || "" };
   }
   if (meshInfo.ppfParts?.length) {
-    return { partId: meshInfo.ppfParts[0], category: "PPF", partName: consultationPartLabel(meshInfo.ppfParts[0]), meshName: object.name || "" };
+    return { partId: meshInfo.ppfParts[0], category: "body", partName: consultationPartLabel(meshInfo.ppfParts[0]), meshName: object.name || "" };
   }
   const normalized = normalizeMeshName([object.name, object.parent?.name].filter(Boolean).join("_"));
   const matched = Object.entries(consultationPartMapping).find(([, aliases]) => aliases.map(normalizeMeshName).some((alias) => normalized.includes(alias)));
   if (!matched) return null;
-  const partId = matched[0];
-  const category = tintAreaOptions.some((area) => area.key === partId) ? "TINTING" : "PPF";
+  const rawPartId = matched[0];
+  const category = tintAreaOptions.some((area) => area.key === rawPartId) ? "glass" : "body";
+  const partId = category === "glass"
+    ? canonicalGlassPartFromLegacy(rawPartId, normalized)
+    : canonicalBodyPartFromLegacy(rawPartId, normalized);
+  if (!partId) return null;
   return { partId, category, partName: consultationPartLabel(partId), meshName: object.name || "" };
 }
 
 function consultationPartLabel(partId) {
-  return ppfPartOptions.find((part) => part.key === partId)?.label
+  return consultationBodyPartOptions.find((part) => part.key === partId)?.label
+    || consultationGlassPartOptions.find((part) => part.key === partId)?.label
+    || ppfPartOptions.find((part) => part.key === partId)?.label
     || tintAreaOptions.find((area) => area.key === partId)?.label
     || partId;
 }
 
-function applyConsultationProductToPart(part) {
+function handleConsultationPartClick(part) {
   if (!part?.partId) return;
-  if (part.category === "PPF") {
-    const product = selectedConsultationPpfProduct();
-    if (!product) {
-      showToast("PPF 제품을 먼저 선택해 주세요.");
-      return;
-    }
-    const next = new Set(state.consultation.ppfParts || []);
-    next.delete("full_body");
-    next.add(part.partId);
-    state.consultation.ppfParts = Array.from(next);
-    upsertConsultationApplication(productApplicationRecord(part.partId, "PPF", product));
-    refreshConsultationAfterOptionChange("ppf");
-    showToast(`${part.partName}에 ${product.product_name} 적용`);
+  const category = part.category === "glass" || part.category === "TINTING" ? "glass" : "body";
+  const partId = category === "glass"
+    ? canonicalGlassPartFromLegacy(part.partId, part.meshName)
+    : canonicalBodyPartFromLegacy(part.partId, part.meshName);
+  if (!partId) return;
+  const appliedMap = category === "glass" ? consultationAppliedTintMap() : consultationAppliedPpfMap();
+  if (appliedMap[partId]) {
+    removeProductFromConsultationPart(partId, category);
+    state.consultation.selectedPartId = null;
+    state.consultation.selectedCategory = null;
+    refreshConsultationAfterOptionChange(category === "glass" ? "tint" : "ppf");
+    showToast(`${consultationPartLabel(partId)} 적용을 해제했습니다.`);
     return;
   }
-  if (part.category === "TINTING") {
-    const product = selectedConsultationTintProduct();
-    if (!product) {
-      showToast("틴팅 제품을 먼저 선택해 주세요.");
+  selectConsultationTargetPart(partId, category);
+}
+
+function selectConsultationTargetPart(partId, category) {
+  const canonicalCategory = category === "glass" || category === "TINTING" ? "glass" : "body";
+  const canonicalPartId = canonicalCategory === "glass"
+    ? canonicalGlassPartFromLegacy(partId) || partId
+    : canonicalBodyPartFromLegacy(partId) || partId;
+  if (!canonicalPartId) return;
+  state.consultation.selectedPartId = canonicalPartId;
+  state.consultation.selectedCategory = canonicalCategory;
+  if (canonicalCategory === "glass") {
+    const legacyTarget = legacyGlassPartFor(canonicalPartId);
+    state.consultation.tintTarget = legacyTarget;
+    state.consultation.tintFilter = `part:${legacyTarget}`;
+  }
+  refreshConsultationAfterOptionChange(canonicalCategory === "glass" ? "tint" : "ppf");
+  showToast(`${consultationPartLabel(canonicalPartId)} 선택됨. 적용할 ${canonicalCategory === "glass" ? "틴팅" : "PPF"} 제품을 검색해 주세요.`);
+}
+
+function applyConsultationProductToSelectedPart(product, type) {
+  if (!product) return;
+  const category = type === "tint" ? "glass" : "body";
+  const partId = state.consultation.selectedPartId;
+  if (!partId || state.consultation.selectedCategory !== category) {
+    showToast(`먼저 3D 차량에서 ${category === "glass" ? "유리" : "차체"} 부위를 선택해 주세요.`);
+    return;
+  }
+  if (category === "glass") {
+    const legacyTarget = legacyGlassPartFor(partId);
+    if (!productAvailableParts(product).includes(legacyTarget)) {
+      showToast(`${productDisplayName(product)}은(는) ${consultationPartLabel(partId)} 적용 가능 제품이 아닙니다.`);
       return;
     }
-    if (!productAvailableParts(product).includes(part.partId)) {
-      showToast(`${product.product_name}은(는) ${part.partName} 적용 가능 부위가 아닙니다.`);
-      return;
-    }
+    const tintMap = consultationAppliedTintMap();
+    tintMap[partId] = product;
     state.consultation.tintAreas = {
       ...consultationTintAreas(),
-      [part.partId]: parseTintVlt(product)
+      [legacyTarget]: parseTintVlt(product)
     };
-    upsertConsultationApplication(productApplicationRecord(part.partId, "TINTING", product));
-    state.consultation.tintTarget = part.partId;
-    state.consultation.tintFilter = `part:${part.partId}`;
-    refreshConsultationAfterOptionChange("tint");
-    showToast(`${part.partName}에 ${product.product_name} 적용`);
+    upsertConsultationApplication(productApplicationRecord(partId, "TINTING", product));
+    showToast(`${consultationPartLabel(partId)}에 ${productDisplayName(product)} 적용`);
+    return;
+  }
+  const ppfMap = consultationAppliedPpfMap();
+  ppfMap[partId] = product;
+  const legacyPart = legacyBodyPartFor(partId);
+  const next = new Set(state.consultation.ppfParts || []);
+  next.delete("full_body");
+  next.add(legacyPart);
+  state.consultation.ppfParts = Array.from(next);
+  upsertConsultationApplication(productApplicationRecord(partId, "PPF", product));
+  showToast(`${consultationPartLabel(partId)}에 ${productDisplayName(product)} 적용`);
+}
+
+function removeProductFromConsultationPart(partId, category) {
+  const canonicalCategory = category === "glass" || category === "TINTING" ? "glass" : "body";
+  const canonicalPartId = canonicalCategory === "glass"
+    ? canonicalGlassPartFromLegacy(partId) || partId
+    : canonicalBodyPartFromLegacy(partId) || partId;
+  state.consultation.applications = consultationApplications().filter((item) => {
+    const itemCategory = item.category === "TINTING" ? "glass" : "body";
+    const itemPartId = itemCategory === "glass"
+      ? canonicalGlassPartFromLegacy(item.partId) || item.partId
+      : canonicalBodyPartFromLegacy(item.partId) || item.partId;
+    return !(itemCategory === canonicalCategory && itemPartId === canonicalPartId);
+  });
+  if (canonicalCategory === "body") {
+    delete consultationAppliedPpfMap()[canonicalPartId];
+    const legacyPart = legacyBodyPartFor(canonicalPartId);
+    state.consultation.ppfParts = (state.consultation.ppfParts || []).filter((part) => part !== legacyPart && part !== canonicalPartId);
+  }
+  if (canonicalCategory === "glass") {
+    delete consultationAppliedTintMap()[canonicalPartId];
   }
 }
 
 function consultationTintVltForMesh(meshInfo, product) {
-  const areas = consultationTintAreas();
-  const area = meshInfo.tintAreas?.find((key) => Number.isFinite(Number(areas[key])));
+  const tintMap = consultationAppliedTintMap();
+  const area = meshInfo.tintAreas?.find((key) => tintMap[key]);
   const applied = area ? consultationApplicationForPart(area, "TINTING") : null;
   if (applied?.shadePercent) return Number(applied.shadePercent);
-  return area ? Number(areas[area]) : parseTintVlt(product);
+  return parseTintVlt(product);
 }
 
 function consultationTintProductForMesh(meshInfo) {
   if (state.consultation.tintEnabled === false) return null;
-  const area = meshInfo.tintAreas?.find(Boolean);
-  const applied = area ? consultationApplicationForPart(area, "TINTING") : null;
-  if (applied?.productId) return state.products.find((product) => product.sku === applied.productId) || selectedConsultationTintProduct();
-  return selectedConsultationTintProduct();
+  const tintMap = consultationAppliedTintMap();
+  const area = meshInfo.tintAreas?.find((key) => tintMap[key]);
+  return area ? tintMap[area] : null;
 }
 
 function consultationPpfProductForMesh(meshInfo) {
-  const appliedPart = meshInfo.ppfParts?.find((part) => consultationApplicationForPart(part, "PPF"));
-  const applied = appliedPart ? consultationApplicationForPart(appliedPart, "PPF") : null;
-  if (applied?.productId) return state.products.find((product) => product.sku === applied.productId) || selectedConsultationPpfProduct();
-  return selectedConsultationPpfProduct();
+  const ppfMap = consultationAppliedPpfMap();
+  const appliedPart = meshInfo.ppfParts?.find((part) => ppfMap[part]);
+  return appliedPart ? ppfMap[appliedPart] : null;
 }
 
 function consultationOverlayFallbackParts(vehicleId, selectedParts) {
@@ -7942,10 +8182,14 @@ function selectConsultationModel(modelName) {
 
 function productCategoryMatches(product, key) {
   const category = normalize(product?.category || "");
-  const name = normalize(product?.product_name || "");
+  const name = normalize(product?.product_name || product?.name || "");
   if (key === "tint") return category.includes("틴팅") || category.includes("tint") || name.includes("틴팅");
   if (key === "ppf") return category.includes("ppf") || name.includes("ppf");
   return false;
+}
+
+function productDisplayName(product) {
+  return product?.product_name || product?.name || product?.sku || "-";
 }
 
 function consultationTintProducts() {
@@ -7973,12 +8217,110 @@ function selectedConsultationTintTarget() {
   return tintAreaOptions.some((area) => area.key === key) ? key : "frontGlass";
 }
 
+function consultationAppliedPpfMap() {
+  if (!state.consultation.appliedPpfMap || typeof state.consultation.appliedPpfMap !== "object") state.consultation.appliedPpfMap = {};
+  consultationApplications()
+    .filter((item) => item.category === "PPF" && item.productId)
+    .forEach((item) => {
+      const canonical = canonicalBodyPartFromLegacy(item.partId) || item.partId;
+      if (!state.consultation.appliedPpfMap[canonical]) {
+        state.consultation.appliedPpfMap[canonical] = state.products.find((product) => product.sku === item.productId) || {
+          sku: item.productId,
+          product_name: item.productName,
+          color_hex: item.colorHex,
+          finish_type: item.finishType,
+          transparency_type: item.transparencyType,
+          opacity: item.opacity
+        };
+      }
+    });
+  return state.consultation.appliedPpfMap;
+}
+
+function consultationAppliedTintMap() {
+  if (!state.consultation.appliedTintMap || typeof state.consultation.appliedTintMap !== "object") state.consultation.appliedTintMap = {};
+  consultationApplications()
+    .filter((item) => item.category === "TINTING" && item.productId)
+    .forEach((item) => {
+      const canonical = canonicalGlassPartFromLegacy(item.partId) || item.partId;
+      if (!state.consultation.appliedTintMap[canonical]) {
+        state.consultation.appliedTintMap[canonical] = state.products.find((product) => product.sku === item.productId) || {
+          sku: item.productId,
+          product_name: item.productName,
+          color_hex: item.colorHex,
+          shade_percent: item.shadePercent
+        };
+      }
+    });
+  return state.consultation.appliedTintMap;
+}
+
+function legacyBodyPartFor(partId) {
+  return consultationBodyPartOptions.find((part) => part.key === partId)?.legacyKey || partId;
+}
+
+function legacyGlassPartFor(partId) {
+  return consultationGlassPartOptions.find((part) => part.key === partId)?.legacyKey || selectedConsultationTintTarget();
+}
+
+function canonicalBodyPartFromLegacy(partId, meshName = "") {
+  if (!partId) return "";
+  if (consultationBodyPartOptions.some((part) => part.key === partId)) return partId;
+  const name = normalizeMeshName(meshName);
+  const side = meshSideFromName(name);
+  const mappings = {
+    hood: "hood",
+    front_bumper: "frontBumper",
+    rear_bumper: "rearBumper",
+    roof: "roof",
+    trunk: "trunk"
+  };
+  if (mappings[partId]) return mappings[partId];
+  if (partId === "front_door") return side === "right" ? "frontDoorRight" : "frontDoorLeft";
+  if (partId === "rear_door") return side === "right" ? "rearDoorRight" : "rearDoorLeft";
+  if (partId === "front_fender") return side === "right" ? "fenderRight" : "fenderLeft";
+  if (partId === "rear_fender") return side === "right" ? "rearQuarterRight" : "rearQuarterLeft";
+  if (partId === "side_skirt") return side === "right" ? "sideSkirtRight" : "sideSkirtLeft";
+  return "";
+}
+
+function canonicalGlassPartFromLegacy(partId, meshName = "") {
+  if (!partId) return "";
+  if (consultationGlassPartOptions.some((part) => part.key === partId)) return partId;
+  const name = normalizeMeshName(meshName);
+  const side = meshSideFromName(name);
+  if (partId === "frontGlass") return "frontWindshield";
+  if (partId === "rearGlass") return "rearWindshield";
+  if (partId === "roofGlass") return "roofGlass";
+  if (partId === "frontSideGlass") return side === "right" ? "frontDoorGlassRight" : "frontDoorGlassLeft";
+  if (partId === "rearSideGlass") return side === "right" ? "rearDoorGlassRight" : "rearDoorGlassLeft";
+  return "";
+}
+
+function meshSideFromName(name) {
+  const text = normalizeMeshName(name);
+  if (/(^|_)(right|r|fr|rr|rh)(_|$)/.test(text) || text.includes("_right")) return "right";
+  if (/(^|_)(left|l|fl|rl|lh)(_|$)/.test(text) || text.includes("_left")) return "left";
+  return "left";
+}
+
+function consultationCategoryFromPart(partId) {
+  if (consultationBodyPartOptions.some((part) => part.key === partId)) return "body";
+  if (consultationGlassPartOptions.some((part) => part.key === partId)) return "glass";
+  if (ppfPartOptions.some((part) => part.key === partId)) return "body";
+  if (tintAreaOptions.some((area) => area.key === partId)) return "glass";
+  return null;
+}
+
 function consultationFilteredProducts(type) {
   const products = type === "tint" ? consultationTintProducts() : consultationPpfProducts();
   const query = normalize(type === "tint" ? state.consultation.tintProductQuery : state.consultation.ppfProductQuery);
   const filterValue = type === "tint" ? state.consultation.tintFilter : state.consultation.ppfFilter;
+  const tintTarget = state.consultation.selectedCategory === "glass"
+    ? legacyGlassPartFor(state.consultation.selectedPartId)
+    : selectedConsultationTintTarget();
   return products.filter((product) => {
-    if (type === "tint" && !productAvailableParts(product).includes(selectedConsultationTintTarget())) return false;
+    if (type === "tint" && !productAvailableParts(product).includes(tintTarget)) return false;
     if (!consultationProductMatchesFilter(product, type, filterValue)) return false;
     if (!query) return true;
     return productSearchFields(product).some((value) => normalize(value).includes(query));
@@ -7988,6 +8330,7 @@ function consultationFilteredProducts(type) {
 function productSearchFields(product) {
   return [
     product.product_name,
+    product.name,
     product.sku,
     product.product_code,
     product.brand,
@@ -7995,10 +8338,16 @@ function productSearchFields(product) {
     product.color,
     product.color_name,
     product.color_hex,
+    product.colorHex,
     product.finish_type,
+    product.finishType,
     product.transparency_type,
+    product.transparencyType,
     product.shade_percent,
+    product.visibleLightTransmission,
+    product.opacityPercent,
     product.available_parts,
+    product.availableParts,
     product.description
   ];
 }
@@ -8010,8 +8359,12 @@ function consultationProductMatchesFilter(product, type, filterValue = "전체")
     if (filterValue.startsWith("part:")) return productAvailableParts(product).includes(filterValue.replace("part:", ""));
     return normalize(product.brand).includes(normalize(filterValue)) || normalize(product.color_name || product.color).includes(normalize(filterValue));
   }
-  if (filterValue.startsWith("finish:")) return String(product.finish_type || "") === filterValue.replace("finish:", "");
-  if (filterValue.startsWith("transparency:")) return String(product.transparency_type || "") === filterValue.replace("transparency:", "");
+  if (filterValue.startsWith("finish:")) return normalizePpfFinishType(product.finishType || product.finish_type) === filterValue.replace("finish:", "");
+  if (filterValue.startsWith("transparency:")) {
+    const normalizedTransparency = normalizePpfTransparencyType(product.transparencyType || product.transparency_type);
+    const storedValue = normalizedTransparency === "semiTransparent" ? "semi_transparent" : normalizedTransparency;
+    return storedValue === filterValue.replace("transparency:", "");
+  }
   return normalize(product.brand).includes(normalize(filterValue)) || normalize(product.color_name || product.color).includes(normalize(filterValue));
 }
 
@@ -8035,6 +8388,9 @@ function consultationPpfFilterOptions() {
 }
 
 function parseTintVlt(product) {
+  if (Number(product?.visibleLightTransmission || product?.visible_light_transmission || 0) > 0) {
+    return Math.min(80, Math.max(1, Number(product.visibleLightTransmission || product.visible_light_transmission)));
+  }
   if (Number(product?.shade_percent || 0) > 0) return Math.min(80, Math.max(1, Number(product.shade_percent)));
   const match = String(product?.product_name || product?.sku || "").match(/(\d{1,2})\s*%/);
   if (!match) return 35;
@@ -8042,7 +8398,8 @@ function parseTintVlt(product) {
 }
 
 function productAvailableParts(product) {
-  return csvToArray(product?.available_parts).length ? csvToArray(product.available_parts) : tintAreaOptions.map((area) => area.key);
+  const parts = csvToArray(product?.availableParts || product?.available_parts);
+  return parts.length ? parts : tintAreaOptions.map((area) => area.key);
 }
 
 function productBrandText(product) {
@@ -8050,10 +8407,13 @@ function productBrandText(product) {
 }
 
 function productMetaText(product) {
-  if (productCategoryMatches(product, "tint")) return `${parseTintVlt(product)}% · 투명도 ${Number(product.opacity || 0)}%`;
-  const finish = productFinishOptions.find((item) => item.value === product.finish_type)?.label || "유광";
-  const transparency = productTransparencyOptions.find((item) => item.value === product.transparency_type)?.label || "투명";
-  return `${finish} · ${transparency} · 투명도 ${Number(product.opacity || 0)}%`;
+  const opacity = Number(product.opacityPercent ?? product.opacity_percent ?? product.opacity ?? 0);
+  if (productCategoryMatches(product, "tint")) return `${parseTintVlt(product)}% · 투명도 ${opacity}%`;
+  const finishValue = normalizePpfFinishType(product.finishType || product.finish_type);
+  const transparencyValue = normalizePpfTransparencyType(product.transparencyType || product.transparency_type) === "semiTransparent" ? "semi_transparent" : normalizePpfTransparencyType(product.transparencyType || product.transparency_type);
+  const finish = productFinishOptions.find((item) => item.value === finishValue)?.label || "유광";
+  const transparency = productTransparencyOptions.find((item) => item.value === transparencyValue)?.label || "투명";
+  return `${finish} · ${transparency} · 투명도 ${opacity}%`;
 }
 
 function csvToArray(value) {
@@ -8121,7 +8481,7 @@ function consultationProductPrice(product, type) {
   const dealerCode = state.session?.role === "dealer" ? state.session.dealer_code : headOfficeCode;
   const base = dealerSalePrice(product, dealerCode);
   if (type === "tint") return Math.round(base * vehicleQuoteMultiplier(selectedConsultationVehicle()) * 0.8);
-  const name = normalize(product.product_name);
+  const name = normalize(productDisplayName(product));
   const factor = name.includes("매트") || name.includes("matte") ? 1.12 : name.includes("카본") || name.includes("carbon") ? 1.18 : 1;
   return Math.round(base * 0.12 * factor);
 }
@@ -8134,9 +8494,11 @@ function vehicleQuoteMultiplier(vehicle) {
 }
 
 function selectedPpfPartObjects() {
-  const selected = new Set(state.consultation.ppfParts || []);
-  if (selected.has("full_body")) return ppfPartOptions.filter((part) => part.full);
-  return ppfPartOptions.filter((part) => selected.has(part.key) && !part.full);
+  const applied = consultationAppliedPpfMap();
+  const selected = new Set(Object.keys(applied).filter((partId) => applied[partId]));
+  const legacySelected = new Set(Array.from(selected).map(legacyBodyPartFor));
+  if ((state.consultation.ppfParts || []).includes("full_body")) return ppfPartOptions.filter((part) => part.full);
+  return ppfPartOptions.filter((part) => legacySelected.has(part.key) && !part.full);
 }
 
 function consultationApplications() {
@@ -8154,11 +8516,11 @@ function productApplicationRecord(partId, category, product) {
     partName,
     category,
     productId: product?.sku || "",
-    productName: product?.product_name || "",
-    colorHex: validHexColor(product?.color_hex, category === "TINTING" ? "#11171c" : "#ffd36d"),
-    finishType: product?.finish_type || "",
-    transparencyType: product?.transparency_type || "",
-    opacity: Number(product?.opacity || 0),
+    productName: productDisplayName(product),
+    colorHex: validHexColor(product?.colorHex || product?.color_hex, category === "TINTING" ? "#11171c" : "#ffd36d"),
+    finishType: product?.finishType || product?.finish_type || "",
+    transparencyType: product?.transparencyType || product?.transparency_type || "",
+    opacity: Number(product?.opacityPercent ?? product?.opacity_percent ?? product?.opacity ?? 0),
     shadePercent: category === "TINTING" ? parseTintVlt(product) : ""
   };
 }
@@ -8166,15 +8528,19 @@ function productApplicationRecord(partId, category, product) {
 function applySelectedTintProductToTarget() {
   const product = selectedConsultationTintProduct();
   if (!product) return;
-  const target = selectedConsultationTintTarget();
-  if (!productAvailableParts(product).includes(target)) {
-    showToast(`${product.product_name}은(는) ${consultationPartLabel(target)} 적용 가능 제품이 아닙니다.`);
+  const target = state.consultation.selectedCategory === "glass"
+    ? state.consultation.selectedPartId
+    : canonicalGlassPartFromLegacy(selectedConsultationTintTarget());
+  const legacyTarget = legacyGlassPartFor(target);
+  if (!productAvailableParts(product).includes(legacyTarget)) {
+    showToast(`${productDisplayName(product)}은(는) ${consultationPartLabel(target)} 적용 가능 제품이 아닙니다.`);
     return;
   }
   state.consultation.tintAreas = {
     ...consultationTintAreas(),
-    [target]: parseTintVlt(product)
+    [legacyTarget]: parseTintVlt(product)
   };
+  consultationAppliedTintMap()[target] = product;
   upsertConsultationApplication(productApplicationRecord(target, "TINTING", product));
 }
 
@@ -8186,10 +8552,7 @@ function upsertConsultationApplication(record) {
 }
 
 function removeConsultationApplication(partId, category) {
-  state.consultation.applications = consultationApplications().filter((item) => !(item.partId === partId && item.category === category));
-  if (category === "PPF") {
-    state.consultation.ppfParts = (state.consultation.ppfParts || []).filter((part) => part !== partId);
-  }
+  removeProductFromConsultationPart(partId, category);
   showToast(`${consultationPartLabel(partId)} 적용을 해제했습니다.`);
 }
 
@@ -8200,13 +8563,23 @@ function setConsultationNoProduct(type) {
   if (type === "tint") {
     state.consultation.tintEnabled = false;
     state.consultation.tintSku = "";
+    state.consultation.appliedTintMap = {};
     state.consultation.applications = consultationApplications().filter((item) => item.category !== "TINTING");
+    if (state.consultation.selectedCategory === "glass") {
+      state.consultation.selectedCategory = null;
+      state.consultation.selectedPartId = null;
+    }
   }
   if (type === "ppf") {
     state.consultation.ppfEnabled = false;
     state.consultation.ppfSku = "";
     state.consultation.ppfParts = [];
+    state.consultation.appliedPpfMap = {};
     state.consultation.applications = consultationApplications().filter((item) => item.category !== "PPF");
+    if (state.consultation.selectedCategory === "body") {
+      state.consultation.selectedCategory = null;
+      state.consultation.selectedPartId = null;
+    }
   }
   showToast(`${consultationProductTypeConfig[type].label} 선택 안함으로 변경했습니다.`);
 }
@@ -8216,13 +8589,19 @@ function consultationApplyAll() {
   const tintProduct = selectedConsultationTintProduct();
   if (!ppfProduct && !tintProduct) throw new Error("먼저 적용할 PPF 또는 틴팅 제품을 선택해 주세요.");
   if (ppfProduct) {
-    state.consultation.ppfParts = ppfPartOptions.filter((part) => !part.full).map((part) => part.key);
-    state.consultation.ppfParts.forEach((partId) => upsertConsultationApplication(productApplicationRecord(partId, "PPF", ppfProduct)));
+    state.consultation.appliedPpfMap = {};
+    consultationBodyPartOptions.forEach((part) => {
+      state.consultation.appliedPpfMap[part.key] = ppfProduct;
+      upsertConsultationApplication(productApplicationRecord(part.key, "PPF", ppfProduct));
+    });
+    state.consultation.ppfParts = Array.from(new Set(consultationBodyPartOptions.map((part) => part.legacyKey)));
   }
   if (tintProduct) {
-    tintAreaOptions.forEach((area) => {
-      if (!productAvailableParts(tintProduct).includes(area.key)) return;
-      state.consultation.tintAreas = { ...consultationTintAreas(), [area.key]: parseTintVlt(tintProduct) };
+    state.consultation.appliedTintMap = {};
+    consultationGlassPartOptions.forEach((area) => {
+      if (!productAvailableParts(tintProduct).includes(area.legacyKey)) return;
+      state.consultation.tintAreas = { ...consultationTintAreas(), [area.legacyKey]: parseTintVlt(tintProduct) };
+      state.consultation.appliedTintMap[area.key] = tintProduct;
       upsertConsultationApplication(productApplicationRecord(area.key, "TINTING", tintProduct));
     });
   }
@@ -8232,43 +8611,50 @@ function consultationApplyAll() {
 
 function consultationClearAll() {
   state.consultation.ppfParts = [];
+  state.consultation.appliedPpfMap = {};
+  state.consultation.appliedTintMap = {};
   state.consultation.applications = [];
   refreshConsultationAfterOptionChange("ppf");
   showToast("부위별 적용 내역을 모두 해제했습니다.");
 }
 
 function consultationQuote() {
-  const tintProduct = selectedConsultationTintProduct();
-  const ppfProduct = selectedConsultationPpfProduct();
   const items = [];
-  if (tintProduct) {
+  consultationApplications().forEach((application) => {
+    const product = state.products.find((item) => item.sku === application.productId);
+    if (!product) return;
+    const type = application.category === "TINTING" ? "tint" : "ppf";
+    const legacyPart = type === "ppf" ? legacyBodyPartFor(application.partId) : "";
+    const partBase = ppfPartOptions.find((part) => part.key === legacyPart)?.price || 0;
+    const amount = type === "tint"
+      ? Math.round(consultationProductPrice(product, "tint") / Math.max(1, consultationGlassPartOptions.length))
+      : consultationProductPrice(product, "ppf") + partBase;
     items.push({
-      label: `틴팅 · ${tintProduct.product_name}`,
-      amount: consultationProductPrice(tintProduct, "tint")
+      label: `${application.category === "TINTING" ? "틴팅" : "PPF"} · ${application.partName} · ${productDisplayName(product)}`,
+      amount
     });
-  }
-  if (ppfProduct) {
-    const productBase = consultationProductPrice(ppfProduct, "ppf");
-    const partAmount = selectedPpfPartObjects().reduce((sum, part) => sum + part.price, 0);
-    if (partAmount > 0) {
-      items.push({
-        label: `PPF · ${ppfProduct.product_name}`,
-        amount: productBase + partAmount
-      });
-    }
-  }
+  });
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   return { items, total };
 }
 
 function toggleConsultationPpfPart(partKey) {
+  if (partKey !== "full_body") {
+    const canonical = canonicalBodyPartFromLegacy(partKey) || partKey;
+    state.consultation.selectedPartId = canonical;
+    state.consultation.selectedCategory = "body";
+    const product = selectedConsultationPpfProduct();
+    if (product) applyConsultationProductToSelectedPart(product, "ppf");
+    return;
+  }
   const selected = new Set(state.consultation.ppfParts || []);
   if (partKey === "full_body") {
     state.consultation.ppfParts = selected.has("full_body") ? [] : ["full_body"];
     if (state.consultation.ppfParts.length) {
       const product = selectedConsultationPpfProduct();
-      if (product) upsertConsultationApplication(productApplicationRecord(partKey, "PPF", product));
+      if (product) consultationApplyAll();
     } else {
+      state.consultation.appliedPpfMap = {};
       state.consultation.applications = consultationApplications().filter((item) => item.category !== "PPF");
     }
     return;
@@ -8287,15 +8673,13 @@ function toggleConsultationPpfPart(partKey) {
 }
 
 function selectedConsultationSummary() {
-  const tint = selectedConsultationTintProduct();
-  const ppf = selectedConsultationPpfProduct();
-  const parts = selectedPpfPartObjects().map((part) => part.label).join(", ");
-  const tintAreas = consultationTintAreas();
-  const tintAreaText = tintAreaOptions.map((area) => `${area.shortLabel} ${tintAreas[area.key]}%`).join(" / ");
+  const applications = consultationApplications();
+  const tintCount = applications.filter((item) => item.category === "TINTING").length;
+  const ppfCount = applications.filter((item) => item.category === "PPF").length;
   return [
-    tint ? `틴팅 ${tint.product_name} (${tintAreaText})` : "",
-    ppf && parts ? `PPF ${parts}` : ""
-  ].filter(Boolean).join(" · ") || "제품을 선택해 상담을 시작하세요";
+    tintCount ? `틴팅 ${tintCount}개 유리 적용` : "",
+    ppfCount ? `PPF ${ppfCount}개 차체 부위 적용` : ""
+  ].filter(Boolean).join(" · ") || "3D 차량 부위를 선택해 상담을 시작하세요";
 }
 
 function visibleConsultations() {
@@ -8319,8 +8703,8 @@ function upsertConsultation(row) {
 
 function consultationPayload() {
   const vehicle = selectedConsultationVehicle();
-  const tintProduct = selectedConsultationTintProduct();
-  const ppfProduct = selectedConsultationPpfProduct();
+  const tintMap = consultationAppliedTintMap();
+  const ppfMap = consultationAppliedPpfMap();
   const quote = consultationQuote();
   const selectedParts = selectedPpfPartObjects();
   return {
@@ -8329,8 +8713,12 @@ function consultationPayload() {
     vehicle_id: vehicle?.id || "",
     vehicle_model: vehicleDisplayName(vehicle),
     vehicle_color: vehicleColorByName(state.consultation.color).label,
-    selected_tint_products: tintProduct ? JSON.stringify([{ sku: tintProduct.sku, product_name: tintProduct.product_name, vlt: parseTintVlt(tintProduct), areas: consultationTintAreas(), enabled: state.consultation.tintEnabled !== false }]) : JSON.stringify([{ enabled: false, product_name: "선택 안함" }]),
-    selected_ppf_products: ppfProduct ? JSON.stringify([{ sku: ppfProduct.sku, product_name: ppfProduct.product_name, enabled: state.consultation.ppfEnabled !== false }]) : JSON.stringify([{ enabled: false, product_name: "선택 안함" }]),
+    selected_tint_products: Object.values(tintMap).some(Boolean)
+      ? JSON.stringify(Object.entries(tintMap).filter(([, product]) => product).map(([partId, product]) => ({ partId, partName: consultationPartLabel(partId), sku: product.sku, product_name: productDisplayName(product), vlt: parseTintVlt(product), enabled: true })))
+      : JSON.stringify([{ enabled: false, product_name: "선택 안함" }]),
+    selected_ppf_products: Object.values(ppfMap).some(Boolean)
+      ? JSON.stringify(Object.entries(ppfMap).filter(([, product]) => product).map(([partId, product]) => ({ partId, partName: consultationPartLabel(partId), sku: product.sku, product_name: productDisplayName(product), enabled: true })))
+      : JSON.stringify([{ enabled: false, product_name: "선택 안함" }]),
     selected_ppf_parts: JSON.stringify(selectedParts.map((part) => ({ key: part.key, label: part.label, price: part.price }))),
     applications: JSON.stringify(consultationApplications()),
     quote_total: quote.total,
@@ -8505,7 +8893,9 @@ function editableInventoryOwnerCode() {
 }
 
 function activeProducts() {
-  return state.products.filter((product) => toBool(product.is_active));
+  return state.products.filter((product) => product.useYn === undefined && product.use_yn === undefined
+    ? toBool(product.is_active)
+    : toBool(product.useYn ?? product.use_yn));
 }
 
 function dealerAccounts() {
