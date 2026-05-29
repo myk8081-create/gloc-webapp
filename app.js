@@ -189,13 +189,13 @@ const colorOptions = [
 ];
 
 const baseProducts = [
-  { category: "틴팅", brand: "GLOC", color: "차콜", color_hex: "#101820", product_name: "세라믹 틴팅 차콜", sku: "TN-CH", sizes: ["15%", "35%", "50%"], unit: "롤", shade_percent: 35, opacity: 55, available_parts: "frontGlass,frontSideGlass,rearSideGlass,rearGlass,roofGlass" },
+  { category: "틴팅", brand: "GLOC", color: "차콜", color_hex: "#101820", product_name: "세라믹 틴팅 차콜", sku: "TN-CH", sizes: ["15%", "35%", "50%"], unit: "롤", shade_percent: 35, opacity: 55, available_parts: "frontGlass,firstRowGlass,secondRowGlass,rearGlass,roofGlass" },
   { category: "PPF", brand: "GLOC", color: "클리어", color_hex: "#f7fbf9", product_name: "프리미엄 PPF 클리어", sku: "PPF-CL", sizes: ["150", "180", "200"], unit: "롤", finish_type: "gloss", transparency_type: "transparent", opacity: 28 },
   { category: "PPF", brand: "GLOC", color: "매트", color_hex: "#c9cac2", product_name: "매트 PPF", sku: "PPF-MT", sizes: ["150", "180", "200"], unit: "롤", finish_type: "matte", transparency_type: "semi_transparent", opacity: 42 },
-  { category: "틴팅", brand: "GLOC", color: "스모크", color_hex: "#202b30", product_name: "카본 틴팅 스모크", sku: "TN-SM", sizes: ["05%", "15%", "35%"], unit: "롤", shade_percent: 15, opacity: 70, available_parts: "frontGlass,frontSideGlass,rearSideGlass,rearGlass,roofGlass" },
+  { category: "틴팅", brand: "GLOC", color: "스모크", color_hex: "#202b30", product_name: "카본 틴팅 스모크", sku: "TN-SM", sizes: ["05%", "15%", "35%"], unit: "롤", shade_percent: 15, opacity: 70, available_parts: "frontGlass,firstRowGlass,secondRowGlass,rearGlass,roofGlass" },
   { category: "PPF", brand: "GLOC", color: "블랙", color_hex: "#0b1113", product_name: "블랙 PPF", sku: "PPF-BK", sizes: ["150", "180", "200"], unit: "롤", finish_type: "gloss", transparency_type: "opaque", opacity: 100 },
-  { category: "틴팅", brand: "GLOC", color: "세라믹", color_hex: "#5d6b70", product_name: "세라믹 틴팅", sku: "TN-CR", sizes: ["35%", "50%", "70%"], unit: "롤", shade_percent: 50, opacity: 42, available_parts: "frontGlass,frontSideGlass,rearSideGlass,rearGlass,roofGlass" },
-  { category: "틴팅", brand: "GLOC", color: "차콜", color_hex: "#101820", product_name: "나노 틴팅 차콜", sku: "TN-NC", sizes: ["15%", "35%", "50%"], unit: "롤", shade_percent: 30, opacity: 58, available_parts: "frontGlass,frontSideGlass,rearSideGlass,rearGlass,roofGlass" },
+  { category: "틴팅", brand: "GLOC", color: "세라믹", color_hex: "#5d6b70", product_name: "세라믹 틴팅", sku: "TN-CR", sizes: ["35%", "50%", "70%"], unit: "롤", shade_percent: 50, opacity: 42, available_parts: "frontGlass,firstRowGlass,secondRowGlass,rearGlass,roofGlass" },
+  { category: "틴팅", brand: "GLOC", color: "차콜", color_hex: "#101820", product_name: "나노 틴팅 차콜", sku: "TN-NC", sizes: ["15%", "35%", "50%"], unit: "롤", shade_percent: 30, opacity: 58, available_parts: "frontGlass,firstRowGlass,secondRowGlass,rearGlass,roofGlass" },
   { category: "PPF", brand: "GLOC", color: "클리어", color_hex: "#f7fbf9", product_name: "라이트 PPF 클리어", sku: "PPF-LC", sizes: ["120", "150", "180"], unit: "롤", finish_type: "satin", transparency_type: "transparent", opacity: 24 }
 ];
 
@@ -268,8 +268,8 @@ const ppfPartOptions = [
 const tintVltOptions = [5, 15, 30, 50];
 const tintAreaOptions = [
   { key: "frontGlass", label: "전면 유리", shortLabel: "전면", defaultVlt: 30 },
-  { key: "frontSideGlass", label: "1열 측면", shortLabel: "1열", defaultVlt: 15 },
-  { key: "rearSideGlass", label: "2열 측면", shortLabel: "2열", defaultVlt: 15 },
+  { key: "firstRowGlass", label: "1열 유리", shortLabel: "1열", defaultVlt: 15 },
+  { key: "secondRowGlass", label: "2열 유리", shortLabel: "2열", defaultVlt: 15 },
   { key: "rearGlass", label: "후면 유리", shortLabel: "후면", defaultVlt: 15 },
   { key: "roofGlass", label: "글라스 루프", shortLabel: "루프", defaultVlt: 30 }
 ];
@@ -293,12 +293,10 @@ const consultationBodyPartOptions = [
 ];
 
 const consultationGlassPartOptions = [
-  { key: "frontWindshield", legacyKey: "frontGlass", label: "앞유리", shortLabel: "전면" },
-  { key: "frontDoorGlassLeft", legacyKey: "frontSideGlass", label: "1열 좌측 유리", shortLabel: "1열 좌" },
-  { key: "frontDoorGlassRight", legacyKey: "frontSideGlass", label: "1열 우측 유리", shortLabel: "1열 우" },
-  { key: "rearDoorGlassLeft", legacyKey: "rearSideGlass", label: "2열 좌측 유리", shortLabel: "2열 좌" },
-  { key: "rearDoorGlassRight", legacyKey: "rearSideGlass", label: "2열 우측 유리", shortLabel: "2열 우" },
-  { key: "rearWindshield", legacyKey: "rearGlass", label: "후면유리", shortLabel: "후면" },
+  { key: "frontGlass", legacyKey: "frontGlass", label: "앞유리", shortLabel: "전면" },
+  { key: "firstRowGlass", legacyKey: "firstRowGlass", label: "1열 유리", shortLabel: "1열" },
+  { key: "secondRowGlass", legacyKey: "secondRowGlass", label: "2열 유리", shortLabel: "2열" },
+  { key: "rearGlass", legacyKey: "rearGlass", label: "후면유리", shortLabel: "후면" },
   { key: "roofGlass", legacyKey: "roofGlass", label: "루프유리", shortLabel: "루프" }
 ];
 
@@ -334,10 +332,10 @@ const consultationPartMapping = {
   side_skirt: ["side_skirt_l", "side_skirt_r", "side_skirt"],
   spoiler: ["spoiler"],
   frontGlass: ["front_glass", "windshield", "glass_front"],
-  frontSideGlass: ["side_glass_l", "side_glass_r", "window_l", "window_r", "glass_side_front"],
-  rearSideGlass: ["rear_side_glass", "glass_side_rear"],
+  firstRowGlass: ["front_door_glass_left", "front_door_glass_right", "driverwindow", "passengerwindow", "frontsideglass", "front_side_glass", "side_glass_l", "side_glass_r", "window_l", "window_r", "glass_side_front"],
+  secondRowGlass: ["rear_door_glass_left", "rear_door_glass_right", "secondrowwindowleft", "secondrowwindowright", "rearsideglass", "rear_side_glass", "glass_side_rear"],
   rearGlass: ["rear_glass", "glass_rear"],
-  roofGlass: ["sunroof", "glass_roof"]
+  roofGlass: ["roof_glass", "sunroof", "panoramicroof", "panoramic_roof", "glass_roof"]
 };
 
 const consultationVehicleMeshMaps = {
@@ -379,8 +377,8 @@ const consultationVehicleMeshMaps = {
     },
     tint: {
       frontGlass: ["glass_front"],
-      frontSideGlass: ["glass_side_front"],
-      rearSideGlass: ["glass_side_rear"],
+      firstRowGlass: ["glass_side_front"],
+      secondRowGlass: ["glass_side_rear"],
       rearGlass: ["glass_rear"],
       roofGlass: ["glass_roof"]
     }
@@ -626,8 +624,8 @@ const state = {
     tintSku: "TN-CH-035",
     tintAreas: {
       frontGlass: 30,
-      frontSideGlass: 15,
-      rearSideGlass: 15,
+      firstRowGlass: 15,
+      secondRowGlass: 15,
       rearGlass: 15,
       roofGlass: 30
     },
@@ -769,6 +767,8 @@ let consultation3dRuntime = null;
 let consultation3dModulesPromise = null;
 let consultationOriginalMaterials = new Map();
 let consultationPpfOverlayMap = new Map();
+let consultationGlassMeshGroupMap = new Map();
+let consultationOriginalGlassMaterials = new Map();
 
 let searchRefreshTimer = null;
 let accountFormRefreshTimer = null;
@@ -2657,14 +2657,14 @@ function renderConsultationProductControls() {
   return `
     ${renderConsultationSelectedPartPanel()}
     ${category === "glass" ? renderConsultationProductStep("tint") : ""}
-    ${category === "body" ? renderConsultationProductStep("ppf") : ""}
+    ${category === "body" || !category ? renderConsultationProductStep("ppf") : ""}
     ${!category ? `
       <section class="consultation-control-section">
         <div class="control-section-head">
           <span class="eyebrow">03 Product</span>
-          <strong>제품 적용</strong>
+          <strong>적용 방법</strong>
         </div>
-        <div class="empty compact-empty">먼저 3D 차량에서 차체 또는 유리 부위를 클릭하세요.</div>
+        <div class="empty compact-empty">PPF는 제품을 먼저 검색해 선택한 뒤 차체를 클릭하면 바로 적용됩니다. 틴팅은 유리를 클릭한 뒤 제품을 검색해 적용하세요.</div>
       </section>
     ` : ""}
   `;
@@ -2703,6 +2703,7 @@ function renderConsultationProductStep(type) {
   const enabled = type === "tint" ? state.consultation.tintEnabled !== false : state.consultation.ppfEnabled !== false;
   const searchId = type === "tint" ? "consultationTintProductQuery" : "consultationPpfProductQuery";
   const targetPart = state.consultation.selectedPartId;
+  const placeholderPart = type === "tint" && targetPart ? consultationPartLabel(targetPart) : type === "ppf" && targetPart ? consultationPartLabel(targetPart) : "";
   return `
     <section class="consultation-control-section" id="consultation${type === "tint" ? "Tint" : "Ppf"}ProductStep">
       <div class="control-section-head">
@@ -2710,7 +2711,7 @@ function renderConsultationProductStep(type) {
         <strong>${config.label} 제품</strong>
       </div>
       <div class="product-search-stack">
-        <input class="search-input compact-search" id="${searchId}" type="search" placeholder="${type === "tint" ? `${consultationPartLabel(targetPart)} 틴팅 제품 검색` : `${consultationPartLabel(targetPart)} PPF 제품 검색`}" value="${escapeAttr(query || "")}" />
+        <input class="search-input compact-search" id="${searchId}" type="search" placeholder="${type === "tint" ? `${placeholderPart || "선택 유리"} 틴팅 제품 검색` : `${placeholderPart ? `${placeholderPart} ` : ""}PPF 제품 검색`}" value="${escapeAttr(query || "")}" />
       </div>
       <div class="consultation-product-list" id="consultation${type === "tint" ? "Tint" : "Ppf"}ProductList">
         ${renderNoProductOption(type, enabled)}
@@ -2857,8 +2858,10 @@ function renderConsultationAppliedParts() {
         ${ppfRows ? `<div class="applied-map-heading">차체 PPF</div>${ppfRows}` : ""}
       </div>
       <div class="consultation-inline-actions">
-        <button type="button" class="secondary-button small-button" data-action="consultationApplyAll">전체 적용</button>
-        <button type="button" class="secondary-button small-button danger-button" data-action="consultationClearAll">전체 해제</button>
+        <button type="button" class="secondary-button small-button" data-action="consultationApplyAllTint">틴팅 전체 적용</button>
+        <button type="button" class="secondary-button small-button danger-button" data-action="consultationClearAllTint">틴팅 전체 해제</button>
+        <button type="button" class="secondary-button small-button" data-action="consultationApplyAllPpf">PPF 전체 적용</button>
+        <button type="button" class="secondary-button small-button danger-button" data-action="consultationClearAllPpf">PPF 전체 해제</button>
       </div>
     </section>
   `;
@@ -4138,7 +4141,12 @@ function bindDynamicListEvents(root) {
       if (type === "ppf") {
         state.consultation.ppfEnabled = true;
         state.consultation.ppfSku = button.dataset.consultationProduct;
-        applyConsultationProductToSelectedPart(product, "ppf");
+        syncAppliedPpfProduct(product);
+        if (state.consultation.selectedCategory === "body" && state.consultation.selectedPartId) {
+          applyConsultationProductToSelectedPart(product, "ppf");
+        } else {
+          showToast("PPF 제품이 선택되었습니다. 차체 부위를 클릭하면 적용됩니다.");
+        }
       }
       refreshConsultationAfterOptionChange(type);
     });
@@ -4655,6 +4663,8 @@ function disposeConsultation3dViewer() {
   consultation3dRuntime.dispose();
   consultation3dRuntime = null;
   consultationOriginalMaterials.clear();
+  consultationGlassMeshGroupMap.clear();
+  consultationOriginalGlassMaterials.clear();
 }
 
 function refreshConsultation3dRuntimeVisuals() {
@@ -4700,6 +4710,8 @@ function showConsultation3dError(container, message) {
 }
 
 function prepareConsultationModel(THREE, model, vehicleId = "") {
+  consultationGlassMeshGroupMap.clear();
+  consultationOriginalGlassMaterials.clear();
   model.traverse((object) => {
     if (!object.isMesh) return;
     object.castShadow = true;
@@ -4707,13 +4719,26 @@ function prepareConsultationModel(THREE, model, vehicleId = "") {
     if (object.material) object.material = cloneThreeMaterial(object.material);
     const meshInfo = consultationMeshInfo(object, vehicleId);
     if (meshInfo.tintAreas?.length) {
+      const glassPartId = meshInfo.tintAreas[0];
       object.userData.category = "glass";
-      object.userData.partId = meshInfo.tintAreas[0];
+      object.userData.partId = glassPartId;
+      object.userData.glassPartId = glassPartId;
+      registerConsultationGlassMesh(object, glassPartId);
     } else if (meshInfo.ppfParts?.length) {
       object.userData.category = "body";
       object.userData.partId = meshInfo.ppfParts[0];
     }
   });
+}
+
+function registerConsultationGlassMesh(mesh, glassPartId) {
+  if (!mesh?.uuid || !glassPartId) return;
+  if (!consultationOriginalGlassMaterials.has(mesh.uuid)) {
+    consultationOriginalGlassMaterials.set(mesh.uuid, cloneThreeMaterial(mesh.material));
+  }
+  const group = consultationGlassMeshGroupMap.get(glassPartId) || [];
+  if (!group.includes(mesh)) group.push(mesh);
+  consultationGlassMeshGroupMap.set(glassPartId, group);
 }
 
 function bindConsultation3dPartInteractions(THREE, camera, renderer, model, vehicleId = "") {
@@ -4864,6 +4889,16 @@ function removeConsultationPpfOverlay(partId) {
   consultationPpfOverlayMap.delete(partId);
 }
 
+function restoreConsultationGlassGroup(glassPartId) {
+  const meshes = consultationGlassMeshGroupMap.get(glassPartId) || [];
+  meshes.forEach((mesh) => {
+    const original = consultationOriginalGlassMaterials.get(mesh.uuid) || consultationOriginalMaterials.get(mesh.uuid);
+    if (!original) return;
+    disposeObjectMaterial(mesh.material);
+    mesh.material = cloneThreeMaterial(original);
+  });
+}
+
 function createConsultationPpfOverlay(THREE, originalMesh, product, partId) {
   if (!originalMesh?.geometry || !product || !partId) return null;
   const material = createConsultationPpfMaterial(THREE, product);
@@ -4923,20 +4958,19 @@ function applyConsultationTintMaterialToMesh(THREE, object, product) {
 
 function createConsultationTintMaterial(THREE, product) {
   const vlt = Math.min(90, Math.max(1, Number(product?.visibleLightTransmission ?? product?.visible_light_transmission ?? product?.shade_percent ?? parseTintVlt(product)))) / 100;
-  const reflectivityRaw = Number(product?.reflectivity ?? consultationTintReflectivity(product));
-  const reflectivity = Math.min(1, Math.max(0, reflectivityRaw > 1 ? reflectivityRaw / 100 : reflectivityRaw));
   return new THREE.MeshPhysicalMaterial({
     color: consultationTintColor(THREE, product),
     transparent: true,
-    opacity: Math.max(0.15, Math.min(0.88, 1 - vlt)),
+    opacity: Math.max(0.15, Math.min(0.95, 1 - vlt)),
     transmission: vlt,
     roughness: product?.finishType === "matte" || product?.finish_type === "matte" ? 0.45 : 0.08,
-    metalness: reflectivity,
+    metalness: 0,
     clearcoat: 1,
     clearcoatRoughness: 0.02,
     envMapIntensity: consultationRenderSettings.glassEnvMapIntensity,
-    depthWrite: false,
-    side: THREE.DoubleSide
+    depthWrite: true,
+    depthTest: true,
+    side: THREE.FrontSide
   });
 }
 
@@ -5190,6 +5224,19 @@ function handleConsultationPartClick(part) {
     showToast(`${consultationPartLabel(partId)} 적용을 해제했습니다.`);
     return;
   }
+  if (category === "body") {
+    state.consultation.selectedPartId = partId;
+    state.consultation.selectedCategory = "body";
+    const product = selectedConsultationPpfProduct();
+    if (!product) {
+      refreshConsultationAfterOptionChange("ppf");
+      showToast("PPF 제품을 먼저 선택하세요.");
+      return;
+    }
+    applyConsultationProductToSelectedPart(product, "ppf");
+    refreshConsultationAfterOptionChange("ppf");
+    return;
+  }
   selectConsultationTargetPart(partId, category);
 }
 
@@ -5245,6 +5292,16 @@ function applyConsultationProductToSelectedPart(product, type) {
   showToast(`${consultationPartLabel(partId)}에 ${productDisplayName(product)} 적용`);
 }
 
+function syncAppliedPpfProduct(product) {
+  if (!product) return;
+  const ppfMap = consultationAppliedPpfMap();
+  Object.keys(ppfMap).forEach((partId) => {
+    if (!ppfMap[partId]) return;
+    ppfMap[partId] = product;
+    upsertConsultationApplication(productApplicationRecord(partId, "PPF", product));
+  });
+}
+
 function removeProductFromConsultationPart(partId, category) {
   const canonicalCategory = category === "glass" || category === "TINTING" ? "glass" : "body";
   const canonicalPartId = canonicalCategory === "glass"
@@ -5264,6 +5321,7 @@ function removeProductFromConsultationPart(partId, category) {
     state.consultation.ppfParts = (state.consultation.ppfParts || []).filter((part) => part !== legacyPart && part !== canonicalPartId);
   }
   if (canonicalCategory === "glass") {
+    restoreConsultationGlassGroup(canonicalPartId);
     delete consultationAppliedTintMap()[canonicalPartId];
   }
 }
@@ -5528,6 +5586,10 @@ async function handleAction(action, button) {
   if (action === "downloadConsultationSnapshot") return downloadConsultationSnapshot();
   if (action === "consultationApplyAll") return consultationApplyAll();
   if (action === "consultationClearAll") return consultationClearAll();
+  if (action === "consultationApplyAllTint") return consultationApplyAllTint();
+  if (action === "consultationClearAllTint") return consultationClearAllTint();
+  if (action === "consultationApplyAllPpf") return consultationApplyAllPpf();
+  if (action === "consultationClearAllPpf") return consultationClearAllPpf();
   if (action === "consultationFutureReservation") return consultationFutureReservation();
   if (action === "consultationFutureCertificate") return consultationFutureCertificate();
   if (action === "cancelOrder") return cancelOrder(button.dataset.orderId);
@@ -8181,6 +8243,11 @@ function consultationAppliedPpfMap() {
 
 function consultationAppliedTintMap() {
   if (!state.consultation.appliedTintMap || typeof state.consultation.appliedTintMap !== "object") state.consultation.appliedTintMap = {};
+  state.consultation.appliedTintMap = Object.fromEntries(
+    Object.entries(state.consultation.appliedTintMap)
+      .map(([partId, product]) => [canonicalGlassPartFromLegacy(partId) || partId, product])
+      .filter(([partId, product]) => partId && product)
+  );
   consultationApplications()
     .filter((item) => item.category === "TINTING" && item.productId)
     .forEach((item) => {
@@ -8202,7 +8269,8 @@ function legacyBodyPartFor(partId) {
 }
 
 function legacyGlassPartFor(partId) {
-  return consultationGlassPartOptions.find((part) => part.key === partId)?.legacyKey || selectedConsultationTintTarget();
+  const canonical = canonicalGlassPartFromLegacy(partId) || partId;
+  return consultationGlassPartOptions.find((part) => part.key === canonical)?.legacyKey || selectedConsultationTintTarget();
 }
 
 function canonicalBodyPartFromLegacy(partId, meshName = "") {
@@ -8230,12 +8298,14 @@ function canonicalGlassPartFromLegacy(partId, meshName = "") {
   if (!partId) return "";
   if (consultationGlassPartOptions.some((part) => part.key === partId)) return partId;
   const name = normalizeMeshName(meshName);
-  const side = meshSideFromName(name);
-  if (partId === "frontGlass") return "frontWindshield";
-  if (partId === "rearGlass") return "rearWindshield";
-  if (partId === "roofGlass") return "roofGlass";
-  if (partId === "frontSideGlass") return side === "right" ? "frontDoorGlassRight" : "frontDoorGlassLeft";
-  if (partId === "rearSideGlass") return side === "right" ? "rearDoorGlassRight" : "rearDoorGlassLeft";
+  const normalizedPart = normalizeMeshName(partId);
+  if (partId === "frontGlass" || ["frontwindshield", "windshield", "front_glass"].includes(normalizedPart)) return "frontGlass";
+  if (partId === "rearGlass" || ["rearwindshield", "rearwindow", "backglass", "back_glass", "rear_glass"].includes(normalizedPart)) return "rearGlass";
+  if (partId === "roofGlass" || ["roofglass", "roof_glass", "sunroof", "panoramicroof", "panoramic_roof", "glass_roof"].includes(normalizedPart)) return "roofGlass";
+  if (partId === "frontSideGlass" || ["frontdoorglassleft", "frontdoorglassright", "driverwindow", "passengerwindow", "firstrowglass"].includes(normalizedPart)) return "firstRowGlass";
+  if (partId === "rearSideGlass" || ["reardoorglassleft", "reardoorglassright", "secondrowwindowleft", "secondrowwindowright", "secondrowglass"].includes(normalizedPart)) return "secondRowGlass";
+  if (name.includes("front") && (name.includes("side") || name.includes("door") || name.includes("window"))) return "firstRowGlass";
+  if ((name.includes("rear") || name.includes("second")) && (name.includes("side") || name.includes("door") || name.includes("window"))) return "secondRowGlass";
   return "";
 }
 
@@ -8315,7 +8385,8 @@ function consultationTintFilterOptions() {
     { value: "전체", label: "전체" },
     ...tintVltOptions.map((value) => ({ value: `shade:${value}`, label: `${value}%` })),
     { value: "part:frontGlass", label: "전면" },
-    { value: "part:frontSideGlass", label: "측면" },
+    { value: "part:firstRowGlass", label: "1열" },
+    { value: "part:secondRowGlass", label: "2열" },
     { value: "part:rearGlass", label: "후면" },
     { value: "part:roofGlass", label: "썬루프" }
   ];
@@ -8341,7 +8412,8 @@ function parseTintVlt(product) {
 
 function productAvailableParts(product) {
   const parts = csvToArray(product?.availableParts || product?.available_parts);
-  return parts.length ? parts : tintAreaOptions.map((area) => area.key);
+  const source = parts.length ? parts : tintAreaOptions.map((area) => area.key);
+  return Array.from(new Set(source.map((part) => canonicalGlassPartFromLegacy(part) || part)));
 }
 
 function productBrandText(product) {
@@ -8392,9 +8464,13 @@ function consultationTintOpacityFromVlt(vltValue) {
 
 function consultationTintAreas() {
   const saved = state.consultation?.tintAreas || {};
+  const legacyTintAreaAliases = {
+    firstRowGlass: "frontSideGlass",
+    secondRowGlass: "rearSideGlass"
+  };
   return Object.fromEntries(
     tintAreaOptions.map((area) => {
-      const value = Number(saved[area.key]);
+      const value = Number(saved[area.key] ?? saved[legacyTintAreaAliases[area.key]]);
       return [area.key, Number.isFinite(value) && value > 0 ? value : area.defaultVlt];
     })
   );
@@ -8503,13 +8579,13 @@ function setConsultationNoProduct(type) {
   const hasPpfParts = type === "ppf" && (state.consultation.ppfParts || []).length > 0;
   if ((hasApplied || hasPpfParts) && !confirm("기존 적용 내역을 삭제하고 선택 안함으로 변경할까요?")) return;
   if (type === "tint") {
+    consultationGlassPartOptions.forEach((area) => restoreConsultationGlassGroup(area.key));
     state.consultation.tintEnabled = false;
     state.consultation.tintSku = "";
     state.consultation.appliedTintMap = {};
     state.consultation.applications = consultationApplications().filter((item) => item.category !== "TINTING");
     if (state.consultation.selectedCategory === "glass") {
-      state.consultation.selectedCategory = null;
-      state.consultation.selectedPartId = null;
+      clearConsultationSelectedTarget();
     }
   }
   if (type === "ppf") {
@@ -8520,46 +8596,89 @@ function setConsultationNoProduct(type) {
     state.consultation.appliedPpfMap = {};
     state.consultation.applications = consultationApplications().filter((item) => item.category !== "PPF");
     if (state.consultation.selectedCategory === "body") {
-      state.consultation.selectedCategory = null;
-      state.consultation.selectedPartId = null;
+      clearConsultationSelectedTarget();
     }
   }
   showToast(`${consultationProductTypeConfig[type].label} 선택 안함으로 변경했습니다.`);
 }
 
 function consultationApplyAll() {
-  const ppfProduct = selectedConsultationPpfProduct();
+  const didTint = selectedConsultationTintProduct();
+  const didPpf = selectedConsultationPpfProduct();
+  if (didTint) consultationApplyAllTint();
+  if (didPpf) consultationApplyAllPpf();
+  if (!didTint && !didPpf) throw new Error("먼저 적용할 PPF 또는 틴팅 제품을 선택해 주세요.");
+}
+
+function consultationApplyAllTint() {
   const tintProduct = selectedConsultationTintProduct();
-  if (!ppfProduct && !tintProduct) throw new Error("먼저 적용할 PPF 또는 틴팅 제품을 선택해 주세요.");
-  if (ppfProduct) {
-    state.consultation.appliedPpfMap = {};
-    consultationBodyPartOptions.forEach((part) => {
-      state.consultation.appliedPpfMap[part.key] = ppfProduct;
-      upsertConsultationApplication(productApplicationRecord(part.key, "PPF", ppfProduct));
-    });
-    state.consultation.ppfParts = Array.from(new Set(consultationBodyPartOptions.map((part) => part.legacyKey)));
-  }
-  if (tintProduct) {
-    state.consultation.appliedTintMap = {};
-    consultationGlassPartOptions.forEach((area) => {
-      if (!productAvailableParts(tintProduct).includes(area.legacyKey)) return;
-      state.consultation.tintAreas = { ...consultationTintAreas(), [area.legacyKey]: parseTintVlt(tintProduct) };
-      state.consultation.appliedTintMap[area.key] = tintProduct;
-      upsertConsultationApplication(productApplicationRecord(area.key, "TINTING", tintProduct));
-    });
-  }
+  if (!tintProduct) throw new Error("틴팅 제품을 먼저 선택해 주세요.");
+  state.consultation.tintEnabled = true;
+  state.consultation.appliedTintMap = {};
+  state.consultation.applications = consultationApplications().filter((item) => item.category !== "TINTING");
+  const nextAreas = { ...consultationTintAreas() };
+  consultationGlassPartOptions.forEach((area) => {
+    nextAreas[area.key] = parseTintVlt(tintProduct);
+    state.consultation.appliedTintMap[area.key] = tintProduct;
+    upsertConsultationApplication(productApplicationRecord(area.key, "TINTING", tintProduct));
+  });
+  state.consultation.tintAreas = nextAreas;
+  clearConsultationSelectedTarget();
+  refreshConsultationAfterOptionChange("tint");
+  showToast("틴팅 제품을 전체 유리에 적용했습니다.");
+}
+
+function consultationClearAllTint() {
+  consultationGlassPartOptions.forEach((area) => restoreConsultationGlassGroup(area.key));
+  state.consultation.appliedTintMap = {};
+  state.consultation.applications = consultationApplications().filter((item) => item.category !== "TINTING");
+  if (state.consultation.selectedCategory === "glass") clearConsultationSelectedTarget();
+  refreshConsultationAfterOptionChange("tint");
+  showToast("전체 유리 틴팅을 해제했습니다.");
+}
+
+function consultationApplyAllPpf() {
+  const ppfProduct = selectedConsultationPpfProduct();
+  if (!ppfProduct) throw new Error("PPF 제품을 먼저 선택해 주세요.");
+  disposeAllConsultationPpfOverlays();
+  state.consultation.ppfEnabled = true;
+  state.consultation.appliedPpfMap = {};
+  state.consultation.applications = consultationApplications().filter((item) => item.category !== "PPF");
+  consultationBodyPartOptions.forEach((part) => {
+    state.consultation.appliedPpfMap[part.key] = ppfProduct;
+    upsertConsultationApplication(productApplicationRecord(part.key, "PPF", ppfProduct));
+  });
+  state.consultation.ppfParts = Array.from(new Set(consultationBodyPartOptions.map((part) => part.legacyKey)));
+  clearConsultationSelectedTarget();
   refreshConsultationAfterOptionChange("ppf");
-  showToast("선택 가능한 전체 부위에 적용했습니다.");
+  showToast("PPF 제품을 전체 차체 부위에 적용했습니다.");
+}
+
+function consultationClearAllPpf() {
+  disposeAllConsultationPpfOverlays();
+  state.consultation.ppfParts = [];
+  state.consultation.appliedPpfMap = {};
+  state.consultation.applications = consultationApplications().filter((item) => item.category !== "PPF");
+  if (state.consultation.selectedCategory === "body") clearConsultationSelectedTarget();
+  refreshConsultationAfterOptionChange("ppf");
+  showToast("전체 PPF 오버레이를 해제했습니다.");
 }
 
 function consultationClearAll() {
+  consultationGlassPartOptions.forEach((area) => restoreConsultationGlassGroup(area.key));
   disposeAllConsultationPpfOverlays();
   state.consultation.ppfParts = [];
   state.consultation.appliedPpfMap = {};
   state.consultation.appliedTintMap = {};
   state.consultation.applications = [];
+  clearConsultationSelectedTarget();
   refreshConsultationAfterOptionChange("ppf");
   showToast("부위별 적용 내역을 모두 해제했습니다.");
+}
+
+function clearConsultationSelectedTarget() {
+  state.consultation.selectedPartId = null;
+  state.consultation.selectedCategory = null;
 }
 
 function consultationQuote() {
