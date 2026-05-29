@@ -836,42 +836,6 @@ h3 {
   gap: 8px;
 }
 
-.tint-part-check-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.tint-part-check-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  min-height: 48px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(15, 17, 16, 0.54);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 850;
-  white-space: nowrap;
-}
-
-.tint-part-check-card input {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  accent-color: var(--primary);
-}
-
-.tint-part-check-card span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .address-search-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2953,8 +2917,7 @@ h3 {
   .consultation-part-grid,
   .consultation-tint-area-row,
   .consultation-tint-target-row,
-  .inline-check-grid,
-  .tint-part-check-grid {
+  .inline-check-grid {
     grid-template-columns: 1fr;
   }
 

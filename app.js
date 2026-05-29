@@ -1970,8 +1970,6 @@ function renderProductManage() {
 function renderProductCategoryFields() {
   const isTint = productCategoryMatches({ category: state.forms.productCategory }, "tint");
   if (isTint) {
-    const defaultTintParts = tintAreaOptions.map((area) => area.key).join(",");
-    const selectedParts = csvToArray(state.forms.productAvailableParts ?? defaultTintParts);
     return `
       <label class="field">
         <span>틴팅 농도</span>
@@ -1981,17 +1979,6 @@ function renderProductCategoryFields() {
         <span>투명도 수치(0~100)</span>
         <input id="productOpacity" type="number" min="0" max="100" inputmode="numeric" value="${escapeAttr(state.forms.productOpacity)}" />
       </label>
-      <div class="field wide-field">
-        <span>적용 가능 부위</span>
-        <div class="tint-part-check-grid">
-          ${tintAreaOptions.map((area) => `
-            <label class="tint-part-check-card">
-              <input type="checkbox" data-product-available-part="${escapeAttr(area.key)}" ${selectedParts.includes(area.key) ? "checked" : ""} />
-              <span>${escapeHtml(area.label)}</span>
-            </label>
-          `).join("")}
-        </div>
-      </div>
     `;
   }
   return `
@@ -3805,15 +3792,6 @@ function bindEvents() {
 
   document.querySelector("#productTransparencyType")?.addEventListener("change", (event) => {
     state.forms.productTransparencyType = event.target.value;
-  });
-
-  document.querySelectorAll("[data-product-available-part]").forEach((checkbox) => {
-    checkbox.addEventListener("change", () => {
-      state.forms.productAvailableParts = Array.from(document.querySelectorAll("[data-product-available-part]:checked"))
-        .map((item) => item.dataset.productAvailablePart)
-        .filter(Boolean)
-        .join(",");
-    });
   });
 
   document.querySelector("#productColorChartFile")?.addEventListener("change", (event) => {
@@ -7468,7 +7446,7 @@ async function saveProduct() {
     transparency_type: isTint ? "" : state.forms.productTransparencyType,
     opacity: clampNullableNumber(state.forms.productOpacity, 0, 100, 0),
     shade_percent: isTint ? clampNullableNumber(state.forms.productShadePercent, 0, 80, 35) : "",
-    available_parts: isTint ? csvToArray(state.forms.productAvailableParts).join(",") : "",
+    available_parts: isTint ? tintAreaOptions.map((area) => area.key).join(",") : "",
     description: state.forms.productDescription.trim(),
     unit: state.forms.productUnit.trim() || "롤",
     retail_price: Number(state.forms.productRetailPrice || defaultRetailPrice),
