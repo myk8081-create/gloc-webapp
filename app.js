@@ -768,6 +768,7 @@ const state = {
 let consultation3dRuntime = null;
 let consultation3dModulesPromise = null;
 let consultationOriginalMaterials = new Map();
+let consultationPpfOverlayMap = new Map();
 
 let searchRefreshTimer = null;
 let accountFormRefreshTimer = null;
@@ -4516,8 +4517,6 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
       scene.add(model);
       setSize();
       frameConsultationModel(THREE, camera, controls, model, container.dataset.view || state.consultation.view);
-      addConsultationPpfMeshHighlights(THREE, model, container.dataset.vehicleId || "");
-      addConsultationPpfSelectionOverlays(THREE, scene, model, container.dataset.vehicleId || "");
       disposeInteractions = bindConsultation3dPartInteractions(THREE, camera, renderer, model, container.dataset.vehicleId || "");
       container.classList.remove("is-loading");
       container.classList.add("is-ready");
@@ -4652,6 +4651,7 @@ function createShowroomFloorMaterial(THREE) {
 
 function disposeConsultation3dViewer() {
   if (!consultation3dRuntime) return;
+  disposeAllConsultationPpfOverlays();
   consultation3dRuntime.dispose();
   consultation3dRuntime = null;
   consultationOriginalMaterials.clear();
@@ -4662,8 +4662,6 @@ function refreshConsultation3dRuntimeVisuals() {
   if (!runtime?.model || !runtime?.THREE || !document.body.contains(runtime.container)) return;
   cleanupConsultation3dHelpers(runtime);
   applyConsultation3dMaterials(runtime.THREE, runtime.model, runtime.vehicleId || "");
-  addConsultationPpfMeshHighlights(runtime.THREE, runtime.model, runtime.vehicleId || "");
-  addConsultationPpfSelectionOverlays(runtime.THREE, runtime.scene, runtime.model, runtime.vehicleId || "");
 }
 
 function cleanupConsultation3dHelpers(runtime) {
@@ -4721,7 +4719,6 @@ function prepareConsultationModel(THREE, model, vehicleId = "") {
 function bindConsultation3dPartInteractions(THREE, camera, renderer, model, vehicleId = "") {
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
-  let hoverEdges = null;
   let hoverTarget = null;
 
   const resolveIntersections = (event) => {
@@ -4735,26 +4732,13 @@ function bindConsultation3dPartInteractions(THREE, camera, renderer, model, vehi
   };
 
   const clearHover = () => {
-    if (hoverEdges?.parent) hoverEdges.parent.remove(hoverEdges);
-    hoverEdges?.geometry?.dispose?.();
-    hoverEdges?.material?.dispose?.();
-    hoverEdges = null;
     hoverTarget = null;
     renderer.domElement.style.cursor = "";
   };
 
   const showHover = (object) => {
-    if (!object || object === hoverTarget || !object.geometry) return;
-    clearHover();
+    if (!object || object === hoverTarget) return;
     hoverTarget = object;
-    hoverEdges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(object.geometry),
-      new THREE.LineBasicMaterial({ color: 0xd8b05a, transparent: true, opacity: 0.92 })
-    );
-    hoverEdges.name = "consultation_hover_part";
-    hoverEdges.renderOrder = 40;
-    hoverEdges.scale.multiplyScalar(1.003);
-    object.add(hoverEdges);
     renderer.domElement.style.cursor = "pointer";
   };
 
@@ -4798,7 +4782,9 @@ function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
   const appliedPpfMap = consultationAppliedPpfMap();
   const appliedTintMap = consultationAppliedTintMap();
   const selectedPpfParts = new Set(Object.keys(appliedPpfMap).filter((partId) => appliedPpfMap[partId]));
+  disposeAllConsultationPpfOverlays();
   model.traverse((object) => {
+    if (object.userData?.isPpfOverlay) return;
     if (!object.isMesh || !object.material) return;
     storeConsultationOriginalMaterial(object);
     restoreConsultationBaseMaterial(object);
@@ -4834,7 +4820,7 @@ function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
     const appliedPpfPart = meshInfo.ppfParts?.find((partId) => selectedPpfParts.has(partId));
     if (appliedPpfPart) {
       const product = appliedPpfMap[appliedPpfPart];
-      applyConsultationPpfMaterialToMesh(THREE, object, product, bodyColor);
+      createConsultationPpfOverlay(THREE, object, product, appliedPpfPart);
     }
   });
 }
@@ -4862,39 +4848,61 @@ function disposeObjectMaterial(material) {
   materials.forEach((item) => item?.dispose?.());
 }
 
-function applyConsultationPpfMaterialToMesh(THREE, object, product, bodyColor) {
-  if (!object?.material || !product) return;
-  storeConsultationOriginalMaterial(object);
-  const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material];
-  disposeObjectMaterial(object.material);
-  const baseMaterial = createConsultationPpfMaterial(THREE, product, bodyColor);
-  const nextMaterials = sourceMaterials.map(() => baseMaterial.clone());
-  nextMaterials.forEach((material) => {
-    material.userData.consultationMaterialKind = "ppf";
-    material.needsUpdate = true;
-  });
-  object.material = Array.isArray(object.material) ? nextMaterials : nextMaterials[0];
-  baseMaterial.dispose?.();
+function disposeAllConsultationPpfOverlays() {
+  Array.from(consultationPpfOverlayMap.keys()).forEach((partId) => removeConsultationPpfOverlay(partId));
+  consultationPpfOverlayMap.clear();
 }
 
-function createConsultationPpfMaterial(THREE, product, bodyColor) {
+function removeConsultationPpfOverlay(partId) {
+  const overlays = consultationPpfOverlayMap.get(partId);
+  const list = Array.isArray(overlays) ? overlays : overlays ? [overlays] : [];
+  list.forEach((overlay) => {
+    overlay.parent?.remove(overlay);
+    overlay.geometry?.dispose?.();
+    disposeObjectMaterial(overlay.material);
+  });
+  consultationPpfOverlayMap.delete(partId);
+}
+
+function createConsultationPpfOverlay(THREE, originalMesh, product, partId) {
+  if (!originalMesh?.geometry || !product || !partId) return null;
+  const material = createConsultationPpfMaterial(THREE, product);
+  material.userData.consultationMaterialKind = "ppfOverlay";
+  const overlay = originalMesh.clone(false);
+  overlay.geometry = originalMesh.geometry.clone();
+  overlay.material = material;
+  overlay.name = `${originalMesh.name || partId}_ppf_overlay`;
+  overlay.scale.multiplyScalar(1.001);
+  overlay.userData.isPpfOverlay = true;
+  overlay.userData.category = "ppfOverlay";
+  overlay.userData.sourcePartId = partId;
+  overlay.renderOrder = 10;
+  overlay.castShadow = false;
+  overlay.receiveShadow = false;
+  overlay.raycast = () => {};
+  originalMesh.parent?.add(overlay);
+  const overlays = consultationPpfOverlayMap.get(partId) || [];
+  overlays.push(overlay);
+  consultationPpfOverlayMap.set(partId, overlays);
+  return overlay;
+}
+
+function createConsultationPpfMaterial(THREE, product) {
   const style = consultationPpfMaterialStyle(product);
-  const color = new THREE.Color(style.colorHex);
-  const visualColor = style.transparencyType === "opaque"
-    ? color
-    : bodyColor.clone().lerp(color, style.opacity);
   return new THREE.MeshPhysicalMaterial({
-    color: visualColor,
-    transparent: style.opacity < 0.98,
+    color: new THREE.Color(style.colorHex),
+    transparent: true,
     opacity: style.opacity,
+    metalness: 0,
     roughness: style.roughness,
-    metalness: style.metalness,
     clearcoat: style.clearcoat,
     clearcoatRoughness: style.clearcoatRoughness,
     envMapIntensity: style.envMapIntensity,
-    transmission: style.transparencyType === "transparent" ? 0.08 : 0,
-    thickness: style.transparencyType === "transparent" ? 0.18 : 0.04,
-    depthWrite: style.opacity >= 0.95
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+    side: THREE.FrontSide
   });
 }
 
@@ -4993,9 +5001,9 @@ function normalizePpfTransparencyType(value) {
 
 function ppfOpacityFromProduct(transparencyType, opacityPercent) {
   const raw = Math.min(100, Math.max(0, Number(opacityPercent) || 0)) / 100;
-  if (transparencyType === "opaque") return Math.min(1, Math.max(0.95, raw || 1));
-  if (transparencyType === "semiTransparent") return Math.min(0.75, Math.max(0.45, raw || 0.55));
-  return Math.min(0.35, Math.max(0.15, raw || 0.25));
+  if (transparencyType === "opaque") return Math.min(1, Math.max(0.85, raw || 1));
+  if (transparencyType === "semiTransparent") return Math.min(0.65, Math.max(0.35, raw || 0.5));
+  return Math.min(0.25, Math.max(0.08, raw || 0.18));
 }
 
 function ppfFinishMaterialPreset(finishType) {
@@ -5010,93 +5018,25 @@ function ppfFinishMaterialPreset(finishType) {
   }
   if (finishType === "satin") {
     return {
-      roughness: 0.45,
+      roughness: 0.42,
       metalness: 0.08,
       clearcoat: 0.35,
-      clearcoatRoughness: 0.42,
+      clearcoatRoughness: 0.25,
       envMapIntensity: 1.08
     };
   }
   return {
-    roughness: 0.12,
+    roughness: 0.08,
     metalness: 0.12,
     clearcoat: 1,
-    clearcoatRoughness: 0.06,
+    clearcoatRoughness: 0.01,
     envMapIntensity: consultationRenderSettings.ppfEnvMapIntensity
   };
 }
 
-function addConsultationPpfMeshHighlights(THREE, model, vehicleId = "") {
-  const appliedMap = consultationAppliedPpfMap();
-  const selectedParts = new Set(Object.keys(appliedMap).filter((partId) => appliedMap[partId]));
-  if (state.consultation.selectedCategory === "body" && state.consultation.selectedPartId) selectedParts.add(state.consultation.selectedPartId);
-  if (!selectedParts.size || selectedParts.has("full_body")) return;
-  const ppfStyle = consultationPpfVisualStyle(selectedConsultationPpfProduct());
-  const highlightMaterial = new THREE.LineBasicMaterial({
-    color: new THREE.Color(ppfStyle.tint),
-    transparent: true,
-    opacity: 0.7,
-    depthTest: true
-  });
-  model.traverse((object) => {
-    if (!object.isMesh || !object.geometry) return;
-    const meshInfo = consultationMeshInfo(object, vehicleId);
-    if (!meshInfo.ppfParts.some((part) => selectedParts.has(part))) return;
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(object.geometry), highlightMaterial.clone());
-    edges.name = `consultation_mesh_highlight_${object.name || "part"}`;
-    edges.renderOrder = 22;
-    edges.scale.multiplyScalar(1.002);
-    object.add(edges);
-  });
-}
+function addConsultationPpfMeshHighlights() {}
 
-function addConsultationPpfSelectionOverlays(THREE, scene, model, vehicleId = "") {
-  const appliedMap = consultationAppliedPpfMap();
-  const selectedParts = new Set(Object.keys(appliedMap).filter((partId) => appliedMap[partId]).map(legacyBodyPartFor));
-  if (!selectedParts.size) return;
-  const fallbackParts = consultationOverlayFallbackParts(vehicleId, selectedParts);
-  if (!fallbackParts.size) return;
-  const box = new THREE.Box3().setFromObject(model);
-  if (box.isEmpty()) return;
-
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  const ppfStyle = consultationPpfVisualStyle(selectedConsultationPpfProduct());
-  const material = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(ppfStyle.tint),
-    transparent: true,
-    opacity: ppfStyle.opacity,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    depthTest: true
-  });
-  const edgeMaterial = new THREE.LineBasicMaterial({
-    color: new THREE.Color(ppfStyle.tint),
-    transparent: true,
-    opacity: Math.min(0.95, ppfStyle.opacity + 0.42),
-    depthTest: true
-  });
-
-  const partSpecs = consultationOverlaySpecs(size, center);
-  const activeSpecs = partSpecs.filter((spec) => fallbackParts.has(spec.key));
-
-  activeSpecs.forEach((spec) => {
-    const geometry = new THREE.PlaneGeometry(spec.width, spec.height, 1, 1);
-    const mesh = new THREE.Mesh(geometry, material.clone());
-    mesh.name = `consultation_ppf_overlay_${spec.key}`;
-    mesh.position.set(...spec.position);
-    mesh.rotation.set(...spec.rotation);
-    mesh.renderOrder = 20;
-    scene.add(mesh);
-
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial.clone());
-    edges.name = `consultation_ppf_edge_${spec.key}`;
-    edges.position.copy(mesh.position);
-    edges.rotation.copy(mesh.rotation);
-    edges.renderOrder = 21;
-    scene.add(edges);
-  });
-}
+function addConsultationPpfSelectionOverlays() {}
 
 function consultationOverlaySpecs(size, center) {
   const x = size.x || 1;
@@ -5201,6 +5141,7 @@ function consultationAliasTintAreas(directName, combinedName) {
 }
 
 function resolveConsultationPartFromMesh(object, vehicleId = "") {
+  if (object?.userData?.isPpfOverlay || object?.userData?.category === "ppfOverlay") return null;
   if (object?.userData?.category && object?.userData?.partId) {
     const category = object.userData.category === "glass" ? "glass" : "body";
     const partId = object.userData.partId;
@@ -5317,6 +5258,7 @@ function removeProductFromConsultationPart(partId, category) {
     return !(itemCategory === canonicalCategory && itemPartId === canonicalPartId);
   });
   if (canonicalCategory === "body") {
+    removeConsultationPpfOverlay(canonicalPartId);
     delete consultationAppliedPpfMap()[canonicalPartId];
     const legacyPart = legacyBodyPartFor(canonicalPartId);
     state.consultation.ppfParts = (state.consultation.ppfParts || []).filter((part) => part !== legacyPart && part !== canonicalPartId);
@@ -8571,6 +8513,7 @@ function setConsultationNoProduct(type) {
     }
   }
   if (type === "ppf") {
+    disposeAllConsultationPpfOverlays();
     state.consultation.ppfEnabled = false;
     state.consultation.ppfSku = "";
     state.consultation.ppfParts = [];
@@ -8610,6 +8553,7 @@ function consultationApplyAll() {
 }
 
 function consultationClearAll() {
+  disposeAllConsultationPpfOverlays();
   state.consultation.ppfParts = [];
   state.consultation.appliedPpfMap = {};
   state.consultation.appliedTintMap = {};
