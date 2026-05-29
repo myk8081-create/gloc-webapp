@@ -275,13 +275,13 @@ const ppfPartOptions = [
   { key: "full_body", label: "전체 시공", price: 2500000, full: true }
 ];
 
-const tintVltOptions = [5, 15, 30, 50];
+const tintStrengthOptions = [0, 15, 35, 50, 70, 100];
 const tintAreaOptions = [
-  { key: "frontGlass", label: "전면 유리", shortLabel: "전면", defaultVlt: 30 },
-  { key: "firstRowGlass", label: "1열 유리", shortLabel: "1열", defaultVlt: 15 },
-  { key: "secondRowGlass", label: "2열 유리", shortLabel: "2열", defaultVlt: 15 },
-  { key: "rearGlass", label: "후면 유리", shortLabel: "후면", defaultVlt: 15 },
-  { key: "roofGlass", label: "글라스 루프", shortLabel: "루프", defaultVlt: 30 }
+  { key: "frontGlass", label: "전면 유리", shortLabel: "전면", defaultTintStrength: 30 },
+  { key: "firstRowGlass", label: "1열 유리", shortLabel: "1열", defaultTintStrength: 15 },
+  { key: "secondRowGlass", label: "2열 유리", shortLabel: "2열", defaultTintStrength: 15 },
+  { key: "rearGlass", label: "후면 유리", shortLabel: "후면", defaultTintStrength: 15 },
+  { key: "roofGlass", label: "글라스 루프", shortLabel: "루프", defaultTintStrength: 30 }
 ];
 
 const consultationBodyPartOptions = [
@@ -424,7 +424,7 @@ function createMockProducts() {
       product_code: `${base.sku}-${number}`,
       color: base.color,
       color_name: base.color,
-      color_hex: base.color_hex || "#f7fbf9",
+      color_hex: base.color_hex ?? "#f7fbf9",
       color_chart_image_url: "",
       finish_type: base.finish_type || "",
       transparency_type: base.transparency_type || "",
@@ -1876,6 +1876,7 @@ function renderInventoryManage() {
 
 function renderProductManage() {
   if (state.session?.role !== "admin") return "";
+  const productColorFallback = productCategoryMatches({ category: state.forms.productCategory }, "tint") ? "#111111" : "#f7fbf9";
   return `
     <main class="screen ${state.screen === "productManage" ? "active" : ""}" data-screen="productManage">
       <section class="page-head">
@@ -1917,10 +1918,11 @@ function renderProductManage() {
             <label class="field">
               <span>색상 HEX</span>
               <div class="color-input-row">
-                <input id="productColorHex" type="color" value="${escapeAttr(validHexColor(state.forms.productColorHex, "#f7fbf9"))}" />
+                <input id="productColorHex" type="color" value="${escapeAttr(normalizeHexColor(state.forms.productColorHex, productColorFallback))}" />
                 <input id="productColorHexText" type="text" value="${escapeAttr(state.forms.productColorHex)}" placeholder="#B00020" />
-                <span class="color-chip-preview" style="background:${escapeAttr(validHexColor(state.forms.productColorHex, "#f7fbf9"))}"></span>
+                <span class="color-chip-preview" style="background:${escapeAttr(normalizeHexColor(state.forms.productColorHex, productColorFallback))}"></span>
               </div>
+              <small class="field-help">입력한 HEX 색상값이 그대로 3D 모델에 적용됩니다.</small>
             </label>
             <label class="field">
               <span>색상표 이미지</span>
@@ -1972,12 +1974,14 @@ function renderProductCategoryFields() {
   if (isTint) {
     return `
       <label class="field">
-        <span>틴팅 농도</span>
-        <input id="productShadePercent" type="number" min="0" max="80" inputmode="numeric" value="${escapeAttr(state.forms.productShadePercent)}" placeholder="예: 15" />
+        <span>틴팅 농도 (0~100)</span>
+        <input id="productShadePercent" type="number" min="0" max="100" inputmode="numeric" value="${escapeAttr(state.forms.productShadePercent)}" placeholder="예: 15" />
+        <small class="field-help">0 = 틴팅 없음, 100 = 완전 검정</small>
       </label>
       <label class="field">
-        <span>투명도 수치(0~100)</span>
+        <span>투명도 (0~100)</span>
         <input id="productOpacity" type="number" min="0" max="100" inputmode="numeric" value="${escapeAttr(state.forms.productOpacity)}" />
+        <small class="field-help">0 = 완전 투명, 100 = 완전 불투명</small>
       </label>
     `;
   }
@@ -2753,13 +2757,13 @@ function renderConsultationTintAreaControls() {
           <div class="consultation-tint-area-row">
             <span>${escapeHtml(area.label)}</span>
             <div>
-              ${tintVltOptions.map((vlt) => `
+              ${tintStrengthOptions.map((strength) => `
                 <button
                   type="button"
-                  class="${Number(areas[area.key]) === vlt ? "active" : ""}"
+                  class="${Number(areas[area.key]) === strength ? "active" : ""}"
                   data-consultation-tint-area="${escapeAttr(area.key)}"
-                  data-tint-vlt="${vlt}"
-                >${vlt}%</button>
+                  data-tint-strength="${strength}"
+                >${strength}%</button>
               `).join("")}
             </div>
           </div>
@@ -2775,7 +2779,7 @@ function renderConsultationProductChoice(product, type) {
   const applied = type === "tint" ? consultationAppliedTintMap()[partId] : consultationAppliedPpfMap()[partId];
   const selected = currentSku === product.sku || applied?.sku === product.sku;
   const stock = consultationProductStock(product);
-  const colorHex = validHexColor(product.colorHex || product.color_hex, productCategoryMatches(product, "tint") ? "#11171c" : "#ffd36d");
+  const colorHex = normalizeHexColor(product.colorHex ?? product.color_hex, productCategoryMatches(product, "tint") ? "#111111" : "#ffd36d");
   return `
     <button type="button" class="consultation-product-choice ${selected ? "active" : ""}" data-consultation-product="${escapeAttr(product.sku)}" data-consultation-product-type="${type}" ${stock.disabled ? "disabled" : ""}>
       <span>
@@ -3715,7 +3719,7 @@ function bindEvents() {
   });
   bindInput("productColorChartImageUrl", (value) => (state.forms.productColorChartImageUrl = value));
   bindInput("productOpacity", (value) => (state.forms.productOpacity = clampNullableNumber(value, 0, 100, 0)));
-  bindInput("productShadePercent", (value) => (state.forms.productShadePercent = clampNullableNumber(value, 0, 80, 35)));
+  bindInput("productShadePercent", (value) => (state.forms.productShadePercent = clampNullableNumber(value, 0, 100, 35)));
   bindInput("productDescription", (value) => (state.forms.productDescription = value));
   bindInput("productUnit", (value) => (state.forms.productUnit = value));
   bindInput("productRetailPrice", (value) => (state.forms.productRetailPrice = Number(value || 0)));
@@ -4189,11 +4193,11 @@ function bindDynamicListEvents(root) {
   root.querySelectorAll("[data-consultation-tint-area]").forEach((button) => {
     button.addEventListener("click", () => {
       const area = button.dataset.consultationTintArea;
-      const vlt = Number(button.dataset.tintVlt || 0);
-      if (!area || !vlt) return;
+      const tintStrength = Number(button.dataset.tintStrength ?? 0);
+      if (!area || !Number.isFinite(tintStrength)) return;
       state.consultation.tintAreas = {
         ...consultationTintAreas(),
-        [area]: vlt
+        [area]: tintStrength
       };
       render();
     });
@@ -4791,6 +4795,11 @@ function isMobileViewport() {
   return window.matchMedia?.("(max-width: 759px), (pointer: coarse)")?.matches || window.innerWidth < 760;
 }
 
+function isDevelopmentRuntime() {
+  const debugFlag = String(config.debugMode ?? config.debugTintMaterial ?? "").toLowerCase();
+  return debugFlag === "true" || ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
+}
+
 function applyConsultation3dMaterials(THREE, model, vehicleId = "") {
   const bodyColor = new THREE.Color(vehicleColorByName(state.consultation.color).hex);
   const appliedPpfMap = consultationAppliedPpfMap();
@@ -4946,30 +4955,43 @@ function applyConsultationTintMaterialToMesh(THREE, object, product) {
 }
 
 function createConsultationTintMaterial(THREE, product) {
-  const vlt = Math.min(90, Math.max(1, Number(product?.visibleLightTransmission ?? product?.visible_light_transmission ?? product?.shade_percent ?? parseTintVlt(product)))) / 100;
-  return new THREE.MeshPhysicalMaterial({
-    color: consultationTintColor(THREE, product),
-    transparent: true,
-    opacity: Math.max(0.15, Math.min(0.95, 1 - vlt)),
-    transmission: vlt,
-    roughness: product?.finishType === "matte" || product?.finish_type === "matte" ? 0.45 : 0.08,
+  const colorHex = normalizeHexColor(product?.colorHex ?? product?.color_hex, "#111111");
+  const tintStrength = productTintStrength(product);
+  const transparencyPercent = productTransparencyPercent(product);
+  const opacity = transparencyPercent / 100;
+  const tintFactor = tintStrength / 100;
+  const isMatte = product?.finishType === "matte" || product?.finish_type === "matte";
+  const material = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(colorHex),
+    transparent: opacity < 1,
+    opacity,
+    transmission: 1 - tintFactor,
+    roughness: isMatte ? 0.45 : 0.05,
     metalness: 0,
-    clearcoat: 1,
-    clearcoatRoughness: 0.02,
+    clearcoat: isMatte ? 0.2 : 1,
+    clearcoatRoughness: isMatte ? 0.35 : 0.02,
     envMapIntensity: consultationRenderSettings.glassEnvMapIntensity,
     depthWrite: true,
     depthTest: true,
-    side: THREE.FrontSide
+    side: THREE.FrontSide,
+    wireframe: false
   });
+  material.userData.productColorHex = colorHex;
+  material.userData.tintStrength = tintStrength;
+  material.userData.transparencyPercent = transparencyPercent;
+  if (isDevelopmentRuntime()) {
+    console.log("TINT PRODUCT COLOR:", product?.colorHex ?? product?.color_hex);
+    console.log("NORMALIZED TINT COLOR:", colorHex);
+    console.log("TINT STRENGTH:", tintStrength);
+    console.log("TRANSPARENCY PERCENT:", transparencyPercent);
+    console.log("TINT OPACITY:", opacity);
+    console.log("MATERIAL COLOR:", material.color.getHexString());
+  }
+  return material;
 }
 
 function consultationTintColor(THREE, product) {
-  if (product?.colorHex || product?.color_hex) return new THREE.Color(validHexColor(product.colorHex || product.color_hex, "#11171c"));
-  const text = normalize([productDisplayName(product), product?.sku, product?.color].filter(Boolean).join(" "));
-  if (text.includes("블루") || text.includes("blue")) return new THREE.Color("#102a4e");
-  if (text.includes("차콜") || text.includes("charcoal")) return new THREE.Color("#101820");
-  if (text.includes("브론즈") || text.includes("bronze")) return new THREE.Color("#322313");
-  return new THREE.Color("#11171c");
+  return new THREE.Color(normalizeHexColor(product?.colorHex ?? product?.color_hex, "#111111"));
 }
 
 function consultationTintReflectivity(product) {
@@ -4995,7 +5017,7 @@ function consultationPpfVisualStyle(product) {
 }
 
 function consultationPpfMaterialStyle(product) {
-  const colorHex = validHexColor(product?.colorHex || product?.color_hex, "#f7fbf9");
+  const colorHex = normalizeHexColor(product?.colorHex ?? product?.color_hex, "#f7fbf9");
   const finishType = normalizePpfFinishType(product?.finishType || product?.finish_type);
   const transparencyType = normalizePpfTransparencyType(product?.transparencyType || product?.transparency_type);
   const opacityPercent = Number(product?.opacityPercent ?? product?.opacity_percent ?? product?.opacity ?? 0);
@@ -5264,7 +5286,7 @@ function applyConsultationProductToSelectedPart(product, type) {
     tintMap[partId] = product;
     state.consultation.tintAreas = {
       ...consultationTintAreas(),
-      [legacyTarget]: parseTintVlt(product)
+      [legacyTarget]: productTintStrength(product)
     };
     upsertConsultationApplication(productApplicationRecord(partId, "TINTING", product));
     showToast(`${consultationPartLabel(partId)}에 ${productDisplayName(product)} 적용`);
@@ -5315,12 +5337,13 @@ function removeProductFromConsultationPart(partId, category) {
   }
 }
 
-function consultationTintVltForMesh(meshInfo, product) {
+function consultationTintStrengthForMesh(meshInfo, product) {
   const tintMap = consultationAppliedTintMap();
   const area = meshInfo.tintAreas?.find((key) => tintMap[key]);
   const applied = area ? consultationApplicationForPart(area, "TINTING") : null;
-  if (applied?.shadePercent) return Number(applied.shadePercent);
-  return parseTintVlt(product);
+  if (applied?.tintStrength !== null && applied?.tintStrength !== undefined) return clampNullableNumber(applied.tintStrength, 0, 100, 0);
+  if (applied?.shadePercent !== null && applied?.shadePercent !== undefined) return clampNullableNumber(applied.shadePercent, 0, 100, 0);
+  return productTintStrength(product);
 }
 
 function consultationTintProductForMesh(meshInfo) {
@@ -7433,6 +7456,8 @@ async function saveInventory() {
 async function saveProduct() {
   if (state.session?.role !== "admin") throw new Error("관리자만 제품을 등록할 수 있습니다.");
   const isTint = productCategoryMatches({ category: state.forms.productCategory }, "tint");
+  const tintStrength = clampNullableNumber(state.forms.productShadePercent, 0, 100, 35);
+  const transparencyPercent = clampNullableNumber(state.forms.productOpacity, 0, 100, 0);
   const payload = {
     sku: state.forms.productSku.trim(),
     product_name: state.forms.productName.trim(),
@@ -7440,12 +7465,14 @@ async function saveProduct() {
     brand: state.forms.productBrand.trim() || "GLOC",
     product_code: state.forms.productSku.trim(),
     color_name: state.forms.productColorName.trim() || colorNameFromText(state.forms.productName),
-    color_hex: validHexColor(state.forms.productColorHex, isTint ? "#11171c" : "#f7fbf9"),
+    color_hex: normalizeHexColor(state.forms.productColorHex, isTint ? "#111111" : "#f7fbf9"),
     color_chart_image_url: state.forms.productColorChartImageUrl.trim(),
     finish_type: isTint ? "" : state.forms.productFinishType,
     transparency_type: isTint ? "" : state.forms.productTransparencyType,
-    opacity: clampNullableNumber(state.forms.productOpacity, 0, 100, 0),
-    shade_percent: isTint ? clampNullableNumber(state.forms.productShadePercent, 0, 80, 35) : "",
+    opacity: transparencyPercent,
+    transparency_percent: isTint ? transparencyPercent : "",
+    shade_percent: isTint ? tintStrength : "",
+    tint_strength: isTint ? tintStrength : "",
     available_parts: isTint ? tintAreaOptions.map((area) => area.key).join(",") : "",
     description: state.forms.productDescription.trim(),
     unit: state.forms.productUnit.trim() || "롤",
@@ -7750,12 +7777,14 @@ function selectProductForEdit(sku) {
   state.forms.productCategory = product.category || "PPF";
   state.forms.productBrand = product.brand || "GLOC";
   state.forms.productColorName = product.color_name || product.color || colorNameFromText(product.product_name);
-  state.forms.productColorHex = validHexColor(product.color_hex, productCategoryMatches(product, "tint") ? "#11171c" : "#f7fbf9");
+  state.forms.productColorHex = normalizeHexColor(product.color_hex, productCategoryMatches(product, "tint") ? "#111111" : "#f7fbf9");
   state.forms.productColorChartImageUrl = product.color_chart_image_url || "";
   state.forms.productFinishType = product.finish_type || "gloss";
   state.forms.productTransparencyType = product.transparency_type || "transparent";
-  state.forms.productOpacity = nullableNumber(product.opacity ?? (productCategoryMatches(product, "tint") ? 55 : 100));
-  state.forms.productShadePercent = nullableNumber(product.shade_percent ?? parseTintVlt(product));
+  state.forms.productOpacity = productCategoryMatches(product, "tint")
+    ? productTransparencyPercent(product)
+    : nullableNumber(product.opacity ?? 100);
+  state.forms.productShadePercent = productTintStrength(product);
   state.forms.productAvailableParts = product.available_parts ?? tintAreaOptions.map((area) => area.key).join(",");
   state.forms.productDescription = product.description || "";
   state.forms.productUnit = product.unit || "롤";
@@ -8246,7 +8275,10 @@ function consultationAppliedTintMap() {
           sku: item.productId,
           product_name: item.productName,
           color_hex: item.colorHex,
-          shade_percent: item.shadePercent
+          shade_percent: item.tintStrength ?? item.shadePercent,
+          tint_strength: item.tintStrength ?? item.shadePercent,
+          opacity: item.transparencyPercent ?? item.opacity,
+          transparency_percent: item.transparencyPercent ?? item.opacity
         };
       }
     });
@@ -8344,8 +8376,11 @@ function productSearchFields(product) {
     product.finishType,
     product.transparency_type,
     product.transparencyType,
+    product.tint_strength,
+    product.tintStrength,
     product.shade_percent,
-    product.visibleLightTransmission,
+    product.transparency_percent,
+    product.transparencyPercent,
     product.opacityPercent,
     product.available_parts,
     product.availableParts,
@@ -8356,7 +8391,7 @@ function productSearchFields(product) {
 function consultationProductMatchesFilter(product, type, filterValue = "전체") {
   if (!filterValue || filterValue === "전체") return true;
   if (type === "tint") {
-    if (filterValue.startsWith("shade:")) return nullableNumber(product.shade_percent ?? parseTintVlt(product)) === Number(filterValue.replace("shade:", ""));
+    if (filterValue.startsWith("shade:")) return productTintStrength(product) === Number(filterValue.replace("shade:", ""));
     if (filterValue.startsWith("part:")) return productAvailableParts(product).includes(filterValue.replace("part:", ""));
     return normalize(product.brand).includes(normalize(filterValue)) || normalize(product.color_name || product.color).includes(normalize(filterValue));
   }
@@ -8372,7 +8407,7 @@ function consultationProductMatchesFilter(product, type, filterValue = "전체")
 function consultationTintFilterOptions() {
   return [
     { value: "전체", label: "전체" },
-    ...tintVltOptions.map((value) => ({ value: `shade:${value}`, label: `${value}%` })),
+    ...tintStrengthOptions.map((value) => ({ value: `shade:${value}`, label: `${value}%` })),
     { value: "part:frontGlass", label: "전면" },
     { value: "part:firstRowGlass", label: "1열" },
     { value: "part:secondRowGlass", label: "2열" },
@@ -8389,16 +8424,19 @@ function consultationPpfFilterOptions() {
   ];
 }
 
-function parseTintVlt(product) {
-  const vltValue = product?.visibleLightTransmission ?? product?.visible_light_transmission;
-  if (vltValue !== null && vltValue !== undefined && vltValue !== "") {
-    return clampNullableNumber(vltValue, 0, 80, 35);
+function productTintStrength(product) {
+  const tintValue = product?.tintStrength ?? product?.tint_strength ?? product?.shade_percent;
+  if (tintValue !== null && tintValue !== undefined && tintValue !== "") {
+    return clampNullableNumber(tintValue, 0, 100, 0);
   }
-  const shadeValue = product?.shade_percent;
-  if (shadeValue !== null && shadeValue !== undefined && shadeValue !== "") return clampNullableNumber(shadeValue, 0, 80, 35);
   const match = String(product?.product_name || product?.sku || "").match(/(\d{1,2})\s*%/);
-  if (!match) return 35;
-  return clampNullableNumber(match[1], 0, 80, 35);
+  if (!match) return 0;
+  return clampNullableNumber(match[1], 0, 100, 0);
+}
+
+function productTransparencyPercent(product) {
+  const transparencyValue = product?.transparencyPercent ?? product?.transparency_percent ?? product?.opacityPercent ?? product?.opacity_percent ?? product?.opacity;
+  return clampNullableNumber(transparencyValue, 0, 100, 0);
 }
 
 function productAvailableParts(product) {
@@ -8412,8 +8450,8 @@ function productBrandText(product) {
 }
 
 function productMetaText(product) {
-  const opacity = Number(product.opacityPercent ?? product.opacity_percent ?? product.opacity ?? 0);
-  if (productCategoryMatches(product, "tint")) return `${parseTintVlt(product)}% · 투명도 ${opacity}%`;
+  const opacity = productTransparencyPercent(product);
+  if (productCategoryMatches(product, "tint")) return `틴팅 농도 ${productTintStrength(product)}% · 투명도 ${opacity}%`;
   const finishValue = normalizePpfFinishType(product.finishType || product.finish_type);
   const transparencyValue = normalizePpfTransparencyType(product.transparencyType || product.transparency_type) === "semiTransparent" ? "semi_transparent" : normalizePpfTransparencyType(product.transparencyType || product.transparency_type);
   const finish = productFinishOptions.find((item) => item.value === finishValue)?.label || "유광";
@@ -8429,28 +8467,31 @@ function csvToArray(value) {
     .filter(Boolean);
 }
 
+function normalizeHexColor(hex, fallback = "#111111") {
+  if (hex === undefined || hex === null) return fallback;
+  const value = String(hex).trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(value)) return value;
+  if (/^[0-9A-Fa-f]{6}$/.test(value)) return `#${value}`;
+  return fallback;
+}
+
 function validHexColor(value, fallback = "#111111") {
-  const text = String(value || "").trim();
-  return /^#[0-9a-f]{6}$/i.test(text) ? text : fallback;
+  return normalizeHexColor(value, fallback);
 }
 
 function syncProductHexInputs() {
   const text = document.querySelector("#productColorHexText");
   const color = document.querySelector("#productColorHex");
   const chip = document.querySelector(".color-chip-preview");
-  const value = validHexColor(state.forms.productColorHex, "#f7fbf9");
+  const fallback = productCategoryMatches({ category: state.forms.productCategory }, "tint") ? "#111111" : "#f7fbf9";
+  const value = normalizeHexColor(state.forms.productColorHex, fallback);
   if (text && text.value !== state.forms.productColorHex) text.value = state.forms.productColorHex;
   if (color && color.value !== value) color.value = value;
   if (chip) chip.style.background = value;
 }
 
 function consultationTintOpacity(product) {
-  return consultationTintOpacityFromVlt(parseTintVlt(product));
-}
-
-function consultationTintOpacityFromVlt(vltValue) {
-  const vlt = Math.min(80, Math.max(5, Number(vltValue) || 35));
-  return Math.min(0.82, Math.max(0.18, 0.9 - vlt / 100));
+  return productTransparencyPercent(product) / 100;
 }
 
 function consultationTintAreas() {
@@ -8461,17 +8502,21 @@ function consultationTintAreas() {
   };
   return Object.fromEntries(
     tintAreaOptions.map((area) => {
-      const value = Number(saved[area.key] ?? saved[legacyTintAreaAliases[area.key]]);
-      return [area.key, Number.isFinite(value) && value > 0 ? value : area.defaultVlt];
+      const rawValue = saved[area.key] ?? saved[legacyTintAreaAliases[area.key]] ?? area.defaultTintStrength;
+      const value = Number(rawValue);
+      return [area.key, Number.isFinite(value) ? clampNullableNumber(value, 0, 100, area.defaultTintStrength) : area.defaultTintStrength];
     })
   );
 }
 
 function consultationAverageTintOpacity() {
-  if (state.consultation.tintEnabled === false) return 0.22;
-  const areas = Object.values(consultationTintAreas());
-  const average = areas.reduce((sum, value) => sum + Number(value || 0), 0) / Math.max(1, areas.length);
-  return consultationTintOpacityFromVlt(average);
+  if (state.consultation.tintEnabled === false) return 0;
+  const appliedProducts = Object.values(consultationAppliedTintMap()).filter(Boolean);
+  if (appliedProducts.length) {
+    return appliedProducts.reduce((sum, product) => sum + productTransparencyPercent(product) / 100, 0) / appliedProducts.length;
+  }
+  const selected = selectedConsultationTintProduct();
+  return selected ? productTransparencyPercent(selected) / 100 : 0;
 }
 
 function consultationProductStock(product) {
@@ -8526,11 +8571,13 @@ function productApplicationRecord(partId, category, product) {
     category,
     productId: product?.sku || "",
     productName: productDisplayName(product),
-    colorHex: validHexColor(product?.colorHex || product?.color_hex, category === "TINTING" ? "#11171c" : "#ffd36d"),
+    colorHex: normalizeHexColor(product?.colorHex ?? product?.color_hex, category === "TINTING" ? "#111111" : "#ffd36d"),
     finishType: product?.finishType || product?.finish_type || "",
     transparencyType: product?.transparencyType || product?.transparency_type || "",
-    opacity: Number(product?.opacityPercent ?? product?.opacity_percent ?? product?.opacity ?? 0),
-    shadePercent: category === "TINTING" ? parseTintVlt(product) : ""
+    opacity: productTransparencyPercent(product),
+    transparencyPercent: category === "TINTING" ? productTransparencyPercent(product) : "",
+    shadePercent: category === "TINTING" ? productTintStrength(product) : "",
+    tintStrength: category === "TINTING" ? productTintStrength(product) : ""
   };
 }
 
@@ -8547,7 +8594,7 @@ function applySelectedTintProductToTarget() {
   }
   state.consultation.tintAreas = {
     ...consultationTintAreas(),
-    [legacyTarget]: parseTintVlt(product)
+    [legacyTarget]: productTintStrength(product)
   };
   consultationAppliedTintMap()[target] = product;
   upsertConsultationApplication(productApplicationRecord(target, "TINTING", product));
@@ -8609,7 +8656,7 @@ function consultationApplyAllTint() {
   state.consultation.applications = consultationApplications().filter((item) => item.category !== "TINTING");
   const nextAreas = { ...consultationTintAreas() };
   consultationGlassPartOptions.forEach((area) => {
-    nextAreas[area.key] = parseTintVlt(tintProduct);
+    nextAreas[area.key] = productTintStrength(tintProduct);
     state.consultation.appliedTintMap[area.key] = tintProduct;
     upsertConsultationApplication(productApplicationRecord(area.key, "TINTING", tintProduct));
   });
@@ -8768,7 +8815,7 @@ function consultationPayload() {
     vehicle_model: vehicleDisplayName(vehicle),
     vehicle_color: vehicleColorByName(state.consultation.color).label,
     selected_tint_products: Object.values(tintMap).some(Boolean)
-      ? JSON.stringify(Object.entries(tintMap).filter(([, product]) => product).map(([partId, product]) => ({ partId, partName: consultationPartLabel(partId), sku: product.sku, product_name: productDisplayName(product), vlt: parseTintVlt(product), enabled: true })))
+      ? JSON.stringify(Object.entries(tintMap).filter(([, product]) => product).map(([partId, product]) => ({ partId, partName: consultationPartLabel(partId), sku: product.sku, product_name: productDisplayName(product), tintStrength: productTintStrength(product), transparencyPercent: productTransparencyPercent(product), enabled: true })))
       : JSON.stringify([{ enabled: false, product_name: "선택 안함" }]),
     selected_ppf_products: Object.values(ppfMap).some(Boolean)
       ? JSON.stringify(Object.entries(ppfMap).filter(([, product]) => product).map(([partId, product]) => ({ partId, partName: consultationPartLabel(partId), sku: product.sku, product_name: productDisplayName(product), enabled: true })))

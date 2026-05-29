@@ -849,6 +849,13 @@ h3 {
   font-weight: 750;
 }
 
+.field-help {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
 .field input,
 .field select,
 .field textarea,
