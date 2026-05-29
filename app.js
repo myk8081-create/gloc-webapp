@@ -173,6 +173,16 @@ function calibrationNumber(value, fallback) {
   return Number.isFinite(number) ? number : Number(fallback || 0);
 }
 
+function nullableNumber(value, fallback = 0) {
+  if (value === null || value === undefined) return fallback;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clampNullableNumber(value, min, max, fallback = 0) {
+  return Math.min(max, Math.max(min, nullableNumber(value, fallback)));
+}
+
 function formatCalibrationNumber(value) {
   const number = calibrationNumber(value, 0);
   return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(2)));
@@ -418,8 +428,8 @@ function createMockProducts() {
       color_chart_image_url: "",
       finish_type: base.finish_type || "",
       transparency_type: base.transparency_type || "",
-      opacity: base.opacity || 100,
-      shade_percent: productCategoryMatches({ category: base.category }, "tint") ? Number(String(size).replace(/\D/g, "")) || base.shade_percent || 35 : "",
+      opacity: base.opacity ?? 100,
+      shade_percent: productCategoryMatches({ category: base.category }, "tint") ? nullableNumber(Number(String(size).replace(/\D/g, "")), base.shade_percent ?? 35) : "",
       available_parts: base.available_parts || "",
       description: "",
       unit: base.unit,
@@ -1960,11 +1970,12 @@ function renderProductManage() {
 function renderProductCategoryFields() {
   const isTint = productCategoryMatches({ category: state.forms.productCategory }, "tint");
   if (isTint) {
-    const selectedParts = csvToArray(state.forms.productAvailableParts || tintAreaOptions.map((area) => area.key).join(","));
+    const defaultTintParts = tintAreaOptions.map((area) => area.key).join(",");
+    const selectedParts = csvToArray(state.forms.productAvailableParts ?? defaultTintParts);
     return `
       <label class="field">
         <span>틴팅 농도</span>
-        <input id="productShadePercent" type="number" min="1" max="80" inputmode="numeric" value="${escapeAttr(state.forms.productShadePercent)}" placeholder="예: 15" />
+        <input id="productShadePercent" type="number" min="0" max="80" inputmode="numeric" value="${escapeAttr(state.forms.productShadePercent)}" placeholder="예: 15" />
       </label>
       <label class="field">
         <span>투명도 수치(0~100)</span>
@@ -1972,9 +1983,9 @@ function renderProductCategoryFields() {
       </label>
       <div class="field wide-field">
         <span>적용 가능 부위</span>
-        <div class="inline-check-grid">
+        <div class="tint-part-check-grid">
           ${tintAreaOptions.map((area) => `
-            <label class="checkbox-row inline-check">
+            <label class="tint-part-check-card">
               <input type="checkbox" data-product-available-part="${escapeAttr(area.key)}" ${selectedParts.includes(area.key) ? "checked" : ""} />
               <span>${escapeHtml(area.label)}</span>
             </label>
@@ -3716,8 +3727,8 @@ function bindEvents() {
     syncProductHexInputs();
   });
   bindInput("productColorChartImageUrl", (value) => (state.forms.productColorChartImageUrl = value));
-  bindInput("productOpacity", (value) => (state.forms.productOpacity = Math.min(100, Math.max(0, Number(value || 0)))));
-  bindInput("productShadePercent", (value) => (state.forms.productShadePercent = Math.min(80, Math.max(1, Number(value || 0)))));
+  bindInput("productOpacity", (value) => (state.forms.productOpacity = clampNullableNumber(value, 0, 100, 0)));
+  bindInput("productShadePercent", (value) => (state.forms.productShadePercent = clampNullableNumber(value, 0, 80, 35)));
   bindInput("productDescription", (value) => (state.forms.productDescription = value));
   bindInput("productUnit", (value) => (state.forms.productUnit = value));
   bindInput("productRetailPrice", (value) => (state.forms.productRetailPrice = Number(value || 0)));
@@ -7455,8 +7466,8 @@ async function saveProduct() {
     color_chart_image_url: state.forms.productColorChartImageUrl.trim(),
     finish_type: isTint ? "" : state.forms.productFinishType,
     transparency_type: isTint ? "" : state.forms.productTransparencyType,
-    opacity: Math.min(100, Math.max(0, Number(state.forms.productOpacity || 0))),
-    shade_percent: isTint ? Math.min(80, Math.max(1, Number(state.forms.productShadePercent || 35))) : "",
+    opacity: clampNullableNumber(state.forms.productOpacity, 0, 100, 0),
+    shade_percent: isTint ? clampNullableNumber(state.forms.productShadePercent, 0, 80, 35) : "",
     available_parts: isTint ? csvToArray(state.forms.productAvailableParts).join(",") : "",
     description: state.forms.productDescription.trim(),
     unit: state.forms.productUnit.trim() || "롤",
@@ -7765,9 +7776,9 @@ function selectProductForEdit(sku) {
   state.forms.productColorChartImageUrl = product.color_chart_image_url || "";
   state.forms.productFinishType = product.finish_type || "gloss";
   state.forms.productTransparencyType = product.transparency_type || "transparent";
-  state.forms.productOpacity = Number(product.opacity || (productCategoryMatches(product, "tint") ? 55 : 100));
-  state.forms.productShadePercent = Number(product.shade_percent || parseTintVlt(product));
-  state.forms.productAvailableParts = product.available_parts || tintAreaOptions.map((area) => area.key).join(",");
+  state.forms.productOpacity = nullableNumber(product.opacity ?? (productCategoryMatches(product, "tint") ? 55 : 100));
+  state.forms.productShadePercent = nullableNumber(product.shade_percent ?? parseTintVlt(product));
+  state.forms.productAvailableParts = product.available_parts ?? tintAreaOptions.map((area) => area.key).join(",");
   state.forms.productDescription = product.description || "";
   state.forms.productUnit = product.unit || "롤";
   state.forms.productRetailPrice = productRetailPrice(product);
@@ -8367,7 +8378,7 @@ function productSearchFields(product) {
 function consultationProductMatchesFilter(product, type, filterValue = "전체") {
   if (!filterValue || filterValue === "전체") return true;
   if (type === "tint") {
-    if (filterValue.startsWith("shade:")) return Number(product.shade_percent || parseTintVlt(product)) === Number(filterValue.replace("shade:", ""));
+    if (filterValue.startsWith("shade:")) return nullableNumber(product.shade_percent ?? parseTintVlt(product)) === Number(filterValue.replace("shade:", ""));
     if (filterValue.startsWith("part:")) return productAvailableParts(product).includes(filterValue.replace("part:", ""));
     return normalize(product.brand).includes(normalize(filterValue)) || normalize(product.color_name || product.color).includes(normalize(filterValue));
   }
@@ -8401,13 +8412,15 @@ function consultationPpfFilterOptions() {
 }
 
 function parseTintVlt(product) {
-  if (Number(product?.visibleLightTransmission || product?.visible_light_transmission || 0) > 0) {
-    return Math.min(80, Math.max(1, Number(product.visibleLightTransmission || product.visible_light_transmission)));
+  const vltValue = product?.visibleLightTransmission ?? product?.visible_light_transmission;
+  if (vltValue !== null && vltValue !== undefined && vltValue !== "") {
+    return clampNullableNumber(vltValue, 0, 80, 35);
   }
-  if (Number(product?.shade_percent || 0) > 0) return Math.min(80, Math.max(1, Number(product.shade_percent)));
+  const shadeValue = product?.shade_percent;
+  if (shadeValue !== null && shadeValue !== undefined && shadeValue !== "") return clampNullableNumber(shadeValue, 0, 80, 35);
   const match = String(product?.product_name || product?.sku || "").match(/(\d{1,2})\s*%/);
   if (!match) return 35;
-  return Math.min(80, Math.max(5, Number(match[1])));
+  return clampNullableNumber(match[1], 0, 80, 35);
 }
 
 function productAvailableParts(product) {
