@@ -646,7 +646,7 @@ const state = {
     applications: [],
     tintProductQuery: "",
     ppfProductQuery: "",
-    tintFilter: "part:frontGlass",
+    tintFilter: "전체",
     ppfFilter: "전체",
     tintTarget: "frontGlass",
     selectedPartId: null,
@@ -4155,7 +4155,7 @@ function bindDynamicListEvents(root) {
   root.querySelectorAll("[data-consultation-tint-target]").forEach((button) => {
     button.addEventListener("click", () => {
       state.consultation.tintTarget = button.dataset.consultationTintTarget || "frontGlass";
-      state.consultation.tintFilter = `part:${state.consultation.tintTarget}`;
+      state.consultation.tintFilter = "전체";
       const canonical = canonicalGlassPartFromLegacy(state.consultation.tintTarget);
       state.consultation.selectedPartId = canonical;
       state.consultation.selectedCategory = "glass";
@@ -5262,7 +5262,7 @@ function selectConsultationTargetPart(partId, category) {
   if (canonicalCategory === "glass") {
     const legacyTarget = legacyGlassPartFor(canonicalPartId);
     state.consultation.tintTarget = legacyTarget;
-    state.consultation.tintFilter = `part:${legacyTarget}`;
+    state.consultation.tintFilter = "전체";
   }
   refreshConsultationAfterOptionChange(canonicalCategory === "glass" ? "tint" : "ppf");
   showToast(`${consultationPartLabel(canonicalPartId)} 선택됨. 적용할 ${canonicalCategory === "glass" ? "틴팅" : "PPF"} 제품을 검색해 주세요.`);
@@ -5278,10 +5278,6 @@ function applyConsultationProductToSelectedPart(product, type) {
   }
   if (category === "glass") {
     const legacyTarget = legacyGlassPartFor(partId);
-    if (!productAvailableParts(product).includes(legacyTarget)) {
-      showToast(`${productDisplayName(product)}은(는) ${consultationPartLabel(partId)} 적용 가능 제품이 아닙니다.`);
-      return;
-    }
     const tintMap = consultationAppliedTintMap();
     tintMap[partId] = product;
     state.consultation.tintAreas = {
@@ -8349,11 +8345,7 @@ function consultationFilteredProducts(type) {
   const products = type === "tint" ? consultationTintProducts() : consultationPpfProducts();
   const query = normalize(type === "tint" ? state.consultation.tintProductQuery : state.consultation.ppfProductQuery);
   const filterValue = type === "tint" ? state.consultation.tintFilter : state.consultation.ppfFilter;
-  const tintTarget = state.consultation.selectedCategory === "glass"
-    ? legacyGlassPartFor(state.consultation.selectedPartId)
-    : selectedConsultationTintTarget();
   return products.filter((product) => {
-    if (type === "tint" && !productAvailableParts(product).includes(tintTarget)) return false;
     if (!consultationProductMatchesFilter(product, type, filterValue)) return false;
     if (!query) return true;
     return productSearchFields(product).some((value) => normalize(value).includes(query));
@@ -8392,7 +8384,6 @@ function consultationProductMatchesFilter(product, type, filterValue = "전체")
   if (!filterValue || filterValue === "전체") return true;
   if (type === "tint") {
     if (filterValue.startsWith("shade:")) return productTintStrength(product) === Number(filterValue.replace("shade:", ""));
-    if (filterValue.startsWith("part:")) return productAvailableParts(product).includes(filterValue.replace("part:", ""));
     return normalize(product.brand).includes(normalize(filterValue)) || normalize(product.color_name || product.color).includes(normalize(filterValue));
   }
   if (filterValue.startsWith("finish:")) return normalizePpfFinishType(product.finishType || product.finish_type) === filterValue.replace("finish:", "");
@@ -8407,12 +8398,7 @@ function consultationProductMatchesFilter(product, type, filterValue = "전체")
 function consultationTintFilterOptions() {
   return [
     { value: "전체", label: "전체" },
-    ...tintStrengthOptions.map((value) => ({ value: `shade:${value}`, label: `${value}%` })),
-    { value: "part:frontGlass", label: "전면" },
-    { value: "part:firstRowGlass", label: "1열" },
-    { value: "part:secondRowGlass", label: "2열" },
-    { value: "part:rearGlass", label: "후면" },
-    { value: "part:roofGlass", label: "썬루프" }
+    ...tintStrengthOptions.map((value) => ({ value: `shade:${value}`, label: `${value}%` }))
   ];
 }
 
@@ -8588,10 +8574,6 @@ function applySelectedTintProductToTarget() {
     ? state.consultation.selectedPartId
     : canonicalGlassPartFromLegacy(selectedConsultationTintTarget());
   const legacyTarget = legacyGlassPartFor(target);
-  if (!productAvailableParts(product).includes(legacyTarget)) {
-    showToast(`${productDisplayName(product)}은(는) ${consultationPartLabel(target)} 적용 가능 제품이 아닙니다.`);
-    return;
-  }
   state.consultation.tintAreas = {
     ...consultationTintAreas(),
     [legacyTarget]: productTintStrength(product)
