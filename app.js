@@ -4924,18 +4924,22 @@ function createConsultationPpfMaterial(THREE, product) {
   const style = consultationPpfMaterialStyle(product);
   return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(style.colorHex),
-    transparent: true,
+    emissive: new THREE.Color(style.colorHex),
+    emissiveIntensity: style.emissiveIntensity,
+    transparent: style.opacity < 1,
     opacity: style.opacity,
-    metalness: 0,
+    metalness: style.metalness,
     roughness: style.roughness,
     clearcoat: style.clearcoat,
     clearcoatRoughness: style.clearcoatRoughness,
     envMapIntensity: style.envMapIntensity,
-    depthWrite: false,
+    depthWrite: style.opacity >= 1,
     polygonOffset: true,
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
-    side: THREE.FrontSide
+    side: THREE.FrontSide,
+    wireframe: false,
+    toneMapped: false
   });
 }
 
@@ -5012,7 +5016,7 @@ function consultationPpfVisualStyle(product) {
     clearcoat: style.clearcoat,
     clearcoatRoughness: style.clearcoatRoughness,
     envMapIntensity: style.envMapIntensity,
-    emissiveIntensity: 0
+    emissiveIntensity: style.emissiveIntensity
   };
 }
 
@@ -5021,27 +5025,36 @@ function consultationPpfMaterialStyle(product) {
   const finishType = normalizePpfFinishType(product?.finishType || product?.finish_type);
   const transparencyType = normalizePpfTransparencyType(product?.transparencyType || product?.transparency_type);
   const opacityPercent = Number(product?.opacityPercent ?? product?.opacity_percent ?? product?.opacity ?? 0);
+  const opacity = ppfOpacityFromProduct(transparencyType, opacityPercent);
+  const preset = ppfFinishMaterialPreset(finishType);
   return {
     colorHex,
     finishType,
     transparencyType,
-    opacity: ppfOpacityFromProduct(transparencyType, opacityPercent),
-    ...ppfFinishMaterialPreset(finishType)
+    opacity,
+    ...preset,
+    emissiveIntensity: preset.emissiveIntensity * opacity
   };
 }
 
 function normalizePpfFinishType(value) {
-  const text = String(value || "").trim().replace(/-/g, "_");
-  if (text === "matte") return "matte";
-  if (text === "satin" || text === "semi_matte" || text === "semiMatte") return "satin";
+  const text = normalize(String(value || "").trim().replace(/-/g, "_"));
+  if (["matte", "무광", "매트"].includes(text)) return "matte";
+  if (["semi_matte", "semimatte", "반무광"].includes(text)) return "semi_matte";
+  if (["satin", "사틴"].includes(text)) return "satin";
   return "gloss";
 }
 
 function normalizePpfTransparencyType(value) {
-  const text = String(value || "").trim().replace(/-/g, "_");
-  if (text === "opaque") return "opaque";
-  if (text === "semiTransparent" || text === "semi_transparent") return "semiTransparent";
+  const text = normalize(String(value || "").trim().replace(/-/g, "_"));
+  if (["opaque", "불투명"].includes(text)) return "opaque";
+  if (["semiTransparent", "semi_transparent", "semitransparent", "반투명"].includes(text)) return "semiTransparent";
   return "transparent";
+}
+
+function ppfTransparencyOptionValue(value) {
+  const normalized = normalizePpfTransparencyType(value);
+  return normalized === "semiTransparent" ? "semi_transparent" : normalized;
 }
 
 function ppfOpacityFromProduct(transparencyType, opacityPercent) {
@@ -5058,7 +5071,18 @@ function ppfFinishMaterialPreset(finishType) {
       metalness: 0.05,
       clearcoat: 0,
       clearcoatRoughness: 0.9,
-      envMapIntensity: 0.72
+      envMapIntensity: 0.48,
+      emissiveIntensity: 0.2
+    };
+  }
+  if (finishType === "semi_matte") {
+    return {
+      roughness: 0.62,
+      metalness: 0.06,
+      clearcoat: 0.18,
+      clearcoatRoughness: 0.42,
+      envMapIntensity: 0.56,
+      emissiveIntensity: 0.18
     };
   }
   if (finishType === "satin") {
@@ -5067,7 +5091,8 @@ function ppfFinishMaterialPreset(finishType) {
       metalness: 0.08,
       clearcoat: 0.35,
       clearcoatRoughness: 0.25,
-      envMapIntensity: 1.08
+      envMapIntensity: 0.68,
+      emissiveIntensity: 0.16
     };
   }
   return {
@@ -5075,7 +5100,8 @@ function ppfFinishMaterialPreset(finishType) {
     metalness: 0.12,
     clearcoat: 1,
     clearcoatRoughness: 0.01,
-    envMapIntensity: consultationRenderSettings.ppfEnvMapIntensity
+    envMapIntensity: 0.78,
+    emissiveIntensity: 0.14
   };
 }
 
@@ -7775,8 +7801,8 @@ function selectProductForEdit(sku) {
   state.forms.productColorName = product.color_name || product.color || colorNameFromText(product.product_name);
   state.forms.productColorHex = normalizeHexColor(product.color_hex, productCategoryMatches(product, "tint") ? "#111111" : "#f7fbf9");
   state.forms.productColorChartImageUrl = product.color_chart_image_url || "";
-  state.forms.productFinishType = product.finish_type || "gloss";
-  state.forms.productTransparencyType = product.transparency_type || "transparent";
+  state.forms.productFinishType = normalizePpfFinishType(product.finish_type || product.finishType || "gloss");
+  state.forms.productTransparencyType = ppfTransparencyOptionValue(product.transparency_type || product.transparencyType || "transparent");
   state.forms.productOpacity = productCategoryMatches(product, "tint")
     ? productTransparencyPercent(product)
     : nullableNumber(product.opacity ?? 100);
