@@ -5022,7 +5022,7 @@ function consultationPpfVisualStyle(product) {
 
 function consultationPpfMaterialStyle(product) {
   const colorHex = normalizeHexColor(product?.colorHex ?? product?.color_hex, "#f7fbf9");
-  const finishType = normalizePpfFinishType(product?.finishType || product?.finish_type);
+  const finishType = normalizePpfFinishType(productPpfFinishType(product));
   const transparencyType = normalizePpfTransparencyType(product?.transparencyType || product?.transparency_type);
   const opacityPercent = Number(product?.opacityPercent ?? product?.opacity_percent ?? product?.opacity ?? 0);
   const opacity = ppfOpacityFromProduct(transparencyType, opacityPercent);
@@ -5035,6 +5035,23 @@ function consultationPpfMaterialStyle(product) {
     ...preset,
     emissiveIntensity: preset.emissiveIntensity * opacity
   };
+}
+
+function productPpfFinishType(product) {
+  const explicitValue = product?.finishType ?? product?.finish_type;
+  if (explicitValue !== null && explicitValue !== undefined && String(explicitValue).trim()) return explicitValue;
+  const text = normalize([
+    product?.product_name,
+    product?.name,
+    product?.color_name,
+    product?.color,
+    product?.sku
+  ].filter(Boolean).join(" "));
+  if (text.includes("반무광") || text.includes("semi")) return "semi_matte";
+  if (text.includes("사틴") || text.includes("satin")) return "satin";
+  if (text.includes("무광") || text.includes("매트") || text.includes("matte")) return "matte";
+  if (text.includes("유광") || text.includes("gloss")) return "gloss";
+  return "gloss";
 }
 
 function normalizePpfFinishType(value) {
@@ -7801,7 +7818,7 @@ function selectProductForEdit(sku) {
   state.forms.productColorName = product.color_name || product.color || colorNameFromText(product.product_name);
   state.forms.productColorHex = normalizeHexColor(product.color_hex, productCategoryMatches(product, "tint") ? "#111111" : "#f7fbf9");
   state.forms.productColorChartImageUrl = product.color_chart_image_url || "";
-  state.forms.productFinishType = normalizePpfFinishType(product.finish_type || product.finishType || "gloss");
+  state.forms.productFinishType = normalizePpfFinishType(productPpfFinishType(product));
   state.forms.productTransparencyType = ppfTransparencyOptionValue(product.transparency_type || product.transparencyType || "transparent");
   state.forms.productOpacity = productCategoryMatches(product, "tint")
     ? productTransparencyPercent(product)
@@ -8412,7 +8429,7 @@ function consultationProductMatchesFilter(product, type, filterValue = "전체")
     if (filterValue.startsWith("shade:")) return productTintStrength(product) === Number(filterValue.replace("shade:", ""));
     return normalize(product.brand).includes(normalize(filterValue)) || normalize(product.color_name || product.color).includes(normalize(filterValue));
   }
-  if (filterValue.startsWith("finish:")) return normalizePpfFinishType(product.finishType || product.finish_type) === filterValue.replace("finish:", "");
+  if (filterValue.startsWith("finish:")) return normalizePpfFinishType(productPpfFinishType(product)) === filterValue.replace("finish:", "");
   if (filterValue.startsWith("transparency:")) {
     const normalizedTransparency = normalizePpfTransparencyType(product.transparencyType || product.transparency_type);
     const storedValue = normalizedTransparency === "semiTransparent" ? "semi_transparent" : normalizedTransparency;
@@ -8464,7 +8481,7 @@ function productBrandText(product) {
 function productMetaText(product) {
   const opacity = productTransparencyPercent(product);
   if (productCategoryMatches(product, "tint")) return `틴팅 농도 ${productTintStrength(product)}% · 투명도 ${opacity}%`;
-  const finishValue = normalizePpfFinishType(product.finishType || product.finish_type);
+  const finishValue = normalizePpfFinishType(productPpfFinishType(product));
   const transparencyValue = normalizePpfTransparencyType(product.transparencyType || product.transparency_type) === "semiTransparent" ? "semi_transparent" : normalizePpfTransparencyType(product.transparencyType || product.transparency_type);
   const finish = productFinishOptions.find((item) => item.value === finishValue)?.label || "유광";
   const transparency = productTransparencyOptions.find((item) => item.value === transparencyValue)?.label || "투명";
