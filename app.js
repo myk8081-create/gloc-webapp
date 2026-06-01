@@ -4655,6 +4655,7 @@ function createShowroomFloorMaterial(THREE) {
 function createTintShopInterior(THREE, scene, mobile) {
   const group = new THREE.Group();
   group.name = "consultation_tint_shop_interior";
+  group.renderOrder = -50;
   const wallZ = consultationRenderSettings.shopWallZ;
   const wallMaterial = new THREE.MeshPhysicalMaterial({
     color: 0xe8ecf0,
@@ -4685,7 +4686,7 @@ function createTintShopInterior(THREE, scene, mobile) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
     mesh.name = name;
     mesh.position.set(position.x, position.y, position.z);
-    mesh.receiveShadow = true;
+    prepareShopBackdropMesh(mesh);
     group.add(mesh);
     return mesh;
   };
@@ -4719,8 +4720,7 @@ function createTintShopInterior(THREE, scene, mobile) {
     roll.name = `shop_tint_roll_${index}`;
     roll.rotation.z = Math.PI / 2;
     roll.position.set(-4.0, 0.78 + index * 0.23, wallZ + 0.66);
-    roll.castShadow = true;
-    roll.receiveShadow = true;
+    prepareShopBackdropMesh(roll);
     group.add(roll);
   });
 
@@ -4729,7 +4729,7 @@ function createTintShopInterior(THREE, scene, mobile) {
     stripe.name = name;
     stripe.rotation.x = -Math.PI / 2;
     stripe.position.set(position.x, -0.003, position.z);
-    stripe.renderOrder = 1;
+    prepareShopBackdropMesh(stripe);
     group.add(stripe);
   };
   addFloorStripe("shop_bay_line_left", { x: 0.035, z: 5.6 }, { x: -2.78, z: -0.9 }, goldLineMaterial);
@@ -4739,6 +4739,19 @@ function createTintShopInterior(THREE, scene, mobile) {
 
   scene.add(group);
   return group;
+
+  function prepareShopBackdropMesh(mesh) {
+    mesh.renderOrder = -50;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    materials.filter(Boolean).forEach((material) => {
+      material.depthTest = false;
+      material.depthWrite = false;
+      material.transparent = false;
+      material.opacity = 1;
+    });
+  }
 }
 
 function disposeConsultation3dViewer() {
