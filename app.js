@@ -250,12 +250,11 @@ const consultationRenderSettings = {
   bodyEnvMapIntensity: 1.45,
   glassEnvMapIntensity: 1.85,
   ppfEnvMapIntensity: 1.65,
-  backgroundIntensity: 0.72,
-  mobileBackgroundIntensity: 0.66,
-  backgroundBlurriness: 0.02,
+  backgroundIntensity: 1,
+  mobileBackgroundIntensity: 1,
+  backgroundBlurriness: 0,
   mobileBackgroundBlurriness: 0,
-  showroomRotationY: Math.PI / 4,
-  shopWallZ: -4.8
+  showroomRotationY: Math.PI / 4
 };
 
 const ppfPartOptions = [
@@ -4472,16 +4471,6 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
   const rimLight = new THREE.DirectionalLight(0xffffff, 0.55);
   rimLight.position.set(-4, 2.5, -3);
   scene.add(rimLight);
-  createTintShopInterior(THREE, scene, mobile);
-
-  const showroomFloor = new THREE.Mesh(
-    new THREE.PlaneGeometry(16, 16),
-    createShowroomFloorMaterial(THREE)
-  );
-  showroomFloor.rotation.x = -Math.PI / 2;
-  showroomFloor.position.y = -0.018;
-  showroomFloor.receiveShadow = true;
-  scene.add(showroomFloor);
 
   const floorShadow = new THREE.Mesh(
     new THREE.CircleGeometry(4.8, 96),
@@ -4603,155 +4592,6 @@ function applyShowroomEnvironmentTransform(THREE, scene) {
   const rotation = new THREE.Euler(0, consultationRenderSettings.showroomRotationY, 0);
   scene.backgroundRotation = rotation;
   scene.environmentRotation = rotation;
-}
-
-function createShowroomFloorMaterial(THREE) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
-  const context = canvas.getContext("2d");
-  context.fillStyle = "#eef2f6";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.strokeStyle = "rgba(76, 84, 96, 0.16)";
-  context.lineWidth = 1.4;
-  const seededWave = (seed, scale = 1) => {
-    const value = Math.sin(seed * 12.9898) * 43758.5453;
-    return (value - Math.floor(value)) * scale;
-  };
-  for (let index = 0; index < 18; index += 1) {
-    context.beginPath();
-    const startX = seededWave(index + 1, canvas.width);
-    const startY = seededWave(index + 21, canvas.height);
-    context.moveTo(startX, startY);
-    context.bezierCurveTo(
-      startX + seededWave(index + 41, 180) - 90,
-      startY + seededWave(index + 61, 120) - 60,
-      startX + seededWave(index + 81, 220) - 110,
-      startY + seededWave(index + 101, 180) - 90,
-      startX + seededWave(index + 121, 260) - 130,
-      startY + seededWave(index + 141, 220) - 110
-    );
-    context.stroke();
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(4, 4);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.MeshPhysicalMaterial({
-    color: 0xf7f8fb,
-    map: texture,
-    roughness: 0.24,
-    metalness: 0.06,
-    clearcoat: 0.65,
-    clearcoatRoughness: 0.12,
-    envMapIntensity: 0.9,
-    transparent: true,
-    opacity: 0.46,
-    depthWrite: false
-  });
-}
-
-function createTintShopInterior(THREE, scene, mobile) {
-  const group = new THREE.Group();
-  group.name = "consultation_tint_shop_interior";
-  group.renderOrder = -50;
-  const wallZ = consultationRenderSettings.shopWallZ;
-  const wallMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xe8ecf0,
-    roughness: 0.42,
-    metalness: 0.02,
-    clearcoat: 0.18,
-    clearcoatRoughness: 0.3,
-    envMapIntensity: 0.42
-  });
-  const sideWallMaterial = wallMaterial.clone();
-  sideWallMaterial.color = new THREE.Color(0xdfe4e8);
-  const darkTrimMaterial = new THREE.MeshStandardMaterial({ color: 0x20262a, roughness: 0.58, metalness: 0.08 });
-  const windowMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xf7fbff,
-    emissive: 0xeef7ff,
-    emissiveIntensity: mobile ? 0.18 : 0.26,
-    roughness: 0.2,
-    metalness: 0.02,
-    transparent: true,
-    opacity: 0.78,
-    depthWrite: false
-  });
-  const ledMaterial = new THREE.MeshBasicMaterial({ color: 0xbcd7ff, transparent: true, opacity: mobile ? 0.16 : 0.22, toneMapped: false });
-  const goldLineMaterial = new THREE.MeshBasicMaterial({ color: 0xd6ad55, transparent: true, opacity: 0.55, toneMapped: false });
-  const redLineMaterial = new THREE.MeshBasicMaterial({ color: 0xcf4e42, transparent: true, opacity: 0.45, toneMapped: false });
-
-  const addBox = (name, size, position, material) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
-    mesh.name = name;
-    mesh.position.set(position.x, position.y, position.z);
-    prepareShopBackdropMesh(mesh);
-    group.add(mesh);
-    return mesh;
-  };
-
-  addBox("shop_back_wall", { x: 10.8, y: 3.2, z: 0.08 }, { x: 0, y: 1.58, z: wallZ }, wallMaterial);
-  const leftWall = addBox("shop_left_wall", { x: 0.08, y: 3.0, z: 7.2 }, { x: -5.25, y: 1.48, z: -1.18 }, sideWallMaterial);
-  const rightWall = addBox("shop_right_wall", { x: 0.08, y: 3.0, z: 7.2 }, { x: 5.25, y: 1.48, z: -1.18 }, sideWallMaterial);
-  leftWall.rotation.y = 0;
-  rightWall.rotation.y = 0;
-  addBox("shop_ceiling_softbox", { x: 9.6, y: 0.06, z: 5.4 }, { x: 0, y: 3.05, z: -1.9 }, new THREE.MeshBasicMaterial({ color: 0xf5f8ff, transparent: true, opacity: 0.26, toneMapped: false }));
-
-  const windowY = 1.98;
-  [-3.55, -1.78, 1.78, 3.55].forEach((x, index) => {
-    addBox(`shop_window_panel_${index}`, { x: 1.46, y: 1.36, z: 0.035 }, { x, y: windowY, z: wallZ + 0.055 }, windowMaterial);
-  });
-  [-4.42, -2.66, -0.9, 0.9, 2.66, 4.42].forEach((x, index) => {
-    addBox(`shop_window_mullion_v_${index}`, { x: 0.026, y: 1.48, z: 0.045 }, { x, y: windowY, z: wallZ + 0.078 }, darkTrimMaterial);
-  });
-  [1.28, 2.68].forEach((y, index) => {
-    addBox(`shop_window_mullion_h_${index}`, { x: 8.4, y: 0.026, z: 0.045 }, { x: 0, y, z: wallZ + 0.08 }, darkTrimMaterial);
-  });
-  addBox("shop_back_counter", { x: 3.2, y: 0.46, z: 0.34 }, { x: -3.55, y: 0.22, z: wallZ + 0.42 }, new THREE.MeshStandardMaterial({ color: 0x343a3d, roughness: 0.46, metalness: 0.1 }));
-  addBox("shop_tool_cabinet", { x: 1.0, y: 0.92, z: 0.4 }, { x: 3.82, y: 0.46, z: wallZ + 0.44 }, new THREE.MeshStandardMaterial({ color: 0x20272b, roughness: 0.48, metalness: 0.16 }));
-
-  const rollColors = [0x101820, 0x333b3e, 0x667075];
-  rollColors.forEach((color, index) => {
-    const roll = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.115, 0.115, 1.05, 32),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.38, metalness: 0.12 })
-    );
-    roll.name = `shop_tint_roll_${index}`;
-    roll.rotation.z = Math.PI / 2;
-    roll.position.set(-4.0, 0.78 + index * 0.23, wallZ + 0.66);
-    prepareShopBackdropMesh(roll);
-    group.add(roll);
-  });
-
-  const addFloorStripe = (name, size, position, material) => {
-    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(size.x, size.z), material);
-    stripe.name = name;
-    stripe.rotation.x = -Math.PI / 2;
-    stripe.position.set(position.x, -0.003, position.z);
-    prepareShopBackdropMesh(stripe);
-    group.add(stripe);
-  };
-  addFloorStripe("shop_bay_line_left", { x: 0.035, z: 5.6 }, { x: -2.78, z: -0.9 }, goldLineMaterial);
-  addFloorStripe("shop_bay_line_right", { x: 0.035, z: 5.6 }, { x: 2.78, z: -0.9 }, goldLineMaterial);
-  addFloorStripe("shop_bay_line_back", { x: 5.55, z: 0.035 }, { x: 0, z: -3.45 }, redLineMaterial);
-  addFloorStripe("shop_blue_reflection", { x: 7.8, z: 0.06 }, { x: 0, z: -4.25 }, ledMaterial);
-
-  scene.add(group);
-  return group;
-
-  function prepareShopBackdropMesh(mesh) {
-    mesh.renderOrder = -50;
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    materials.filter(Boolean).forEach((material) => {
-      material.depthTest = false;
-      material.depthWrite = false;
-      material.transparent = false;
-      material.opacity = 1;
-    });
-  }
 }
 
 function disposeConsultation3dViewer() {
