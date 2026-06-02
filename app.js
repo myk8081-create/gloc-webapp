@@ -256,7 +256,11 @@ const consultationRenderSettings = {
   mobileBackgroundBlurriness: 0,
   showroomRotationY: -Math.PI / 4,
   showroomFloorY: -0.14,
-  vehicleGroundSink: 0.14
+  vehicleGroundSink: 0.14,
+  showroomWidth: 12,
+  showroomDepth: 11,
+  showroomHeight: 4.4,
+  showroomBackWallZ: -5.2
 };
 
 const ppfPartOptions = [
@@ -4475,25 +4479,7 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
   rimLight.position.set(-4, 2.5, -3);
   scene.add(rimLight);
 
-  const showroomFloor = new THREE.Mesh(
-    new THREE.PlaneGeometry(18, 18),
-    new THREE.MeshPhysicalMaterial({
-      color: 0xf7f9fc,
-      transparent: true,
-      opacity: mobile ? 0.9 : 0.94,
-      metalness: 0,
-      roughness: 0.16,
-      clearcoat: 1,
-      clearcoatRoughness: 0.12,
-      envMapIntensity: 0.95,
-      depthWrite: true
-    })
-  );
-  showroomFloor.name = "consultation_showroom_floor";
-  showroomFloor.rotation.x = -Math.PI / 2;
-  showroomFloor.position.y = consultationRenderSettings.showroomFloorY;
-  showroomFloor.receiveShadow = true;
-  scene.add(showroomFloor);
+  scene.add(createConsultationShowroomInterior(THREE, mobile));
 
   const floorShadow = new THREE.Mesh(
     new THREE.CircleGeometry(4.8, 96),
@@ -4580,6 +4566,231 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
   };
 }
 
+function createConsultationShowroomInterior(THREE, mobile) {
+  const settings = consultationRenderSettings;
+  const group = new THREE.Group();
+  group.name = "consultation_showroom_interior";
+
+  const floorY = settings.showroomFloorY;
+  const width = settings.showroomWidth;
+  const depth = settings.showroomDepth;
+  const height = settings.showroomHeight;
+  const backZ = settings.showroomBackWallZ;
+  const centerZ = backZ + depth / 2;
+  const sideX = width / 2;
+  const wallY = floorY + height / 2;
+  const ceilingY = floorY + height;
+
+  const floorMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xf7f9fc,
+    metalness: 0,
+    roughness: 0.12,
+    clearcoat: 1,
+    clearcoatRoughness: 0.08,
+    envMapIntensity: mobile ? 0.8 : 1.05
+  });
+  const wallMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xf4f7fb,
+    metalness: 0,
+    roughness: 0.38,
+    clearcoat: 0.25,
+    clearcoatRoughness: 0.28,
+    side: THREE.DoubleSide,
+    envMapIntensity: 0.35
+  });
+  const glassWallMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xf8fbff,
+    transparent: true,
+    opacity: 0.72,
+    metalness: 0,
+    roughness: 0.18,
+    clearcoat: 1,
+    clearcoatRoughness: 0.08,
+    side: THREE.DoubleSide,
+    envMapIntensity: 0.7
+  });
+  const gridMaterial = new THREE.LineBasicMaterial({
+    color: 0xaebed6,
+    transparent: true,
+    opacity: mobile ? 0.42 : 0.56
+  });
+  const neonMaterial = new THREE.LineBasicMaterial({
+    color: 0x7a7cff,
+    transparent: true,
+    opacity: mobile ? 0.45 : 0.62
+  });
+
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), floorMaterial);
+  floor.name = "consultation_showroom_floor";
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(0, floorY, centerZ);
+  floor.receiveShadow = true;
+  group.add(floor);
+
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(width, height), wallMaterial);
+  backWall.name = "consultation_showroom_back_wall";
+  backWall.position.set(0, wallY, backZ);
+  backWall.receiveShadow = true;
+  group.add(backWall);
+
+  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(depth, height), glassWallMaterial.clone());
+  leftWall.name = "consultation_showroom_left_wall";
+  leftWall.rotation.y = Math.PI / 2;
+  leftWall.position.set(-sideX, wallY, centerZ);
+  group.add(leftWall);
+
+  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(depth, height), glassWallMaterial.clone());
+  rightWall.name = "consultation_showroom_right_wall";
+  rightWall.rotation.y = -Math.PI / 2;
+  rightWall.position.set(sideX, wallY, centerZ);
+  group.add(rightWall);
+
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), glassWallMaterial.clone());
+  ceiling.name = "consultation_showroom_ceiling";
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.set(0, ceilingY, centerZ);
+  group.add(ceiling);
+
+  addConsultationShowroomBackGrid(THREE, group, gridMaterial, width, height, backZ, floorY);
+  addConsultationShowroomSideGrid(THREE, group, gridMaterial, -sideX, centerZ, depth, height, floorY, 1);
+  addConsultationShowroomSideGrid(THREE, group, gridMaterial, sideX, centerZ, depth, height, floorY, -1);
+  addConsultationShowroomCeilingGrid(THREE, group, gridMaterial, width, depth, ceilingY, centerZ);
+  addConsultationShowroomNeonLines(THREE, group, neonMaterial, width, depth, backZ, centerZ, floorY);
+
+  const logoTexture = createConsultationShowroomLogoTexture(THREE);
+  const logoGlow = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.4, 1.1),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false
+    })
+  );
+  logoGlow.name = "consultation_showroom_logo_glow";
+  logoGlow.position.set(0, floorY + 3.05, backZ + 0.018);
+  group.add(logoGlow);
+
+  const logo = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.1, 0.9),
+    new THREE.MeshBasicMaterial({
+      map: logoTexture,
+      transparent: true,
+      depthWrite: false
+    })
+  );
+  logo.name = "consultation_showroom_logo";
+  logo.position.set(0, floorY + 3.05, backZ + 0.026);
+  group.add(logo);
+
+  return group;
+}
+
+function addConsultationShowroomBackGrid(THREE, group, material, width, height, z, floorY) {
+  const half = width / 2;
+  for (let x = -half; x <= half + 0.01; x += 1) {
+    addConsultationShowroomLine(THREE, group, material, [
+      [x, floorY + 0.08, z + 0.02],
+      [x, floorY + height, z + 0.02]
+    ]);
+  }
+  for (let y = floorY + 0.7; y <= floorY + height + 0.01; y += 0.7) {
+    addConsultationShowroomLine(THREE, group, material, [
+      [-half, y, z + 0.021],
+      [half, y, z + 0.021]
+    ]);
+  }
+}
+
+function addConsultationShowroomSideGrid(THREE, group, material, x, centerZ, depth, height, floorY, direction) {
+  const halfDepth = depth / 2;
+  const zMin = centerZ - halfDepth;
+  const zMax = centerZ + halfDepth;
+  const offsetX = x + direction * 0.02;
+  for (let z = zMin; z <= zMax + 0.01; z += 1) {
+    addConsultationShowroomLine(THREE, group, material, [
+      [offsetX, floorY + 0.08, z],
+      [offsetX, floorY + height, z]
+    ]);
+  }
+  for (let y = floorY + 0.7; y <= floorY + height + 0.01; y += 0.7) {
+    addConsultationShowroomLine(THREE, group, material, [
+      [offsetX, y, zMin],
+      [offsetX, y, zMax]
+    ]);
+  }
+}
+
+function addConsultationShowroomCeilingGrid(THREE, group, material, width, depth, y, centerZ) {
+  const halfWidth = width / 2;
+  const halfDepth = depth / 2;
+  const zMin = centerZ - halfDepth;
+  const zMax = centerZ + halfDepth;
+  const ceilingY = y - 0.018;
+  for (let x = -halfWidth; x <= halfWidth + 0.01; x += 1) {
+    addConsultationShowroomLine(THREE, group, material, [
+      [x, ceilingY, zMin],
+      [x, ceilingY, zMax]
+    ]);
+  }
+  for (let z = zMin; z <= zMax + 0.01; z += 1) {
+    addConsultationShowroomLine(THREE, group, material, [
+      [-halfWidth, ceilingY, z],
+      [halfWidth, ceilingY, z]
+    ]);
+  }
+}
+
+function addConsultationShowroomNeonLines(THREE, group, material, width, depth, backZ, centerZ, floorY) {
+  const halfWidth = width / 2;
+  const halfDepth = depth / 2;
+  const zMin = centerZ - halfDepth;
+  const zMax = centerZ + halfDepth;
+  const y = floorY + 0.42;
+  addConsultationShowroomLine(THREE, group, material, [[-halfWidth, y, backZ + 0.035], [halfWidth, y, backZ + 0.035]]);
+  addConsultationShowroomLine(THREE, group, material, [[-halfWidth + 0.02, y, zMin], [-halfWidth + 0.02, y, zMax]]);
+  addConsultationShowroomLine(THREE, group, material, [[halfWidth - 0.02, y, zMin], [halfWidth - 0.02, y, zMax]]);
+}
+
+function addConsultationShowroomLine(THREE, group, material, points) {
+  const geometry = new THREE.BufferGeometry().setFromPoints(
+    points.map(([x, y, z]) => new THREE.Vector3(x, y, z))
+  );
+  const line = new THREE.Line(geometry, material);
+  line.name = "consultation_showroom_grid_line";
+  group.add(line);
+  return line;
+}
+
+function createConsultationShowroomLogoTexture(THREE) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 320;
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.lineWidth = 18;
+  context.strokeStyle = "#d64b3f";
+  context.beginPath();
+  context.arc(190, 160, 78, 0.18 * Math.PI, 1.84 * Math.PI);
+  context.stroke();
+  context.fillStyle = "#c7a15c";
+  context.beginPath();
+  context.moveTo(210, 160);
+  context.lineTo(286, 78);
+  context.lineTo(250, 178);
+  context.closePath();
+  context.fill();
+  context.fillStyle = "#1d1f20";
+  context.font = "700 140px Arial, Helvetica, sans-serif";
+  context.textBaseline = "middle";
+  context.fillText("GLOC", 340, 164);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
   if (!environmentUrl) return null;
   const mobile = isMobileViewport();
@@ -4591,7 +4802,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
       loadedTexture.colorSpace = THREE.SRGBColorSpace;
       loadedTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 1);
       scene.environment = loadedTexture;
-      scene.background = loadedTexture;
+      scene.background = new THREE.Color(0xf5f7fb);
       scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
       scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
       scene.environmentIntensity = mobile ? 1.05 : 1.28;
@@ -4605,7 +4816,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
   texture.mapping = THREE.EquirectangularReflectionMapping;
   texture.colorSpace = THREE.SRGBColorSpace;
   scene.environment = texture;
-  scene.background = texture;
+  scene.background = new THREE.Color(0xf5f7fb);
   scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
   scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
   scene.environmentIntensity = mobile ? 1.05 : 1.28;
