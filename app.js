@@ -244,6 +244,13 @@ const threeModuleUrls = {
 };
 
 const showroomEnvironmentPath = "/env/gloc-showroom-360.jpg";
+const consultationShowroomBackgroundPaths = {
+  front: "/images/showroom/gloc-showroom-front.png",
+  front45: "/images/showroom/gloc-showroom-front45.png",
+  side: "/images/showroom/gloc-showroom-side-right.png",
+  rear45: "/images/showroom/gloc-showroom-rear45.png",
+  rear: "/images/showroom/gloc-showroom-rear.png"
+};
 const consultationRenderSettings = {
   desktopPixelRatio: 2,
   mobilePixelRatio: 1.35,
@@ -2587,6 +2594,7 @@ function renderPpfSvgOverlays(ppfTone) {
 function renderConsultation3dSlot(vehicle) {
   const glbUrl = publicAssetUrl(vehicle?.glb_file_url || "");
   const environmentUrl = publicAssetUrl(showroomEnvironmentPath);
+  const showroomBackgroundUrl = consultationShowroomBackgroundUrl(state.consultation.view);
   return `
     <div
       class="consultation-stage consultation-3d-stage"
@@ -2598,6 +2606,7 @@ function renderConsultation3dSlot(vehicle) {
       data-body-color="${escapeAttr(vehicleColorByName(state.consultation.color).hex)}"
       data-vehicle-name="${escapeAttr(vehicleDisplayName(vehicle))}"
     >
+      <div class="consultation-showroom-photo" style="background-image:url('${escapeAttr(showroomBackgroundUrl)}')" aria-hidden="true"></div>
       <div class="consultation-orbit-grid"></div>
       <div class="consultation-3d-loader">
         <span class="badge warn">3D GLB 로딩</span>
@@ -2611,6 +2620,10 @@ function renderConsultation3dSlot(vehicle) {
       </div>
     </div>
   `;
+}
+
+function consultationShowroomBackgroundUrl(view) {
+  return publicAssetUrl(consultationShowroomBackgroundPaths[view] || consultationShowroomBackgroundPaths.front45);
 }
 
 function renderConsultationVehicleControls(vehicle) {
@@ -4439,13 +4452,14 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
   const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 1000);
   const renderer = new THREE.WebGLRenderer({
     antialias: !mobile,
-    alpha: false,
+    alpha: true,
     powerPreference: "high-performance"
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? consultationRenderSettings.mobilePixelRatio : consultationRenderSettings.desktopPixelRatio));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = mobile ? 0.95 : 1.02;
+  renderer.setClearColor(0x000000, 0);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   host.appendChild(renderer.domElement);
@@ -4567,7 +4581,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
       loadedTexture.colorSpace = THREE.SRGBColorSpace;
       loadedTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 1);
       scene.environment = loadedTexture;
-      scene.background = loadedTexture;
+      scene.background = null;
       scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
       scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
       scene.environmentIntensity = mobile ? 1.05 : 1.28;
@@ -4581,7 +4595,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
   texture.mapping = THREE.EquirectangularReflectionMapping;
   texture.colorSpace = THREE.SRGBColorSpace;
   scene.environment = texture;
-  scene.background = texture;
+  scene.background = null;
   scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
   scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
   scene.environmentIntensity = mobile ? 1.05 : 1.28;
