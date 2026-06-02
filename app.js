@@ -254,9 +254,9 @@ const consultationRenderSettings = {
   mobileBackgroundIntensity: 1,
   backgroundBlurriness: 0,
   mobileBackgroundBlurriness: 0,
-  showroomRotationY: -Math.PI / 4,
+  showroomRotationY: 0,
   showroomFloorY: -0.14,
-  vehicleGroundSink: 0.14,
+  vehicleGroundSink: 0.22,
   showroomWidth: 18,
   showroomDepth: 14,
   showroomHeight: 5,
@@ -4567,11 +4567,33 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
 }
 
 function createConsultationShowroomInterior(THREE, mobile) {
+  const settings = consultationRenderSettings;
   const group = new THREE.Group();
   group.name = "consultation_showroom_interior";
   // The showroom is now provided by the 360 image background. Keeping physical
   // side walls made the car look washed out when the camera moved outside them.
-  // Leave this group as an extension point for future non-occluding props only.
+  // Only a local floor plane remains so the car has a clear contact surface.
+  const floorMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xf1f4f8,
+    transparent: true,
+    opacity: mobile ? 0.66 : 0.72,
+    metalness: 0,
+    roughness: 0.18,
+    clearcoat: 0.8,
+    clearcoatRoughness: 0.12,
+    side: THREE.DoubleSide,
+    envMapIntensity: mobile ? 0.65 : 0.85,
+    depthWrite: true
+  });
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(settings.showroomWidth, settings.showroomDepth),
+    floorMaterial
+  );
+  floor.name = "consultation_showroom_floor_anchor";
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(0, settings.showroomFloorY - 0.002, -0.25);
+  floor.receiveShadow = true;
+  group.add(floor);
   return group;
 }
 
@@ -5500,8 +5522,8 @@ function frameConsultationModel(THREE, camera, controls, model, view) {
   model.position.y -= box.min.y + consultationRenderSettings.vehicleGroundSink;
   model.position.z -= center.z;
   const maxDim = Math.max(size.x, size.y, size.z) || 1;
-  const distance = Math.max(2.4, maxDim * 1.45);
-  const height = Math.max(0.8, size.y * 0.48);
+  const distance = Math.max(2.2, maxDim * 1.18);
+  const height = Math.max(0.72, size.y * 0.42);
   const cameraPositions = {
     front: [0, height, distance],
     front45: [distance * 0.72, height, distance * 0.72],
@@ -5513,7 +5535,7 @@ function frameConsultationModel(THREE, camera, controls, model, view) {
   camera.near = 0.01;
   camera.far = distance * 10;
   camera.updateProjectionMatrix();
-  controls.target.set(0, Math.max(0.28, size.y * 0.34), 0);
+  controls.target.set(0, Math.max(0.22, size.y * 0.28), 0);
   controls.update();
 }
 
