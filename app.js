@@ -257,10 +257,10 @@ const consultationRenderSettings = {
   showroomRotationY: -Math.PI / 4,
   showroomFloorY: -0.14,
   vehicleGroundSink: 0.14,
-  showroomWidth: 12,
-  showroomDepth: 11,
-  showroomHeight: 4.4,
-  showroomBackWallZ: -5.2
+  showroomWidth: 18,
+  showroomDepth: 14,
+  showroomHeight: 5,
+  showroomBackWallZ: -7
 };
 
 const ppfPartOptions = [
@@ -4567,122 +4567,11 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
 }
 
 function createConsultationShowroomInterior(THREE, mobile) {
-  const settings = consultationRenderSettings;
   const group = new THREE.Group();
   group.name = "consultation_showroom_interior";
-
-  const floorY = settings.showroomFloorY;
-  const width = settings.showroomWidth;
-  const depth = settings.showroomDepth;
-  const height = settings.showroomHeight;
-  const backZ = settings.showroomBackWallZ;
-  const centerZ = backZ + depth / 2;
-  const sideX = width / 2;
-  const wallY = floorY + height / 2;
-  const ceilingY = floorY + height;
-
-  const floorMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xf7f9fc,
-    metalness: 0,
-    roughness: 0.12,
-    clearcoat: 1,
-    clearcoatRoughness: 0.08,
-    envMapIntensity: mobile ? 0.8 : 1.05
-  });
-  const wallMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xf4f7fb,
-    metalness: 0,
-    roughness: 0.38,
-    clearcoat: 0.25,
-    clearcoatRoughness: 0.28,
-    side: THREE.DoubleSide,
-    envMapIntensity: 0.35
-  });
-  const glassWallMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xf8fbff,
-    transparent: true,
-    opacity: 0.72,
-    metalness: 0,
-    roughness: 0.18,
-    clearcoat: 1,
-    clearcoatRoughness: 0.08,
-    side: THREE.DoubleSide,
-    envMapIntensity: 0.7
-  });
-  const gridMaterial = new THREE.LineBasicMaterial({
-    color: 0xaebed6,
-    transparent: true,
-    opacity: mobile ? 0.42 : 0.56
-  });
-  const neonMaterial = new THREE.LineBasicMaterial({
-    color: 0x7a7cff,
-    transparent: true,
-    opacity: mobile ? 0.45 : 0.62
-  });
-
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), floorMaterial);
-  floor.name = "consultation_showroom_floor";
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.set(0, floorY, centerZ);
-  floor.receiveShadow = true;
-  group.add(floor);
-
-  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(width, height), wallMaterial);
-  backWall.name = "consultation_showroom_back_wall";
-  backWall.position.set(0, wallY, backZ);
-  backWall.receiveShadow = true;
-  group.add(backWall);
-
-  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(depth, height), glassWallMaterial.clone());
-  leftWall.name = "consultation_showroom_left_wall";
-  leftWall.rotation.y = Math.PI / 2;
-  leftWall.position.set(-sideX, wallY, centerZ);
-  group.add(leftWall);
-
-  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(depth, height), glassWallMaterial.clone());
-  rightWall.name = "consultation_showroom_right_wall";
-  rightWall.rotation.y = -Math.PI / 2;
-  rightWall.position.set(sideX, wallY, centerZ);
-  group.add(rightWall);
-
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), glassWallMaterial.clone());
-  ceiling.name = "consultation_showroom_ceiling";
-  ceiling.rotation.x = Math.PI / 2;
-  ceiling.position.set(0, ceilingY, centerZ);
-  group.add(ceiling);
-
-  addConsultationShowroomBackGrid(THREE, group, gridMaterial, width, height, backZ, floorY);
-  addConsultationShowroomSideGrid(THREE, group, gridMaterial, -sideX, centerZ, depth, height, floorY, 1);
-  addConsultationShowroomSideGrid(THREE, group, gridMaterial, sideX, centerZ, depth, height, floorY, -1);
-  addConsultationShowroomCeilingGrid(THREE, group, gridMaterial, width, depth, ceilingY, centerZ);
-  addConsultationShowroomNeonLines(THREE, group, neonMaterial, width, depth, backZ, centerZ, floorY);
-
-  const logoTexture = createConsultationShowroomLogoTexture(THREE);
-  const logoGlow = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.4, 1.1),
-    new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.22,
-      depthWrite: false
-    })
-  );
-  logoGlow.name = "consultation_showroom_logo_glow";
-  logoGlow.position.set(0, floorY + 3.05, backZ + 0.018);
-  group.add(logoGlow);
-
-  const logo = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.1, 0.9),
-    new THREE.MeshBasicMaterial({
-      map: logoTexture,
-      transparent: true,
-      depthWrite: false
-    })
-  );
-  logo.name = "consultation_showroom_logo";
-  logo.position.set(0, floorY + 3.05, backZ + 0.026);
-  group.add(logo);
-
+  // The showroom is now provided by the 360 image background. Keeping physical
+  // side walls made the car look washed out when the camera moved outside them.
+  // Leave this group as an extension point for future non-occluding props only.
   return group;
 }
 
@@ -4802,7 +4691,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
       loadedTexture.colorSpace = THREE.SRGBColorSpace;
       loadedTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 1);
       scene.environment = loadedTexture;
-      scene.background = new THREE.Color(0xf5f7fb);
+      scene.background = loadedTexture;
       scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
       scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
       scene.environmentIntensity = mobile ? 1.05 : 1.28;
@@ -4816,7 +4705,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
   texture.mapping = THREE.EquirectangularReflectionMapping;
   texture.colorSpace = THREE.SRGBColorSpace;
   scene.environment = texture;
-  scene.background = new THREE.Color(0xf5f7fb);
+  scene.background = texture;
   scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
   scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
   scene.environmentIntensity = mobile ? 1.05 : 1.28;
