@@ -5451,6 +5451,28 @@ function pushCanSubscribe() {
   );
 }
 
+function serviceWorkerVersion() {
+  return String(config.buildVersion || "local");
+}
+
+function serviceWorkerUrl() {
+  return `./service-worker.js?v=${encodeURIComponent(serviceWorkerVersion())}`;
+}
+
+async function registerAppServiceWorker({ forceUpdate = false } = {}) {
+  if (!("serviceWorker" in navigator)) return null;
+  const registration = await navigator.serviceWorker.register(serviceWorkerUrl(), {
+    updateViaCache: "none"
+  });
+
+  if (forceUpdate) {
+    await registration.update();
+    registration.waiting?.postMessage({ type: "SKIP_WAITING" });
+  }
+
+  return registration;
+}
+
 function pushStatusText() {
   syncPushSupportState();
   if (!window.FilmStockApi?.isEnabled()) return "실데이터 모드에서만 발주 알림을 저장할 수 있습니다.";
@@ -5476,7 +5498,7 @@ async function updatePushState(showDone = false) {
   }
 
   try {
-    const registration = await navigator.serviceWorker.register("./service-worker.js");
+    const registration = await registerAppServiceWorker({ forceUpdate: true });
     const subscription = await registration.pushManager.getSubscription();
     state.push.permission = notificationPermission();
     state.push.subscribed = Boolean(subscription);
@@ -5503,7 +5525,7 @@ async function enablePushNotifications() {
   state.push.permission = permission;
   if (permission !== "granted") throw new Error("알림 권한이 허용되지 않았습니다.");
 
-  const registration = await navigator.serviceWorker.register("./service-worker.js");
+  const registration = await registerAppServiceWorker({ forceUpdate: true });
   let subscription = await registration.pushManager.getSubscription();
   if (subscription) {
     try {
@@ -9630,4 +9652,7 @@ function showToast(message) {
 }
 
 initFromUrl();
+registerAppServiceWorker({ forceUpdate: true }).catch((error) => {
+  console.warn("서비스워커 업데이트 확인 실패", error);
+});
 render();

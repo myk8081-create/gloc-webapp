@@ -90,7 +90,8 @@ const config = `window.FILM_STOCK_CONFIG = {
   vapidPublicKey: ${JSON.stringify(vapidPublicKey)},
   labelMode: ${JSON.stringify(labelMode)},
   shippingMode: ${JSON.stringify(shippingMode)},
-  labelPrivacyMasking: ${JSON.stringify(labelPrivacyMasking)}
+  labelPrivacyMasking: ${JSON.stringify(labelPrivacyMasking)},
+  buildVersion: ${JSON.stringify(buildVersion)}
 };
 `;
 
