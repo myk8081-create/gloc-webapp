@@ -254,7 +254,9 @@ const consultationRenderSettings = {
   mobileBackgroundIntensity: 1,
   backgroundBlurriness: 0,
   mobileBackgroundBlurriness: 0,
-  showroomRotationY: Math.PI / 4
+  showroomRotationY: -Math.PI / 4,
+  showroomFloorY: -0.14,
+  vehicleGroundSink: 0.14
 };
 
 const ppfPartOptions = [
@@ -4476,29 +4478,29 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
   const showroomFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(18, 18),
     new THREE.MeshPhysicalMaterial({
-      color: 0xf3f6fb,
+      color: 0xf7f9fc,
       transparent: true,
-      opacity: mobile ? 0.82 : 0.88,
+      opacity: mobile ? 0.9 : 0.94,
       metalness: 0,
-      roughness: 0.22,
-      clearcoat: 0.8,
-      clearcoatRoughness: 0.18,
-      envMapIntensity: 0.75,
+      roughness: 0.16,
+      clearcoat: 1,
+      clearcoatRoughness: 0.12,
+      envMapIntensity: 0.95,
       depthWrite: true
     })
   );
   showroomFloor.name = "consultation_showroom_floor";
   showroomFloor.rotation.x = -Math.PI / 2;
-  showroomFloor.position.y = -0.025;
+  showroomFloor.position.y = consultationRenderSettings.showroomFloorY;
   showroomFloor.receiveShadow = true;
   scene.add(showroomFloor);
 
   const floorShadow = new THREE.Mesh(
     new THREE.CircleGeometry(4.8, 96),
-    new THREE.ShadowMaterial({ color: 0x000000, opacity: mobile ? 0.22 : 0.28 })
+    new THREE.ShadowMaterial({ color: 0x000000, opacity: mobile ? 0.28 : 0.36 })
   );
   floorShadow.rotation.x = -Math.PI / 2;
-  floorShadow.position.y = -0.018;
+  floorShadow.position.y = consultationRenderSettings.showroomFloorY + 0.006;
   floorShadow.receiveShadow = true;
   floorShadow.renderOrder = 2;
   scene.add(floorShadow);
@@ -5395,7 +5397,7 @@ function frameConsultationModel(THREE, camera, controls, model, view) {
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
   model.position.x -= center.x;
-  model.position.y -= box.min.y + 0.025;
+  model.position.y -= box.min.y + consultationRenderSettings.vehicleGroundSink;
   model.position.z -= center.z;
   const maxDim = Math.max(size.x, size.y, size.z) || 1;
   const distance = Math.max(2.4, maxDim * 1.45);
