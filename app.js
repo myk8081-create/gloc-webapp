@@ -244,13 +244,6 @@ const threeModuleUrls = {
 };
 
 const showroomEnvironmentPath = "/env/gloc-showroom-360.jpg";
-const consultationShowroomBackgroundPaths = {
-  front: "/images/showroom/gloc-showroom-front.png",
-  front45: "/images/showroom/gloc-showroom-front45.png",
-  side: "/images/showroom/gloc-showroom-side-right.png",
-  rear45: "/images/showroom/gloc-showroom-rear45.png",
-  rear: "/images/showroom/gloc-showroom-rear.png"
-};
 const consultationRenderSettings = {
   desktopPixelRatio: 2,
   mobilePixelRatio: 1.35,
@@ -2594,7 +2587,6 @@ function renderPpfSvgOverlays(ppfTone) {
 function renderConsultation3dSlot(vehicle) {
   const glbUrl = publicAssetUrl(vehicle?.glb_file_url || "");
   const environmentUrl = publicAssetUrl(showroomEnvironmentPath);
-  const showroomBackgroundUrl = consultationShowroomBackgroundUrl(state.consultation.view);
   return `
     <div
       class="consultation-stage consultation-3d-stage"
@@ -2606,7 +2598,6 @@ function renderConsultation3dSlot(vehicle) {
       data-body-color="${escapeAttr(vehicleColorByName(state.consultation.color).hex)}"
       data-vehicle-name="${escapeAttr(vehicleDisplayName(vehicle))}"
     >
-      <div class="consultation-showroom-photo" style="background-image:url('${escapeAttr(showroomBackgroundUrl)}')" aria-hidden="true"></div>
       <div class="consultation-orbit-grid"></div>
       <div class="consultation-3d-loader">
         <span class="badge warn">3D GLB 로딩</span>
@@ -2620,10 +2611,6 @@ function renderConsultation3dSlot(vehicle) {
       </div>
     </div>
   `;
-}
-
-function consultationShowroomBackgroundUrl(view) {
-  return publicAssetUrl(consultationShowroomBackgroundPaths[view] || consultationShowroomBackgroundPaths.front45);
 }
 
 function renderConsultationVehicleControls(vehicle) {
@@ -4486,13 +4473,34 @@ function mountConsultation3dViewer(container, modules, glbUrl, environmentUrl, k
   rimLight.position.set(-4, 2.5, -3);
   scene.add(rimLight);
 
+  const showroomFloor = new THREE.Mesh(
+    new THREE.PlaneGeometry(18, 18),
+    new THREE.MeshPhysicalMaterial({
+      color: 0xf3f6fb,
+      transparent: true,
+      opacity: mobile ? 0.82 : 0.88,
+      metalness: 0,
+      roughness: 0.22,
+      clearcoat: 0.8,
+      clearcoatRoughness: 0.18,
+      envMapIntensity: 0.75,
+      depthWrite: true
+    })
+  );
+  showroomFloor.name = "consultation_showroom_floor";
+  showroomFloor.rotation.x = -Math.PI / 2;
+  showroomFloor.position.y = -0.025;
+  showroomFloor.receiveShadow = true;
+  scene.add(showroomFloor);
+
   const floorShadow = new THREE.Mesh(
     new THREE.CircleGeometry(4.8, 96),
-    new THREE.ShadowMaterial({ color: 0x000000, opacity: mobile ? 0.17 : 0.22 })
+    new THREE.ShadowMaterial({ color: 0x000000, opacity: mobile ? 0.22 : 0.28 })
   );
   floorShadow.rotation.x = -Math.PI / 2;
-  floorShadow.position.y = -0.01;
+  floorShadow.position.y = -0.018;
   floorShadow.receiveShadow = true;
+  floorShadow.renderOrder = 2;
   scene.add(floorShadow);
 
   const setSize = () => {
@@ -4581,7 +4589,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
       loadedTexture.colorSpace = THREE.SRGBColorSpace;
       loadedTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 1);
       scene.environment = loadedTexture;
-      scene.background = null;
+      scene.background = loadedTexture;
       scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
       scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
       scene.environmentIntensity = mobile ? 1.05 : 1.28;
@@ -4595,7 +4603,7 @@ function loadShowroomEnvironment(THREE, scene, renderer, environmentUrl) {
   texture.mapping = THREE.EquirectangularReflectionMapping;
   texture.colorSpace = THREE.SRGBColorSpace;
   scene.environment = texture;
-  scene.background = null;
+  scene.background = texture;
   scene.backgroundIntensity = mobile ? consultationRenderSettings.mobileBackgroundIntensity : consultationRenderSettings.backgroundIntensity;
   scene.backgroundBlurriness = mobile ? consultationRenderSettings.mobileBackgroundBlurriness : consultationRenderSettings.backgroundBlurriness;
   scene.environmentIntensity = mobile ? 1.05 : 1.28;
@@ -5387,7 +5395,7 @@ function frameConsultationModel(THREE, camera, controls, model, view) {
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
   model.position.x -= center.x;
-  model.position.y -= box.min.y;
+  model.position.y -= box.min.y + 0.025;
   model.position.z -= center.z;
   const maxDim = Math.max(size.x, size.y, size.z) || 1;
   const distance = Math.max(2.4, maxDim * 1.45);

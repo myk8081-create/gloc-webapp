@@ -1801,42 +1801,7 @@ h3 {
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: #edf2f7;
-}
-
-.consultation-showroom-photo {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background-position: center 54%;
-  background-size: cover;
-  background-repeat: no-repeat;
-  filter: saturate(1.04) contrast(1.04) brightness(1.02);
-  transform: scale(1.018);
-}
-
-.consultation-showroom-photo::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at 50% 68%, rgba(255, 255, 255, 0.08), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(11, 13, 15, 0.12));
-  pointer-events: none;
-}
-
-.consultation-3d-stage[data-view="front"] .consultation-showroom-photo,
-.consultation-3d-stage[data-view="rear"] .consultation-showroom-photo {
-  background-position: center 52%;
-}
-
-.consultation-3d-stage[data-view="front45"] .consultation-showroom-photo,
-.consultation-3d-stage[data-view="rear45"] .consultation-showroom-photo {
-  background-position: center 55%;
-}
-
-.consultation-3d-stage[data-view="side"] .consultation-showroom-photo {
-  background-position: center 50%;
+  background: #eef2f7;
 }
 
 .consultation-3d-canvas {
