@@ -9,6 +9,11 @@ const defaultRetailPrice = 1000000;
 const defaultPurchasePrice = 500000;
 const defaultLegacyOrderDiscountRate = 20;
 const inventoryPageSize = 10;
+const productCategoryOptions = [
+  { value: "PPF", label: "PPF", permissionKey: "ppf" },
+  { value: "TINTING", label: "틴팅", permissionKey: "tinting" },
+  { value: "DETAILING", label: "디테일링", permissionKey: "detailing" }
+];
 const certificateRandomChars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const certificateNumberPattern = /^GLOC-[A-Z0-9]{4}-\d{8}-[A-Z0-9]{6}-[A-Z]{1}$/;
 const koreaPostLabelPreviewTemplate = "./templates/korea-post-label-preview.png";
@@ -482,6 +487,9 @@ function createMockAccounts() {
       dealer_name: "본사 관리자",
       role: "admin",
       dealer_discount_rate: 0,
+      can_access_ppf: true,
+      can_access_tinting: true,
+      can_access_detailing: true,
       is_first_login: false,
       is_active: true,
       contact_name: "본사",
@@ -501,6 +509,9 @@ function createMockAccounts() {
       dealer_name: dealer.dealer_name,
       role: "dealer",
       dealer_discount_rate: 20,
+      can_access_ppf: true,
+      can_access_tinting: true,
+      can_access_detailing: false,
       is_first_login: index === 1,
       is_active: true,
       contact_name: index === 0 ? "서울 담당자" : "",
@@ -682,7 +693,10 @@ const state = {
     certificateQuery: "",
     certificateDealerCode: "전체",
     consultationQuery: "",
-    productManageQuery: ""
+    productManageQuery: "",
+    inventoryCategory: "전체",
+    orderCategory: "전체",
+    productManageCategory: "전체"
   },
   forms: {
     loginRole: "dealer",
@@ -711,6 +725,9 @@ const state = {
     accountDealerCode: "",
     accountDealerName: "",
     accountDiscountRate: 0,
+    accountCanAccessPpf: true,
+    accountCanAccessTinting: true,
+    accountCanAccessDetailing: false,
     accountTemporaryPassword: "",
     inventoryDealerCode: "",
     inventorySku: "",
@@ -850,7 +867,7 @@ function render() {
 
 function renderTopbar() {
   const isLoggedIn = Boolean(state.session);
-  const subtitle = isLoggedIn ? `${state.session.dealer_name} · ${roleLabel(state.session.role)} · ${state.session.login_id}` : "PPF · 틴팅 재고관리";
+  const subtitle = isLoggedIn ? `${state.session.dealer_name} · ${roleLabel(state.session.role)} · ${state.session.login_id}` : "PPF · 틴팅 · 디테일링 재고관리";
   const chip = isLoggedIn ? "로그인됨" : state.dataMode === "appsScript" ? "실데이터 모드" : "샘플 모드";
   return `
     <header class="topbar">
@@ -1098,7 +1115,7 @@ function renderAdminDashboard() {
             </button>
             <button class="quick-card" type="button" data-nav="productManage">
               <strong>제품등록</strong>
-              <span>PPF/틴팅 SKU 생성 및 수정</span>
+              <span>PPF/틴팅/디테일링 SKU 생성 및 수정</span>
             </button>
             <button class="quick-card" type="button" data-nav="orders">
               <strong>발주관리</strong>
@@ -1557,6 +1574,17 @@ function renderDealerManagement() {
                   ${escapeHtml(inheritedDiscountText)}
                 </div>
               ` : ""}
+              ${isAdminSession && !isAdminAccount ? `
+                <div class="wide-field">
+                  <span class="field-label">대리점 카테고리 권한</span>
+                  ${hasTopDealerManager ? `<p class="product-meta">기존 대리점 권한을 모든 담당자가 공통으로 사용합니다.</p>` : ""}
+                  <div class="permission-grid">
+                    ${renderPermissionCheckbox("accountCanAccessPpf", "PPF", state.forms.accountCanAccessPpf)}
+                    ${renderPermissionCheckbox("accountCanAccessTinting", "틴팅", state.forms.accountCanAccessTinting)}
+                    ${renderPermissionCheckbox("accountCanAccessDetailing", "디테일링", state.forms.accountCanAccessDetailing)}
+                  </div>
+                </div>
+              ` : ""}
               <label class="field">
                 <span>초기 아이디</span>
                 <input id="accountLoginId" type="text" value="${escapeAttr(state.forms.accountLoginId)}" placeholder="${isAdminAccount ? "예: admin02" : "예: seoul-staff02"}" />
@@ -1718,6 +1746,7 @@ function renderInventory() {
         <div class="chip-row">
           ${colorOptions.map((option) => `<button type="button" class="chip ${state.selectedColor === option.value ? "active" : ""}" data-color="${option.value}">${option.name}</button>`).join("")}
         </div>
+        ${renderCategoryFilter("inventoryCategory")}
       </section>
 
       <section class="panel list-panel">
@@ -1768,7 +1797,7 @@ function renderInventoryStatsCards(rows) {
     <div class="metric warn">
       <div class="metric-label">제품 종류</div>
       <div class="metric-value">${activeProducts().length}개</div>
-      <div class="metric-note">판매중 PPF/틴팅 SKU</div>
+      <div class="metric-note">판매중 PPF/틴팅/디테일링 SKU</div>
     </div>
   `;
 }
@@ -1853,7 +1882,7 @@ function renderInventoryManage() {
             <label class="field">
               <span>제품 SKU</span>
               <select id="inventorySku">
-                ${state.products.map((product) => `<option value="${escapeAttr(product.sku)}" ${state.forms.inventorySku === product.sku ? "selected" : ""}>${escapeHtml(product.sku)} · ${escapeHtml(product.product_name)}</option>`).join("")}
+                ${activeProducts().map((product) => `<option value="${escapeAttr(product.sku)}" ${state.forms.inventorySku === product.sku ? "selected" : ""}>${escapeHtml(product.sku)} · ${escapeHtml(product.product_name)}</option>`).join("")}
               </select>
             </label>
             <label class="field">
@@ -1888,7 +1917,7 @@ function renderProductManage() {
       <section class="page-head">
         <p class="eyebrow">제품 관리</p>
         <h1>제품등록 및 수정</h1>
-        <p class="lead">PPF/틴팅 제품 SKU를 웹에서 등록하고 수정합니다. 새 제품은 각 활성 대리점 재고에 0개로 자동 생성됩니다.</p>
+        <p class="lead">PPF/틴팅/디테일링 제품 SKU를 웹에서 등록하고 수정합니다. 새 제품은 각 활성 대리점 재고에 0개로 자동 생성됩니다.</p>
         <div class="page-actions">
           <button class="secondary-button" type="button" data-nav="inventoryManage">재고 수정</button>
           <button class="secondary-button" type="button" data-nav="inventory">재고조회</button>
@@ -1910,7 +1939,7 @@ function renderProductManage() {
             <label class="field">
               <span>카테고리</span>
               <select id="productCategory">
-                ${["PPF", "틴팅", "TINTING"].map((category) => `<option value="${category}" ${state.forms.productCategory === category ? "selected" : ""}>${category}</option>`).join("")}
+                ${productCategoryOptions.map((option) => `<option value="${option.value}" ${normalizeProductCategory(state.forms.productCategory) === option.value ? "selected" : ""}>${option.label}</option>`).join("")}
               </select>
             </label>
             <label class="field">
@@ -1966,6 +1995,7 @@ function renderProductManage() {
             <h3>제품 목록</h3>
             <input class="search-input compact-search" id="productManageQuery" type="search" placeholder="브랜드, 제품명, 코드, 색상 검색" value="${escapeAttr(state.filters.productManageQuery || "")}" />
           </div>
+          ${renderCategoryFilter("productManageCategory")}
           <div class="product-list" id="productManageRows">
             ${productManageRows().slice(0, 60).map(renderProductManageRow).join("") || `<div class="empty">등록된 제품이 없습니다.</div>`}
           </div>
@@ -1977,6 +2007,7 @@ function renderProductManage() {
 
 function renderProductCategoryFields() {
   const isTint = productCategoryMatches({ category: state.forms.productCategory }, "tint");
+  if (normalizeProductCategory(state.forms.productCategory) === "DETAILING") return "";
   if (isTint) {
     return `
       <label class="field">
@@ -2040,6 +2071,7 @@ function renderOrders() {
             ${labelSizeOptions().map((option) => `<option value="${option.value}" ${state.forms.labelSize === option.value ? "selected" : ""}>${option.label}</option>`).join("")}
           </select>
         ` : ""}
+        ${renderCategoryFilter("orderCategory")}
       </section>
 
       <section class="stats-grid order-report-grid" id="orderStats">
@@ -2308,7 +2340,7 @@ function renderOrderCreate() {
       <section class="page-head">
         <p class="eyebrow">${escapeHtml(currentDealerName())}</p>
         <h1>발주신청</h1>
-        <p class="lead">필요한 PPF/틴팅 제품과 수량을 입력하면 발주 상태가 “접수”로 등록됩니다.</p>
+        <p class="lead">권한이 허용된 PPF/틴팅/디테일링 제품과 수량을 입력하면 발주 상태가 “접수”로 등록됩니다.</p>
       </section>
 
       <section class="work-layout">
@@ -2324,7 +2356,7 @@ function renderOrderCreate() {
           <h3>발주 정보</h3>
           <div class="detail-card">
             <h2>${escapeHtml(product?.product_name || "제품 선택")}</h2>
-            <p class="muted">${escapeHtml(product?.sku || "-")} · ${escapeHtml(product?.category || "-")}</p>
+            <p class="muted">${escapeHtml(product?.sku || "-")} · ${escapeHtml(productCategoryLabel(product?.category, product))}</p>
             <p class="muted">담당자 ID: ${escapeHtml(staffId || "-")}</p>
             <p class="muted">소비자가 ${money(productRetailPrice(product))} · 내 적용가 ${money(dealerSalePrice(product, state.session?.dealer_code))} · 할인율 ${percent(discountRate)}</p>
           </div>
@@ -3329,7 +3361,7 @@ function renderInventoryRow(row) {
       </td>
       <td>
         <strong>${escapeHtml(row.product_name)}</strong>
-        <div class="product-meta">${escapeHtml(row.category || "")} ${row.color ? `· ${escapeHtml(row.color)}` : ""}</div>
+        <div class="product-meta">${escapeHtml(productCategoryLabel(row.category, row))} ${row.color ? `· ${escapeHtml(row.color)}` : ""}</div>
       </td>
       <td>${escapeHtml(row.sku)}</td>
       <td><strong>${roll(Number(row.stock_qty || 0))}</strong></td>
@@ -3365,7 +3397,7 @@ function renderProductRow(product) {
       <span class="color-dot" style="background:${colorHex(product.color || product.product_name)}"></span>
       <span>
         <span class="product-name">${escapeHtml(product.product_name)}</span>
-        <span class="product-meta">${escapeHtml(product.sku)} · ${escapeHtml(product.category || "")}</span>
+        <span class="product-meta">${escapeHtml(product.sku)} · ${escapeHtml(productCategoryLabel(product.category, product))}</span>
         <span class="product-meta">소비자가 ${money(productRetailPrice(product))} · 내 적용가 ${money(dealerSalePrice(product, state.session?.dealer_code))} (${percent(discountRate)} 할인)</span>
       </span>
       <span class="stock-mini">
@@ -3383,7 +3415,7 @@ function renderProductManageRow(product) {
         <span class="color-dot" style="background:${escapeAttr(validHexColor(product.color_hex, colorHex(product.color || product.product_name)))}"></span>
         <span>
           <span class="product-name">${escapeHtml(product.product_name)}</span>
-          <span class="product-meta">${escapeHtml(productBrandText(product))} · ${escapeHtml(product.sku)} · ${escapeHtml(product.category || "")} · ${toBool(product.is_active) ? "판매중" : "중지"}</span>
+          <span class="product-meta">${escapeHtml(productBrandText(product))} · ${escapeHtml(product.sku)} · ${escapeHtml(productCategoryLabel(product.category, product))} · ${toBool(product.is_active) ? "판매중" : "중지"}</span>
           <span class="product-meta">${escapeHtml(productMetaText(product))}</span>
           <span class="product-meta">소비자가 ${money(productRetailPrice(product))} · 매입가 ${money(productPurchasePrice(product))}</span>
         </span>
@@ -3543,15 +3575,51 @@ function renderAccountRow(account) {
     : "";
   const actionButtons = isAdminSession ? `${guideButton}${discountButton}${resetButton}${dangerButtons}` : `${guideButton}${dealerManagerButtons}`;
   const discountMeta = account.role === "dealer" && dealerTopManager ? ` · 공통 할인율 ${percent(dealerDiscountRate(account.dealer_code))}` : "";
+  const permissionMeta = account.role === "dealer" ? ` · 권한 ${dealerPermissionLabels(account).join(" / ") || "없음"}` : "";
   return `
     <article class="account-row">
       <div>
         <span class="badge ${toBool(account.is_active) ? "" : "danger"}">${toBool(account.is_active) ? "사용중" : "중지"}</span>
         <h3>${escapeHtml(account.dealer_name)}</h3>
-        <p class="product-meta">${roleLabel(account.role)} · ${escapeHtml(account.login_id)} · ${escapeHtml(account.dealer_code)}${discountMeta} · 최초로그인 ${toBool(account.is_first_login) ? "필요" : "완료"}${isSelf ? " · 현재 로그인 계정" : ""}${protectedAdmin ? " · 기본 관리자 보호" : ""}${dealerTopManager ? " · 최상위 관리자" : ""}</p>
+        <p class="product-meta">${roleLabel(account.role)} · ${escapeHtml(account.login_id)} · ${escapeHtml(account.dealer_code)}${discountMeta}${permissionMeta} · 최초로그인 ${toBool(account.is_first_login) ? "필요" : "완료"}${isSelf ? " · 현재 로그인 계정" : ""}${protectedAdmin ? " · 기본 관리자 보호" : ""}${dealerTopManager ? " · 최상위 관리자" : ""}</p>
+        ${isAdminSession && account.role === "dealer" && dealerTopManager ? renderDealerPermissionEditor(account) : ""}
       </div>
       ${actionButtons ? `<div class="account-actions">${actionButtons}</div>` : ""}
     </article>
+  `;
+}
+
+function renderPermissionCheckbox(id, label, checked, dataAttributes = "") {
+  return `
+    <label class="permission-card">
+      <input id="${escapeAttr(id)}" type="checkbox" ${checked ? "checked" : ""} ${dataAttributes} />
+      <span>${escapeHtml(label)} 재고 확인 / 주문 가능</span>
+    </label>
+  `;
+}
+
+function renderDealerPermissionEditor(account) {
+  const permissions = dealerCategoryPermissions(account);
+  const code = escapeAttr(account.dealer_code);
+  return `
+    <div class="dealer-permission-editor">
+      <div class="permission-grid">
+        ${renderPermissionCheckbox(`permissionPpf_${code}`, "PPF", permissions.ppf, `data-dealer-permission="ppf" data-dealer-code="${code}"`)}
+        ${renderPermissionCheckbox(`permissionTinting_${code}`, "틴팅", permissions.tinting, `data-dealer-permission="tinting" data-dealer-code="${code}"`)}
+        ${renderPermissionCheckbox(`permissionDetailing_${code}`, "디테일링", permissions.detailing, `data-dealer-permission="detailing" data-dealer-code="${code}"`)}
+      </div>
+      <button type="button" class="secondary-button small-button" data-action="saveDealerCategoryPermissions" data-dealer-code="${code}">카테고리 권한 저장</button>
+    </div>
+  `;
+}
+
+function renderCategoryFilter(filterKey) {
+  const selected = state.filters[filterKey] || "전체";
+  const options = [{ value: "전체", label: "전체" }, ...availableCategoryOptions()];
+  return `
+    <div class="category-filter" aria-label="상품 카테고리 필터">
+      ${options.map((option) => `<button type="button" class="chip ${selected === option.value ? "active" : ""}" data-category-filter="${escapeAttr(filterKey)}" data-category-value="${escapeAttr(option.value)}">${escapeHtml(option.label)}</button>`).join("")}
+    </div>
   `;
 }
 
@@ -3821,6 +3889,15 @@ function bindEvents() {
     state.forms.accountDiscountRate = 0;
     render();
   });
+  document.querySelector("#accountCanAccessPpf")?.addEventListener("change", (event) => {
+    state.forms.accountCanAccessPpf = event.target.checked;
+  });
+  document.querySelector("#accountCanAccessTinting")?.addEventListener("change", (event) => {
+    state.forms.accountCanAccessTinting = event.target.checked;
+  });
+  document.querySelector("#accountCanAccessDetailing")?.addEventListener("change", (event) => {
+    state.forms.accountCanAccessDetailing = event.target.checked;
+  });
 
   document.querySelector("#productIsActive")?.addEventListener("change", (event) => {
     state.forms.productIsActive = event.target.checked;
@@ -3846,6 +3923,13 @@ function bindEvents() {
   document.querySelector("#orderStatus")?.addEventListener("change", (event) => {
     state.filters.orderStatus = event.target.value;
     render();
+  });
+  document.querySelectorAll("[data-category-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters[button.dataset.categoryFilter] = button.dataset.categoryValue;
+      if (button.dataset.categoryFilter === "inventoryCategory") state.filters.inventoryPage = 1;
+      render();
+    });
   });
 
   document.querySelector("#labelSize")?.addEventListener("change", (event) => {
@@ -5762,6 +5846,7 @@ async function handleAction(action, button) {
   if (action === "createAccount") return createDealerAccount();
   if (action === "resetPassword") return resetDealerPassword(button.dataset.loginId);
   if (action === "updateDealerDiscount") return updateDealerDiscount(button.dataset.dealerCode);
+  if (action === "saveDealerCategoryPermissions") return saveDealerCategoryPermissions(button.dataset.dealerCode);
   if (action === "deactivateAccount") return deactivateDealerAccount(button.dataset.loginId);
   if (action === "deleteAccount") return deleteDealerAccount(button.dataset.loginId);
   if (action === "deleteProduct") return deleteProduct(button.dataset.sku);
@@ -6157,6 +6242,7 @@ async function createOrder() {
   const product = selectedProduct();
   const qty = Number(state.forms.orderQty || 0);
   if (!product) throw new Error("제품을 선택해 주세요.");
+  if (!canAccessProductCategory(product.category, product)) throw new Error("해당 카테고리 상품을 주문할 권한이 없습니다.");
   if (!qty || qty < 1) throw new Error("발주 수량을 1개 이상 입력해 주세요.");
 
   if (window.FilmStockApi?.isEnabled()) {
@@ -6175,6 +6261,7 @@ async function createOrder() {
       created_by_login_id: state.session.login_id,
       product_name: product.product_name,
       sku: product.sku,
+      product_category: normalizeProductCategory(product.category, product),
       qty,
       unit_retail_price: productRetailPrice(product),
       dealer_discount_rate: dealerDiscountRate(state.session.dealer_code),
@@ -7572,13 +7659,17 @@ async function saveInventory() {
     location: state.forms.inventoryLocation
   };
   if (!payload.dealer_code || !payload.sku) throw new Error("대리점과 제품을 선택해 주세요.");
+  const selectedInventoryProduct = state.products.find((item) => item.sku === payload.sku);
+  if (!selectedInventoryProduct || !canAccessProductCategory(selectedInventoryProduct.category, selectedInventoryProduct)) {
+    throw new Error("해당 카테고리 재고를 수정할 권한이 없습니다.");
+  }
   if (payload.stock_qty < 0 || payload.safety_stock < 0) throw new Error("재고와 안전재고는 0 이상이어야 합니다.");
 
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.saveInventory(payload);
     if (data?.inventory) upsertInventory(data.inventory);
   } else {
-    const product = state.products.find((item) => item.sku === payload.sku);
+    const product = selectedInventoryProduct;
     upsertInventory({
       dealer_code: payload.dealer_code,
       dealer_name: dealerNameByCode(payload.dealer_code),
@@ -7612,7 +7703,7 @@ async function saveProduct() {
   const payload = {
     sku: state.forms.productSku.trim(),
     product_name: state.forms.productName.trim(),
-    category: state.forms.productCategory,
+    category: normalizeProductCategory(state.forms.productCategory),
     brand: state.forms.productBrand.trim() || "GLOC",
     product_code: state.forms.productSku.trim(),
     color_name: state.forms.productColorName.trim() || colorNameFromText(state.forms.productName),
@@ -7688,6 +7779,9 @@ async function createDealerAccount() {
     dealer_name: state.session?.role === "admin" ? dealerNameForCode(dealerCode, state.forms.accountDealerName) : state.session?.dealer_name || "",
     role,
     dealer_discount_rate: accountDiscountRate,
+    can_access_ppf: role === "admin" ? true : existingDealerAccount ? dealerCategoryPermissions(existingDealerAccount).ppf : state.forms.accountCanAccessPpf,
+    can_access_tinting: role === "admin" ? true : existingDealerAccount ? dealerCategoryPermissions(existingDealerAccount).tinting : state.forms.accountCanAccessTinting,
+    can_access_detailing: role === "admin" ? true : existingDealerAccount ? dealerCategoryPermissions(existingDealerAccount).detailing : state.forms.accountCanAccessDetailing,
     temporary_password: state.forms.accountTemporaryPassword.trim()
   };
   if (account.dealer_discount_rate !== "" && (account.dealer_discount_rate < 0 || account.dealer_discount_rate > 100)) {
@@ -7710,6 +7804,9 @@ async function createDealerAccount() {
       dealer_name: account.dealer_name,
       role: account.role,
       dealer_discount_rate: account.dealer_discount_rate,
+      can_access_ppf: account.can_access_ppf,
+      can_access_tinting: account.can_access_tinting,
+      can_access_detailing: account.can_access_detailing,
       is_first_login: true,
       is_active: true,
       contact_name: "",
@@ -7731,10 +7828,52 @@ async function createDealerAccount() {
     state.forms.accountDealerCode = state.forms.accountRole === "admin" ? "ADMIN" : "";
     state.forms.accountDealerName = "";
     state.forms.accountDiscountRate = 0;
+    state.forms.accountCanAccessPpf = true;
+    state.forms.accountCanAccessTinting = true;
+    state.forms.accountCanAccessDetailing = false;
   }
   state.forms.accountTemporaryPassword = "";
   render();
   showToast(account.role === "admin" ? "관리자 계정을 생성했습니다." : state.session?.role === "admin" ? "대리점 계정을 생성했습니다." : "담당자 ID를 생성했습니다.");
+}
+
+async function saveDealerCategoryPermissions(dealerCode) {
+  if (state.session?.role !== "admin") throw new Error("대리점 카테고리 권한은 관리자만 변경할 수 있습니다.");
+  const inputFor = (key) => Array.from(document.querySelectorAll(`[data-dealer-permission="${key}"]`))
+    .find((input) => sameDealerCode(input.dataset.dealerCode, dealerCode));
+  const permissions = {
+    ppf: Boolean(inputFor("ppf")?.checked),
+    tinting: Boolean(inputFor("tinting")?.checked),
+    detailing: Boolean(inputFor("detailing")?.checked)
+  };
+  if (!permissions.ppf && !permissions.tinting && !permissions.detailing) {
+    throw new Error("대리점에는 한 개 이상의 상품 카테고리 권한이 필요합니다.");
+  }
+
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.updateDealerCategoryPermissions({
+      dealerCode,
+      canAccessPpf: permissions.ppf,
+      canAccessTinting: permissions.tinting,
+      canAccessDetailing: permissions.detailing
+    });
+    if (Array.isArray(data?.accounts)) state.accounts = data.accounts;
+  } else {
+    state.accounts = state.accounts.map((account) => (
+      account.role === "dealer" && sameDealerCode(account.dealer_code, dealerCode)
+        ? {
+          ...account,
+          can_access_ppf: permissions.ppf,
+          can_access_tinting: permissions.tinting,
+          can_access_detailing: permissions.detailing,
+          category_permissions: permissions,
+          updated_at: nowText()
+        }
+        : account
+    ));
+  }
+  render();
+  showToast("대리점 카테고리 권한을 저장했습니다.");
 }
 
 async function updateDealerDiscount(dealerCode) {
@@ -7925,7 +8064,7 @@ function selectProductForEdit(sku) {
   if (!product) return;
   state.forms.productSku = product.sku;
   state.forms.productName = product.product_name;
-  state.forms.productCategory = product.category || "PPF";
+  state.forms.productCategory = normalizeProductCategory(product.category, product);
   state.forms.productBrand = product.brand || "GLOC";
   state.forms.productColorName = product.color_name || product.color || colorNameFromText(product.product_name);
   state.forms.productColorHex = normalizeHexColor(product.color_hex, productCategoryMatches(product, "tint") ? "#111111" : "#f7fbf9");
@@ -7948,6 +8087,7 @@ function editableInventoryRows() {
   const query = normalize(state.filters.inventoryQuery);
   return state.inventory
     .filter((row) => {
+      if (!canAccessProductCategory(row.category, row)) return false;
       if (row.dealer_code !== editableInventoryOwnerCode()) return false;
       if (!query) return true;
       return [row.product_name, row.sku, row.dealer_name, row.dealer_code, row.stock_qty, row.location]
@@ -7962,6 +8102,8 @@ function visibleInventory(options = {}) {
   const scope = currentInventoryScope();
   return state.inventory
     .filter((row) => {
+      if (!canAccessProductCategory(row.category, row)) return false;
+      if (!categoryFilterMatches(row.category, state.filters.inventoryCategory, row)) return false;
       if (scope === "mine" && row.dealer_code !== state.session?.dealer_code) return false;
       if (scope === "headOffice" && row.dealer_code !== headOfficeCode) return false;
       if (scope === "dealerAll" && row.dealer_code === headOfficeCode) return false;
@@ -8031,6 +8173,7 @@ function filteredProducts() {
 function productManageRows() {
   const query = normalize(state.filters.productManageQuery || "");
   return state.products.filter((product) => {
+    if (!categoryFilterMatches(product.category, state.filters.productManageCategory, product)) return false;
     if (!query) return true;
     return productSearchFields(product).some((value) => normalize(value).includes(query));
   });
@@ -8070,6 +8213,8 @@ function orderDealerOptions() {
 function visibleOrders() {
   const query = normalize(state.filters.orderQuery);
   return state.orders.filter((order) => {
+    if (!canAccessProductCategory(orderProductCategory(order), order)) return false;
+    if (!categoryFilterMatches(orderProductCategory(order), state.filters.orderCategory, order)) return false;
     if (state.session?.role === "dealer" && order.dealer_code !== state.session.dealer_code) return false;
     if (state.session?.role === "admin" && state.filters.dealerCode !== "전체" && order.dealer_code !== state.filters.dealerCode) return false;
     if (state.filters.orderStatus !== "전체" && !hasOrderStatusMatch(order.status, state.filters.orderStatus)) return false;
@@ -8353,11 +8498,68 @@ function selectConsultationModel(modelName) {
   state.consultation.color = vehicle.default_color || state.consultation.color;
 }
 
+function normalizeProductCategory(value, product = {}) {
+  const category = String(value || "").trim().toUpperCase();
+  if (category === "TINTING" || category === "틴팅" || category.includes("TINT")) return "TINTING";
+  if (category === "DETAILING" || category === "디테일링" || category.includes("DETAIL")) return "DETAILING";
+  if (category === "PPF" || category.includes("PPF")) return "PPF";
+  const text = normalize([product.product_name, product.name, product.sku, product.product_code].filter(Boolean).join(" "));
+  if (text.includes("틴팅") || text.includes("tint") || /^tn[-_]/i.test(text)) return "TINTING";
+  if (text.includes("디테일링") || text.includes("detail") || /^dt[-_]/i.test(text)) return "DETAILING";
+  return "PPF";
+}
+
+function productCategoryLabel(category, product = {}) {
+  return productCategoryOptions.find((option) => option.value === normalizeProductCategory(category, product))?.label || "PPF";
+}
+
+function dealerCategoryPermissions(account = state.session) {
+  if (!account || account.role === "admin") return { ppf: true, tinting: true, detailing: true };
+  const nested = account.category_permissions || account.categoryPermissions || {};
+  const read = (snakeKey, camelKey, nestedKey, fallback) => {
+    const value = account[snakeKey] ?? account[camelKey] ?? nested[nestedKey];
+    return value === undefined || value === null || value === "" ? fallback : toBool(value);
+  };
+  return {
+    ppf: read("can_access_ppf", "canAccessPPF", "ppf", true),
+    tinting: read("can_access_tinting", "canAccessTinting", "tinting", true),
+    detailing: read("can_access_detailing", "canAccessDetailing", "detailing", false)
+  };
+}
+
+function dealerPermissionLabels(account) {
+  const permissions = dealerCategoryPermissions(account);
+  return productCategoryOptions.filter((option) => permissions[option.permissionKey]).map((option) => option.label);
+}
+
+function canAccessProductCategory(category, product = {}) {
+  if (state.session?.role === "admin") return true;
+  const normalized = normalizeProductCategory(category, product);
+  const option = productCategoryOptions.find((item) => item.value === normalized);
+  return Boolean(option && dealerCategoryPermissions()[option.permissionKey]);
+}
+
+function availableCategoryOptions() {
+  if (state.session?.role === "admin") return productCategoryOptions;
+  const permissions = dealerCategoryPermissions();
+  return productCategoryOptions.filter((option) => permissions[option.permissionKey]);
+}
+
+function categoryFilterMatches(category, selected, product = {}) {
+  return !selected || selected === "전체" || normalizeProductCategory(category, product) === selected;
+}
+
+function orderProductCategory(order) {
+  if (order?.product_category) return normalizeProductCategory(order.product_category, order);
+  const product = state.products.find((item) => item.sku === order?.sku);
+  return normalizeProductCategory(product?.category, product || order || {});
+}
+
 function productCategoryMatches(product, key) {
-  const category = normalize(product?.category || "");
-  const name = normalize(product?.product_name || product?.name || "");
-  if (key === "tint") return category.includes("틴팅") || category.includes("tint") || name.includes("틴팅");
-  if (key === "ppf") return category.includes("ppf") || name.includes("ppf");
+  const category = normalizeProductCategory(product?.category, product);
+  if (key === "tint") return category === "TINTING";
+  if (key === "ppf") return category === "PPF";
+  if (key === "detailing") return category === "DETAILING";
   return false;
 }
 
@@ -9133,7 +9335,8 @@ function editableInventoryOwnerCode() {
 function activeProducts() {
   return state.products.filter((product) => product.useYn === undefined && product.use_yn === undefined
     ? toBool(product.is_active)
-    : toBool(product.useYn ?? product.use_yn));
+    : toBool(product.useYn ?? product.use_yn))
+    .filter((product) => canAccessProductCategory(product.category, product));
 }
 
 function dealerAccounts() {
@@ -9235,12 +9438,17 @@ function inventoryOwnerAccounts() {
 }
 
 function accountToSession(account) {
+  const permissions = dealerCategoryPermissions(account);
   return {
     login_id: account.login_id,
     dealer_code: account.dealer_code,
     dealer_name: account.dealer_name,
     role: account.role,
     dealer_discount_rate: account.dealer_discount_rate || 0,
+    can_access_ppf: permissions.ppf,
+    can_access_tinting: permissions.tinting,
+    can_access_detailing: permissions.detailing,
+    category_permissions: permissions,
     is_first_login: account.is_first_login,
     contact_name: account.contact_name || "",
     phone: account.phone || "",
@@ -9331,6 +9539,7 @@ function adjustLocalInventory(dealerCode, sku, deltaQty, options = {}) {
 function upsertProduct(product) {
   const normalized = {
     ...product,
+    category: normalizeProductCategory(product.category, product),
     retail_price: productRetailPrice(product),
     purchase_price: productPurchasePrice(product),
     color: product.color || product.color_name || colorNameFromText(product.product_name),
@@ -9407,6 +9616,10 @@ function syncAccountDealerNameFromCode() {
   const looksGenerated = /^[A-Z0-9-]+\s대리점$/.test(currentName);
   if (existing?.dealer_name) {
     state.forms.accountDealerName = existing.dealer_name;
+    const permissions = dealerCategoryPermissions(existing);
+    state.forms.accountCanAccessPpf = permissions.ppf;
+    state.forms.accountCanAccessTinting = permissions.tinting;
+    state.forms.accountCanAccessDetailing = permissions.detailing;
     return;
   }
   if (!currentName || looksGenerated) {

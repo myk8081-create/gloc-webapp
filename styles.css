@@ -2468,6 +2468,51 @@ h3 {
   gap: 7px;
 }
 
+.permission-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.permission-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.permission-card input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  flex: 0 0 auto;
+}
+
+.permission-card span {
+  line-height: 1.35;
+}
+
+.dealer-permission-editor {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.category-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
 .order-actions button {
   min-height: 32px;
   padding: 0 11px;
@@ -2877,6 +2922,10 @@ h3 {
 }
 
 @media (max-width: 759px) {
+  .permission-grid {
+    grid-template-columns: 1fr;
+  }
+
   .app-shell {
     min-height: 100dvh;
     padding-bottom: calc(190px + env(safe-area-inset-bottom));

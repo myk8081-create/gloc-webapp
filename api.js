@@ -198,6 +198,15 @@
     });
   }
 
+  async function updateDealerCategoryPermissions({ dealerCode, canAccessPpf, canAccessTinting, canAccessDetailing }) {
+    return request("updateDealerCategoryPermissions", {
+      dealer_code: dealerCode,
+      can_access_ppf: canAccessPpf,
+      can_access_tinting: canAccessTinting,
+      can_access_detailing: canAccessDetailing
+    });
+  }
+
   async function updateDealerProfile(profile) {
     return request("updateDealerProfile", profile);
   }
@@ -278,6 +287,7 @@
     saveVehicle,
     verifyCertificate,
     updateDealerDiscount,
+    updateDealerCategoryPermissions,
     updateDealerProfile,
     createDealerAccount,
     resetDealerPassword,
