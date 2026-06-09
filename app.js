@@ -3578,9 +3578,11 @@ function renderAccountRow(account) {
   const permissionMeta = account.role === "dealer" ? ` · 권한 ${dealerPermissionLabels(account).join(" / ") || "없음"}` : "";
   return `
     <article class="account-row">
-      <div>
-        <span class="badge ${toBool(account.is_active) ? "" : "danger"}">${toBool(account.is_active) ? "사용중" : "중지"}</span>
-        <h3>${escapeHtml(account.dealer_name)}</h3>
+      <div class="account-main">
+        <div class="account-summary">
+          <span class="badge ${toBool(account.is_active) ? "" : "danger"}">${toBool(account.is_active) ? "사용중" : "중지"}</span>
+          <h3>${escapeHtml(account.dealer_name)}</h3>
+        </div>
         <p class="product-meta">${roleLabel(account.role)} · ${escapeHtml(account.login_id)} · ${escapeHtml(account.dealer_code)}${discountMeta}${permissionMeta} · 최초로그인 ${toBool(account.is_first_login) ? "필요" : "완료"}${isSelf ? " · 현재 로그인 계정" : ""}${protectedAdmin ? " · 기본 관리자 보호" : ""}${dealerTopManager ? " · 최상위 관리자" : ""}</p>
         ${isAdminSession && account.role === "dealer" && dealerTopManager ? renderDealerPermissionEditor(account) : ""}
       </div>
@@ -3593,7 +3595,10 @@ function renderPermissionCheckbox(id, label, checked, dataAttributes = "") {
   return `
     <label class="permission-card">
       <input id="${escapeAttr(id)}" type="checkbox" ${checked ? "checked" : ""} ${dataAttributes} />
-      <span>${escapeHtml(label)} 재고 확인 / 주문 가능</span>
+      <span class="permission-card-copy">
+        <strong>${escapeHtml(label)}</strong>
+        <small>재고 확인 및 주문 가능</small>
+      </span>
     </label>
   `;
 }
@@ -3603,12 +3608,18 @@ function renderDealerPermissionEditor(account) {
   const code = escapeAttr(account.dealer_code);
   return `
     <div class="dealer-permission-editor">
+      <div class="dealer-permission-head">
+        <div>
+          <strong>카테고리 접근 권한</strong>
+          <small>같은 대리점 코드의 모든 담당자에게 공통 적용됩니다.</small>
+        </div>
+        <button type="button" class="secondary-button small-button" data-action="saveDealerCategoryPermissions" data-dealer-code="${code}">권한 저장</button>
+      </div>
       <div class="permission-grid">
         ${renderPermissionCheckbox(`permissionPpf_${code}`, "PPF", permissions.ppf, `data-dealer-permission="ppf" data-dealer-code="${code}"`)}
         ${renderPermissionCheckbox(`permissionTinting_${code}`, "틴팅", permissions.tinting, `data-dealer-permission="tinting" data-dealer-code="${code}"`)}
         ${renderPermissionCheckbox(`permissionDetailing_${code}`, "디테일링", permissions.detailing, `data-dealer-permission="detailing" data-dealer-code="${code}"`)}
       </div>
-      <button type="button" class="secondary-button small-button" data-action="saveDealerCategoryPermissions" data-dealer-code="${code}">카테고리 권한 저장</button>
     </div>
   `;
 }

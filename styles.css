@@ -2394,6 +2394,27 @@ h3 {
   background: var(--panel);
 }
 
+.account-row {
+  gap: 14px;
+  padding: 16px;
+}
+
+.account-main {
+  min-width: 0;
+}
+
+.account-summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.account-summary h3,
+.account-row .account-summary h3 {
+  margin: 0;
+}
+
 .certificate-list {
   display: grid;
   gap: 10px;
@@ -2468,9 +2489,14 @@ h3 {
   gap: 7px;
 }
 
+.account-actions {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .permission-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
   margin-top: 8px;
 }
@@ -2489,6 +2515,11 @@ h3 {
   cursor: pointer;
 }
 
+.permission-card:hover {
+  border-color: var(--line-strong);
+  background: rgba(214, 173, 85, 0.08);
+}
+
 .permission-card input {
   width: 18px;
   height: 18px;
@@ -2496,14 +2527,54 @@ h3 {
   flex: 0 0 auto;
 }
 
-.permission-card span {
-  line-height: 1.35;
+.permission-card-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  line-height: 1.25;
+}
+
+.permission-card-copy strong {
+  font-size: 13px;
+}
+
+.permission-card-copy small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .dealer-permission-editor {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 17, 16, 0.34);
+}
+
+.dealer-permission-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dealer-permission-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.dealer-permission-head strong {
+  font-size: 13px;
+}
+
+.dealer-permission-head small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .category-filter {
@@ -2845,7 +2916,7 @@ h3 {
   }
 
   .work-layout {
-    grid-template-columns: 330px minmax(0, 1fr);
+    grid-template-columns: 360px minmax(0, 1fr);
   }
 
   .consultation-shell {
@@ -2893,11 +2964,6 @@ h3 {
     grid-column: 1 / -1;
   }
 
-  .account-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-  }
-
   .history-panel {
     grid-column: 1 / -1;
   }
@@ -2924,6 +2990,15 @@ h3 {
 @media (max-width: 759px) {
   .permission-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dealer-permission-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dealer-permission-head .secondary-button {
+    width: 100%;
   }
 
   .app-shell {
