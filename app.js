@@ -14,6 +14,12 @@ const productCategoryOptions = [
   { value: "TINTING", label: "틴팅", permissionKey: "tinting" },
   { value: "DETAILING", label: "디테일링", permissionKey: "detailing" }
 ];
+const businessCategoryStorageKey = "gloc:selectedBusinessCategory";
+const reservationUsageAreaOptions = {
+  PPF: ["전체 PPF", "프론트 패키지", "본넷", "범퍼", "휀더", "사이드미러", "도어컵", "도어엣지", "생활보호", "기타"],
+  TINTING: ["전면 유리", "1열 측면", "2열 측면", "후면 유리", "루프 유리", "기타"],
+  DETAILING: ["외장", "내장", "유리", "휠", "타이어", "코팅", "세차", "기타"]
+};
 const certificateRandomChars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const certificateNumberPattern = /^GLOC-[A-Z0-9]{4}-\d{8}-[A-Z0-9]{6}-[A-Z]{1}$/;
 const koreaPostLabelPreviewTemplate = "./templates/korea-post-label-preview.png";
@@ -629,6 +635,7 @@ const mockProducts = createMockProducts();
 
 const state = {
   screen: initialScreenFromUrl(),
+  selectedBusinessCategory: initialBusinessCategory(),
   dataMode: window.FilmStockApi?.isEnabled() ? "appsScript" : "mock",
   session: null,
   accounts: createMockAccounts(),
@@ -744,6 +751,10 @@ const state = {
     reservationVehicleModel: "",
     reservationDate: dateInputValue(),
     reservationQty: 1,
+    reservationItems: [],
+    reservationDraftSku: "",
+    reservationDraftUsageArea: "",
+    reservationDraftQty: 1,
     reservationMemo: "",
     verifySerial: "",
     labelSize: "post-overlay-150x100",
@@ -782,6 +793,7 @@ const state = {
     resetPassword: ""
   },
   tempPasswords: {},
+  productSearches: {},
   lastKakaoText: "",
   push: {
     supported: false,
@@ -813,6 +825,18 @@ function initialScreenFromUrl() {
     : "login";
 }
 
+function initialBusinessCategory() {
+  const requested = new URLSearchParams(window.location.search).get("category");
+  if (requested === "PPF" || requested === "TINTING" || requested === "DETAILING" || requested === "전체") return requested;
+  try {
+    const saved = window.localStorage.getItem(businessCategoryStorageKey);
+    if (saved === "PPF" || saved === "TINTING" || saved === "DETAILING" || saved === "전체") return saved;
+  } catch (error) {
+    // Local file previews or privacy modes can disable localStorage.
+  }
+  return "전체";
+}
+
 function requestedScreenFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("screen");
@@ -834,9 +858,11 @@ function initFromUrl() {
 }
 
 function render() {
+  normalizeSelectedBusinessCategory();
   app.innerHTML = `
     <div class="app-shell ${state.session?.role === "admin" ? "admin-shell" : ""}">
       ${renderTopbar()}
+      ${renderBusinessCategorySelector()}
       ${renderPublicVerify()}
       ${renderLogin()}
       ${renderPasswordChange()}
@@ -863,6 +889,25 @@ function render() {
   `;
   bindEvents();
   requestAnimationFrame(initConsultation3dViewer);
+}
+
+function renderBusinessCategorySelector() {
+  if (!state.session || state.screen === "passwordChange" || state.screen === "onboarding") return "";
+  const options = [{ value: "전체", label: "전체" }, ...availableCategoryOptions()];
+  return `
+    <section class="business-category-bar" aria-label="사업부 선택">
+      <div class="business-category-inner">
+        <span class="business-category-label">사업부</span>
+        <div class="business-category-tabs">
+          ${options.map((option) => `
+            <button type="button" class="${state.selectedBusinessCategory === option.value ? "active" : ""}" data-business-category="${escapeAttr(option.value)}">
+              ${escapeHtml(option.label)}
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    </section>
+  `;
 }
 
 function renderTopbar() {
@@ -2346,10 +2391,8 @@ function renderOrderCreate() {
       <section class="work-layout">
         <div class="panel list-panel">
           <h3>제품 선택</h3>
-          <input class="search-input" id="inventoryQuery" type="search" placeholder="제품명, SKU, 컬러 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
-          <div class="product-list" id="orderProductList">
-            ${filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`}
-          </div>
+          <p class="product-meta">검색창을 누르면 현재 사업부의 전체 제품이 표시됩니다.</p>
+          ${renderSearchableProductSelect("orderProduct", state.selectedSku, activeProducts())}
         </div>
 
         <div class="panel form-panel">
@@ -2393,7 +2436,8 @@ function renderOrderCreate() {
 
 function renderReservations() {
   if (state.session?.role !== "dealer") return "";
-  const product = selectedProduct();
+  ensureReservationDraft();
+  const items = state.forms.reservationItems;
   return `
     <main class="screen ${state.screen === "reservations" ? "active" : ""}" data-screen="reservations">
       <section class="page-head">
@@ -2406,20 +2450,22 @@ function renderReservations() {
         </div>
       </section>
 
-      <section class="work-layout">
-        <div class="panel list-panel">
-          <h3>예약 제품 선택</h3>
-          <input class="search-input" id="inventoryQuery" type="search" placeholder="제품명, SKU, 컬러 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
-          <div class="product-list" id="reservationProductList">
-            ${filteredProducts().slice(0, 12).map(renderProductRow).join("") || `<div class="empty">판매중 제품이 없습니다.</div>`}
+      <section class="panel form-panel reservation-compose-panel">
+          <div class="panel-head-row">
+            <div>
+              <h3>예약 제품</h3>
+              <p class="product-meta">같은 제품도 시공 부위별로 여러 번 추가할 수 있습니다.</p>
+            </div>
+            <span class="badge">${items.length}개 제품</span>
           </div>
-        </div>
+          <div class="reservation-item-composer">
+            ${renderSearchableProductSelect("reservationDraft", state.forms.reservationDraftSku, activeProducts())}
+            ${renderReservationDraftFields()}
+            <button type="button" class="secondary-button" data-action="addReservationItem">제품 추가</button>
+          </div>
+          ${renderReservationItemsTable(items)}
+          ${renderReservationSummary(items)}
 
-        <div class="panel form-panel">
-          <h3>예약 입력</h3>
-          <div id="reservationStockPanel">
-            ${renderReservationStockPanel(product)}
-          </div>
           <div class="form-grid">
             <label class="field">
               <span>고객명</span>
@@ -2442,16 +2488,11 @@ function renderReservations() {
               <input id="reservationDate" type="date" value="${escapeAttr(state.forms.reservationDate || dateInputValue())}" />
             </label>
             <label class="field">
-              <span>예약 수량</span>
-              <input id="reservationQty" type="number" min="1" inputmode="numeric" value="${escapeAttr(state.forms.reservationQty)}" />
-            </label>
-            <label class="field">
               <span>메모</span>
               <textarea id="reservationMemo" placeholder="시공일, 차량정보 등">${escapeHtml(state.forms.reservationMemo)}</textarea>
             </label>
             <button type="button" class="primary-button" data-action="createReservation">예약 저장</button>
           </div>
-        </div>
       </section>
 
       <section class="panel list-panel">
@@ -3408,6 +3449,141 @@ function renderProductRow(product) {
   `;
 }
 
+function productSearchState(id) {
+  if (!state.productSearches[id]) {
+    state.productSearches[id] = { query: "", open: false, activeIndex: 0 };
+  }
+  return state.productSearches[id];
+}
+
+function searchableProducts(products, query) {
+  const normalizedQuery = normalize(query);
+  if (!normalizedQuery) return products;
+  return products.filter((product) => productSearchFields(product).some((value) => normalize(value).includes(normalizedQuery)));
+}
+
+function renderSearchableProductSelect(id, selectedSku, products) {
+  const search = productSearchState(id);
+  const selected = state.products.find((product) => product.sku === selectedSku);
+  return `
+    <div class="searchable-product-select ${search.open ? "open" : ""}" data-product-search-root="${escapeAttr(id)}">
+      <label class="field">
+        <span>제품 검색</span>
+        <input
+          class="search-input"
+          type="search"
+          autocomplete="off"
+          placeholder="제품명, SKU, 브랜드, 컬러 검색"
+          value="${escapeAttr(search.query)}"
+          data-product-search-input="${escapeAttr(id)}"
+          aria-expanded="${search.open ? "true" : "false"}"
+        />
+      </label>
+      ${selected ? `
+        <div class="selected-product-compact">
+          <span class="color-dot" style="background:${escapeAttr(validHexColor(selected.color_hex, colorHex(selected.color || selected.product_name)))}"></span>
+          <span><strong>${escapeHtml(selected.product_name)}</strong><small>${escapeHtml(selected.sku)} · ${escapeHtml(productBrandText(selected))} · ${escapeHtml(selected.color_name || selected.color || productCategoryLabel(selected.category, selected))}</small></span>
+        </div>
+      ` : ""}
+      <div class="searchable-product-menu" data-product-search-menu="${escapeAttr(id)}">
+        ${renderSearchableProductOptions(id, products)}
+      </div>
+    </div>
+  `;
+}
+
+function renderSearchableProductOptions(id, products = activeProducts()) {
+  const search = productSearchState(id);
+  const results = searchableProducts(products, search.query).slice(0, 40);
+  if (!results.length) return `<div class="empty">검색 결과가 없습니다.</div>`;
+  return results.map((product, index) => {
+    const inventory = dealerInventoryForProduct(product.sku);
+    return `
+      <button type="button" class="search-product-option ${index === search.activeIndex ? "active" : ""}" data-product-search-select="${escapeAttr(id)}" data-product-search-sku="${escapeAttr(product.sku)}">
+        <span class="color-dot" style="background:${escapeAttr(validHexColor(product.color_hex, colorHex(product.color || product.product_name)))}"></span>
+        <span>
+          <strong>${escapeHtml(product.product_name)}</strong>
+          <small>${escapeHtml(product.sku)} · ${escapeHtml(productBrandText(product))} · ${escapeHtml(product.color_name || product.color || productCategoryLabel(product.category, product))}</small>
+        </span>
+        <span class="stock-mini"><strong>${roll(Number(inventory?.stock_qty || 0))}</strong><span>재고</span></span>
+      </button>
+    `;
+  }).join("");
+}
+
+function ensureReservationDraft() {
+  if (!Array.isArray(state.forms.reservationItems)) state.forms.reservationItems = [];
+  if (!activeProducts().some((product) => product.sku === state.forms.reservationDraftSku)) {
+    state.forms.reservationDraftSku = activeProducts()[0]?.sku || "";
+  }
+  const product = state.products.find((item) => item.sku === state.forms.reservationDraftSku);
+  const areas = reservationAreasForProduct(product);
+  if (!areas.includes(state.forms.reservationDraftUsageArea)) state.forms.reservationDraftUsageArea = areas[0] || "기타";
+}
+
+function reservationAreasForProduct(product) {
+  return reservationUsageAreaOptions[normalizeProductCategory(product?.category, product)] || ["기타"];
+}
+
+function renderReservationDraftFields() {
+  const product = state.products.find((item) => item.sku === state.forms.reservationDraftSku);
+  const areas = reservationAreasForProduct(product);
+  return `
+    <div class="reservation-draft-fields">
+      <label class="field">
+        <span>시공 부위</span>
+        <select id="reservationDraftUsageArea">
+          ${areas.map((area) => `<option value="${escapeAttr(area)}" ${area === state.forms.reservationDraftUsageArea ? "selected" : ""}>${escapeHtml(area)}</option>`).join("")}
+        </select>
+      </label>
+      <label class="field">
+        <span>예약 수량</span>
+        <input id="reservationDraftQty" type="number" min="1" inputmode="numeric" value="${escapeAttr(state.forms.reservationDraftQty)}" />
+      </label>
+    </div>
+  `;
+}
+
+function renderReservationItemsTable(items) {
+  if (!items.length) return `<div class="empty reservation-items-empty">제품을 검색한 뒤 시공 부위와 수량을 선택해 추가하세요.</div>`;
+  return `
+    <div class="table-wrap reservation-items-wrap">
+      <table class="reservation-items-table">
+        <thead><tr><th>부위</th><th>제품명</th><th>제품코드</th><th>예약수량</th><th>현재재고</th><th>예약가능</th><th>예약후가능</th><th>삭제</th></tr></thead>
+        <tbody>
+          ${items.map((item) => {
+            const summary = reservationItemStockSummary(item, items);
+            return `
+              <tr class="${summary.afterAvailable < 0 ? "is-low" : ""}">
+                <td>${escapeHtml(item.usage_area)}</td>
+                <td><strong>${escapeHtml(item.product_name)}</strong><div class="product-meta">${escapeHtml(productCategoryLabel(item.category, item))}</div></td>
+                <td>${escapeHtml(item.sku)}</td>
+                <td>${roll(Number(item.qty || 0))}</td>
+                <td>${roll(summary.currentStock)}</td>
+                <td>${roll(summary.availableStock)}</td>
+                <td><strong>${roll(summary.afterAvailable)}</strong></td>
+                <td><button type="button" class="icon-delete-button" data-remove-reservation-item="${escapeAttr(item.id)}" title="예약 제품 삭제">삭제</button></td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderReservationSummary(items) {
+  const totalQty = items.reduce((total, item) => total + Number(item.qty || 0), 0);
+  const shortages = new Set(items.filter((item) => reservationItemStockSummary(item, items).afterAvailable < 0).map((item) => item.sku)).size;
+  return `
+    <div class="reservation-summary">
+      <div><span>선택 제품 수</span><strong>${items.length}개</strong></div>
+      <div><span>총 예약 수량</span><strong>${roll(totalQty)}</strong></div>
+      <div class="${shortages ? "danger-box" : ""}"><span>재고 부족 제품</span><strong>${shortages}개</strong></div>
+    </div>
+  `;
+}
+
 function renderProductManageRow(product) {
   return `
     <article class="product-manage-row">
@@ -3498,6 +3674,7 @@ function renderOrderCard(order) {
 }
 
 function renderReservationCard(reservation) {
+  const items = reservationItemsFor(reservation);
   const canComplete = state.session?.role === "dealer" &&
     reservation.dealer_code === state.session.dealer_code &&
     reservation.status !== "시공완료";
@@ -3512,8 +3689,11 @@ function renderReservationCard(reservation) {
     <article class="order-card">
       <div>
         <span class="badge ${tone}">${escapeHtml(reservation.status || "예약")}</span>
-        <h3>${escapeHtml(reservation.product_name)}</h3>
-        <p class="product-meta">${escapeHtml(reservation.reservation_id || "")} · ${escapeHtml(reservation.sku)}</p>
+        <h3>${escapeHtml(items.length === 1 ? items[0].product_name : `${items[0]?.product_name || reservation.product_name} 외 ${Math.max(items.length - 1, 0)}개`)}</h3>
+        <p class="product-meta">${escapeHtml(reservation.reservation_id || "")} · 제품 ${items.length}개 · 총 ${roll(items.reduce((total, item) => total + Number(item.qty || 0), 0))}</p>
+        <div class="reservation-card-items">
+          ${items.map((item) => `<span><strong>${escapeHtml(item.usage_area)}</strong> ${escapeHtml(item.product_name)} · ${roll(item.qty)}</span>`).join("")}
+        </div>
         <p class="product-meta">${escapeHtml(reservation.customer_name || "고객명 미입력")} · ${escapeHtml(reservation.customer_phone || "연락처 미입력")}</p>
         <p class="product-meta">차량: ${escapeHtml(reservation.vehicle_number || "미입력")} · ${escapeHtml(reservation.vehicle_model || "모델 미입력")}</p>
         <p class="product-meta">예약일: ${escapeHtml(reservation.reservation_date || "미지정")}</p>
@@ -3625,13 +3805,7 @@ function renderDealerPermissionEditor(account) {
 }
 
 function renderCategoryFilter(filterKey) {
-  const selected = state.filters[filterKey] || "전체";
-  const options = [{ value: "전체", label: "전체" }, ...availableCategoryOptions()];
-  return `
-    <div class="category-filter" aria-label="상품 카테고리 필터">
-      ${options.map((option) => `<button type="button" class="chip ${selected === option.value ? "active" : ""}" data-category-filter="${escapeAttr(filterKey)}" data-category-value="${escapeAttr(option.value)}">${escapeHtml(option.label)}</button>`).join("")}
-    </div>
-  `;
+  return "";
 }
 
 function renderCommonLinkCard(url) {
@@ -3718,6 +3892,10 @@ function renderBottomNav() {
 }
 
 function bindEvents() {
+  document.querySelectorAll("[data-business-category]").forEach((button) => {
+    button.addEventListener("click", () => setBusinessCategory(button.dataset.businessCategory));
+  });
+
   document.querySelectorAll("[data-login-role]").forEach((button) => {
     button.addEventListener("click", () => {
       state.forms.loginRole = button.dataset.loginRole;
@@ -3781,6 +3959,7 @@ function bindEvents() {
     state.forms.reservationQty = Number(value || 0);
     refreshReservationStockPanel();
   });
+  bindInput("reservationDraftQty", (value) => (state.forms.reservationDraftQty = Number(value || 0)));
   bindInput("reservationMemo", (value) => (state.forms.reservationMemo = value));
   bindInput("consultationCustomerName", (value) => (state.consultation.customerName = value));
   bindPhoneInput("consultationCustomerPhone", (value) => (state.consultation.customerPhone = value));
@@ -3873,6 +4052,10 @@ function bindEvents() {
   document.querySelector("#productCategory")?.addEventListener("change", (event) => {
     state.forms.productCategory = event.target.value;
     render();
+  });
+
+  document.querySelector("#reservationDraftUsageArea")?.addEventListener("change", (event) => {
+    state.forms.reservationDraftUsageArea = event.target.value;
   });
 
   document.querySelector("#productFinishType")?.addEventListener("change", (event) => {
@@ -4082,6 +4265,7 @@ function bindEvents() {
   });
 
   bindDynamicListEvents(document);
+  bindSearchableProductSelects(document);
 
   document.querySelectorAll("[data-nav]").forEach((button) => {
     button.addEventListener("click", () => navigate(button.dataset.nav));
@@ -4132,6 +4316,13 @@ function bindPhoneInput(id, update) {
 }
 
 function bindDynamicListEvents(root) {
+  root.querySelectorAll("[data-remove-reservation-item]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.forms.reservationItems = state.forms.reservationItems.filter((item) => item.id !== button.dataset.removeReservationItem);
+      render();
+    });
+  });
+
   root.querySelectorAll("[data-sku]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedSku = button.dataset.sku;
@@ -4326,6 +4517,80 @@ function bindDynamicListEvents(root) {
   });
 }
 
+function bindSearchableProductSelects(root = document) {
+  root.querySelectorAll("[data-product-search-input]").forEach((input) => {
+    const id = input.dataset.productSearchInput;
+    const search = productSearchState(id);
+    let composing = false;
+    input.addEventListener("focus", () => {
+      search.open = true;
+      refreshProductSearchMenu(id);
+    });
+    input.addEventListener("compositionstart", () => {
+      composing = true;
+    });
+    input.addEventListener("compositionend", (event) => {
+      composing = false;
+      search.query = event.target.value;
+      search.activeIndex = 0;
+      refreshProductSearchMenu(id);
+    });
+    input.addEventListener("input", (event) => {
+      search.query = event.target.value;
+      search.open = true;
+      search.activeIndex = 0;
+      if (!composing && !event.isComposing) refreshProductSearchMenu(id);
+    });
+    input.addEventListener("keydown", (event) => {
+      const results = searchableProducts(activeProducts(), search.query).slice(0, 40);
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        search.open = true;
+        search.activeIndex = Math.min(search.activeIndex + 1, Math.max(results.length - 1, 0));
+        refreshProductSearchMenu(id);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        search.activeIndex = Math.max(search.activeIndex - 1, 0);
+        refreshProductSearchMenu(id);
+      } else if (event.key === "Enter" && results[search.activeIndex]) {
+        event.preventDefault();
+        selectSearchableProduct(id, results[search.activeIndex].sku);
+      } else if (event.key === "Escape") {
+        search.open = false;
+        input.closest("[data-product-search-root]")?.classList.remove("open");
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-product-search-select]").forEach((button) => {
+    button.addEventListener("click", () => selectSearchableProduct(button.dataset.productSearchSelect, button.dataset.productSearchSku));
+  });
+}
+
+function refreshProductSearchMenu(id) {
+  const root = document.querySelector(`[data-product-search-root="${cssEscape(id)}"]`);
+  const menu = document.querySelector(`[data-product-search-menu="${cssEscape(id)}"]`);
+  if (!root || !menu) return;
+  root.classList.toggle("open", productSearchState(id).open);
+  menu.innerHTML = renderSearchableProductOptions(id);
+  bindSearchableProductSelects(menu);
+  menu.querySelector(".search-product-option.active")?.scrollIntoView({ block: "nearest" });
+}
+
+function selectSearchableProduct(id, sku) {
+  if (id === "orderProduct") state.selectedSku = sku;
+  if (id === "reservationDraft") {
+    state.forms.reservationDraftSku = sku;
+    const product = state.products.find((item) => item.sku === sku);
+    state.forms.reservationDraftUsageArea = reservationAreasForProduct(product)[0] || "기타";
+  }
+  const search = productSearchState(id);
+  search.open = false;
+  search.query = "";
+  search.activeIndex = 0;
+  render();
+}
+
 async function runWithButtonBusy(button, task) {
   if (button.dataset.busy === "true") return;
   const originalText = button.textContent;
@@ -4428,6 +4693,7 @@ function replaceHtml(selector, html) {
   target.innerHTML = html;
   bindDynamicListEvents(target);
   bindConsultationProductSearchInputs(target);
+  bindSearchableProductSelects(target);
 }
 
 function replaceElementHtml(selector, html) {
@@ -4440,6 +4706,7 @@ function replaceElementHtml(selector, html) {
   target.replaceWith(next);
   bindDynamicListEvents(next);
   bindConsultationProductSearchInputs(next);
+  bindSearchableProductSelects(next);
 }
 
 function refreshProductManageRows() {
@@ -5838,6 +6105,7 @@ async function handleAction(action, button) {
   if (action === "clearTestOrders") return clearTestOrders();
   if (action === "receiveOrder") return receiveOrder(button.dataset.orderId);
   if (action === "createReservation") return createReservation();
+  if (action === "addReservationItem") return addReservationItem();
   if (action === "completeReservation") return completeReservation(button.dataset.reservationId);
   if (action === "printCertificate") return printCertificate(button.dataset.certificateId);
   if (action === "saveConsultation") return saveConsultation();
@@ -5915,6 +6183,7 @@ function applyRemoteSession(data) {
   if (Array.isArray(data.vehicles)) state.vehicles = data.vehicles.length ? data.vehicles : createMockVehicles();
   if (Array.isArray(data.consultations)) state.consultations = data.consultations;
   applyLabelSettings(data.label_settings || data.labelSettings);
+  normalizeSelectedBusinessCategory();
   syncAppBadgeFromOrders();
 }
 
@@ -7557,19 +7826,96 @@ async function createSale() {
   showToast("판매완료 처리했습니다. 재고에서 차감되었습니다.");
 }
 
-async function createReservation() {
-  const product = selectedProduct();
-  const qty = Number(state.forms.reservationQty || 0);
-  if (state.session?.role !== "dealer") throw new Error("대리점 계정만 예약 등록할 수 있습니다.");
+function addReservationItem() {
+  ensureReservationDraft();
+  const product = state.products.find((item) => item.sku === state.forms.reservationDraftSku);
+  const qty = Number(state.forms.reservationDraftQty || 0);
   if (!product) throw new Error("예약 제품을 선택해 주세요.");
-  if (!qty || qty < 1) throw new Error("예약 수량을 1개 이상 입력해 주세요.");
-  const summary = reservationStockSummary(product.sku);
-  const status = qty > summary.availableStock ? "재고부족" : "예약";
+  if (!canAccessProductCategory(product.category, product)) throw new Error("해당 사업부 제품을 예약할 권한이 없습니다.");
+  if (qty < 1) throw new Error("예약 수량을 1개 이상 입력해 주세요.");
+  state.forms.reservationItems.push({
+    id: `RITEM-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    product_id: product.sku,
+    product_name: product.product_name,
+    sku: product.sku,
+    category: normalizeProductCategory(product.category, product),
+    usage_area: state.forms.reservationDraftUsageArea || reservationAreasForProduct(product)[0] || "기타",
+    qty
+  });
+  state.forms.reservationDraftQty = 1;
+  render();
+  showToast("예약 제품을 추가했습니다.");
+}
+
+function reservationItemsFor(reservation) {
+  const raw = reservation?.reservation_items ?? reservation?.reservationItems;
+  if (Array.isArray(raw)) return raw.map(normalizeReservationItem).filter(Boolean);
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(normalizeReservationItem).filter(Boolean);
+    } catch (error) {
+      // Fall through to the legacy single-product columns.
+    }
+  }
+  if (!reservation?.sku) return [];
+  return [normalizeReservationItem({
+    id: `${reservation.reservation_id || "legacy"}-${reservation.sku}`,
+    product_id: reservation.sku,
+    product_name: reservation.product_name,
+    sku: reservation.sku,
+    qty: reservation.qty,
+    usage_area: reservation.usage_area || "기타",
+    category: reservation.product_category
+  })].filter(Boolean);
+}
+
+function normalizeReservationItem(item) {
+  if (!item?.sku) return null;
+  const product = state.products.find((productRow) => productRow.sku === item.sku) || item;
+  return {
+    id: item.id || `RITEM-${item.sku}-${Math.random().toString(36).slice(2, 7)}`,
+    product_id: item.product_id || item.productId || item.sku,
+    product_name: item.product_name || item.productName || product.product_name || item.sku,
+    sku: item.sku,
+    category: normalizeProductCategory(item.category || product.category, product),
+    usage_area: item.usage_area || item.usageArea || "기타",
+    qty: Number(item.qty || item.quantity || 0)
+  };
+}
+
+function groupedReservationQuantities(items) {
+  return items.reduce((map, item) => {
+    map.set(item.sku, (map.get(item.sku) || 0) + Number(item.qty || 0));
+    return map;
+  }, new Map());
+}
+
+function reservationItemStockSummary(item, items = state.forms.reservationItems) {
+  const summary = reservationStockSummary(item.sku);
+  const totalDraftQty = groupedReservationQuantities(items).get(item.sku) || 0;
+  return {
+    ...summary,
+    draftQty: totalDraftQty,
+    afterAvailable: summary.availableStock - totalDraftQty
+  };
+}
+
+async function createReservation() {
+  const items = state.forms.reservationItems.map(normalizeReservationItem).filter(Boolean);
+  if (state.session?.role !== "dealer") throw new Error("대리점 계정만 예약 등록할 수 있습니다.");
+  if (!items.length) throw new Error("예약 제품을 1개 이상 추가해 주세요.");
+  const invalidItem = items.find((item) => !item.qty || item.qty < 1);
+  if (invalidItem) throw new Error("모든 예약 제품 수량을 1개 이상 입력해 주세요.");
+  const status = items.some((item) => reservationItemStockSummary(item, items).afterAvailable < 0) ? "재고부족" : "예약";
+  const firstItem = items[0];
+  const totalQty = items.reduce((total, item) => total + Number(item.qty || 0), 0);
 
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.createReservation({
-      sku: product.sku,
-      qty,
+      sku: firstItem.sku,
+      qty: totalQty,
+      reservation_items: items,
       customer_name: state.forms.reservationCustomerName,
       customer_phone: state.forms.reservationCustomerPhone,
       vehicle_number: state.forms.reservationVehicleNumber,
@@ -7589,9 +7935,10 @@ async function createReservation() {
       vehicle_number: state.forms.reservationVehicleNumber,
       vehicle_model: state.forms.reservationVehicleModel,
       reservation_date: state.forms.reservationDate || dateInputValue(),
-      product_name: product.product_name,
-      sku: product.sku,
-      qty,
+      product_name: items.length === 1 ? firstItem.product_name : `${firstItem.product_name} 외 ${items.length - 1}개`,
+      sku: firstItem.sku,
+      qty: totalQty,
+      reservation_items: items,
       status,
       memo: state.forms.reservationMemo,
       created_at: nowText(),
@@ -7605,6 +7952,8 @@ async function createReservation() {
   state.forms.reservationVehicleModel = "";
   state.forms.reservationDate = dateInputValue();
   state.forms.reservationQty = 1;
+  state.forms.reservationItems = [];
+  state.forms.reservationDraftQty = 1;
   state.forms.reservationMemo = "";
   render();
   showToast(status === "재고부족" ? "예약 저장됨: 재고부족 상태입니다." : "예약을 저장했습니다.");
@@ -7613,7 +7962,8 @@ async function createReservation() {
 async function completeReservation(reservationId) {
   const reservation = state.reservations.find((item) => item.reservation_id === reservationId);
   if (!reservation) throw new Error("시공완료 처리할 예약을 찾을 수 없습니다.");
-  const confirmed = confirm(`${reservation.product_name} ${roll(Number(reservation.qty || 0))}을 시공완료 처리할까요? 재고에서 자동 차감됩니다.`);
+  const items = reservationItemsFor(reservation);
+  const confirmed = confirm(`${items.length}개 예약 제품을 시공완료 처리할까요? 제품별 재고에서 자동 차감됩니다.`);
   if (!confirmed) return;
 
   if (window.FilmStockApi?.isEnabled()) {
@@ -7623,8 +7973,11 @@ async function completeReservation(reservationId) {
     }
     if (data?.certificate) upsertCertificate(data.certificate);
     if (data?.inventory) upsertInventory(data.inventory);
+    if (Array.isArray(data?.inventories)) upsertInventoryRows(data.inventories);
   } else {
-    adjustLocalInventory(reservation.dealer_code, reservation.sku, -Number(reservation.qty || 0), { requireEnoughStock: true });
+    groupedReservationQuantities(items).forEach((qty, sku) => {
+      adjustLocalInventory(reservation.dealer_code, sku, -qty, { requireEnoughStock: true });
+    });
     const completedAt = nowText();
     state.reservations = state.reservations.map((item) => (
       item.reservation_id === reservationId
@@ -8114,7 +8467,7 @@ function visibleInventory(options = {}) {
   return state.inventory
     .filter((row) => {
       if (!canAccessProductCategory(row.category, row)) return false;
-      if (!categoryFilterMatches(row.category, state.filters.inventoryCategory, row)) return false;
+      if (!businessCategoryMatches(row.category, row)) return false;
       if (scope === "mine" && row.dealer_code !== state.session?.dealer_code) return false;
       if (scope === "headOffice" && row.dealer_code !== headOfficeCode) return false;
       if (scope === "dealerAll" && row.dealer_code === headOfficeCode) return false;
@@ -8184,7 +8537,7 @@ function filteredProducts() {
 function productManageRows() {
   const query = normalize(state.filters.productManageQuery || "");
   return state.products.filter((product) => {
-    if (!categoryFilterMatches(product.category, state.filters.productManageCategory, product)) return false;
+    if (!businessCategoryMatches(product.category, product)) return false;
     if (!query) return true;
     return productSearchFields(product).some((value) => normalize(value).includes(query));
   });
@@ -8225,7 +8578,7 @@ function visibleOrders() {
   const query = normalize(state.filters.orderQuery);
   return state.orders.filter((order) => {
     if (!canAccessProductCategory(orderProductCategory(order), order)) return false;
-    if (!categoryFilterMatches(orderProductCategory(order), state.filters.orderCategory, order)) return false;
+    if (!businessCategoryMatches(orderProductCategory(order), order)) return false;
     if (state.session?.role === "dealer" && order.dealer_code !== state.session.dealer_code) return false;
     if (state.session?.role === "admin" && state.filters.dealerCode !== "전체" && order.dealer_code !== state.filters.dealerCode) return false;
     if (state.filters.orderStatus !== "전체" && !hasOrderStatusMatch(order.status, state.filters.orderStatus)) return false;
@@ -8246,6 +8599,7 @@ function visibleRetailSales() {
 function visibleReservations() {
   return state.reservations
     .filter((reservation) => state.session?.role !== "dealer" || reservation.dealer_code === state.session.dealer_code)
+    .filter((reservation) => reservationItemsFor(reservation).some((item) => businessCategoryMatches(item.category, item)))
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
 }
 
@@ -8302,6 +8656,7 @@ function visibleSalesRows() {
   const query = normalize(state.filters.salesQuery);
   return salesRowsBase()
     .filter((row) => {
+      if (!businessCategoryMatches(orderProductCategory(row), row)) return false;
       if (state.filters.salesDealerCode !== "전체" && row.dealer_code !== state.filters.salesDealerCode) return false;
       if (state.filters.salesPeriod === "일별" && orderDatePart(row.created_at) !== state.filters.salesDate) return false;
       if (state.filters.salesPeriod === "월별" && !orderDatePart(row.created_at).startsWith(state.filters.salesMonth)) return false;
@@ -8556,6 +8911,36 @@ function availableCategoryOptions() {
   return productCategoryOptions.filter((option) => permissions[option.permissionKey]);
 }
 
+function normalizeSelectedBusinessCategory() {
+  const allowed = ["전체", ...availableCategoryOptions().map((option) => option.value)];
+  if (!allowed.includes(state.selectedBusinessCategory)) state.selectedBusinessCategory = allowed[0] || "전체";
+}
+
+function setBusinessCategory(category) {
+  const allowed = ["전체", ...availableCategoryOptions().map((option) => option.value)];
+  state.selectedBusinessCategory = allowed.includes(category) ? category : "전체";
+  state.filters.inventoryCategory = state.selectedBusinessCategory;
+  state.filters.orderCategory = state.selectedBusinessCategory;
+  state.filters.productManageCategory = state.selectedBusinessCategory;
+  state.filters.inventoryPage = 1;
+  const first = activeProducts()[0];
+  if (first && !activeProducts().some((product) => product.sku === state.selectedSku)) state.selectedSku = first.sku;
+  try {
+    window.localStorage.setItem(businessCategoryStorageKey, state.selectedBusinessCategory);
+  } catch (error) {
+    // Keep the in-memory selection when storage is unavailable.
+  }
+  const url = new URL(window.location.href);
+  if (state.selectedBusinessCategory === "전체") url.searchParams.delete("category");
+  else url.searchParams.set("category", state.selectedBusinessCategory);
+  window.history.replaceState({}, "", url);
+  render();
+}
+
+function businessCategoryMatches(category, product = {}) {
+  return categoryFilterMatches(category, state.selectedBusinessCategory, product);
+}
+
 function categoryFilterMatches(category, selected, product = {}) {
   return !selected || selected === "전체" || normalizeProductCategory(category, product) === selected;
 }
@@ -8726,7 +9111,10 @@ function productSearchFields(product) {
     product.name,
     product.sku,
     product.product_code,
+    product.code,
+    product.productCode,
     product.brand,
+    product.filmName,
     product.category,
     product.color,
     product.color_name,
@@ -9347,7 +9735,8 @@ function activeProducts() {
   return state.products.filter((product) => product.useYn === undefined && product.use_yn === undefined
     ? toBool(product.is_active)
     : toBool(product.useYn ?? product.use_yn))
-    .filter((product) => canAccessProductCategory(product.category, product));
+    .filter((product) => canAccessProductCategory(product.category, product))
+    .filter((product) => businessCategoryMatches(product.category, product));
 }
 
 function dealerAccounts() {
@@ -9509,12 +9898,12 @@ function reservationStockSummary(sku) {
 function pendingReservationQty(sku) {
   if (!sku || !state.session) return 0;
   return state.reservations
-    .filter((reservation) => (
-      reservation.sku === sku &&
-      reservation.dealer_code === state.session.dealer_code &&
-      reservation.status !== "시공완료"
-    ))
-    .reduce((total, reservation) => total + Number(reservation.qty || 0), 0);
+    .filter((reservation) => reservation.dealer_code === state.session.dealer_code && reservation.status !== "시공완료")
+    .reduce((total, reservation) => (
+      total + reservationItemsFor(reservation)
+        .filter((item) => item.sku === sku)
+        .reduce((itemTotal, item) => itemTotal + Number(item.qty || 0), 0)
+    ), 0);
 }
 
 function adjustLocalInventory(dealerCode, sku, deltaQty, options = {}) {
@@ -9964,6 +10353,11 @@ function downloadQr(url, fileName) {
 
 function normalize(value) {
   return String(value ?? "").trim().toLowerCase();
+}
+
+function cssEscape(value) {
+  if (window.CSS?.escape) return window.CSS.escape(String(value ?? ""));
+  return String(value ?? "").replace(/["\\]/g, "\\$&");
 }
 
 function toBool(value) {

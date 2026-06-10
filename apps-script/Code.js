@@ -19,7 +19,7 @@ const HEADERS = {
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
   orders: ["order_id", "agency_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "product_category", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "courier", "tracking_no", "shipping_receipt_no", "shipping_error", "approved_at", "print_status", "printed_at", "print_count", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
-  reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "reservation_date", "product_name", "sku", "qty", "status", "memo", "completed_at", "created_at", "updated_at"],
+  reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "reservation_date", "product_name", "sku", "qty", "reservation_items", "status", "memo", "completed_at", "created_at", "updated_at"],
   certificates: ["id", "reservation_id", "dealer_id", "dealer_code", "dealer_name", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "product_type", "product_name", "product_serial", "certificate_number", "random_code", "check_digit", "installation_date", "issued_at", "issued_by", "verified_count", "last_verified_at", "status", "created_at"],
   certificateLogs: ["id", "certificate_number", "verified_at", "ip_address", "user_agent", "result"],
   vehicles: ["id", "brand", "model_name", "generation_name", "facelift_type", "body_code", "model_year", "vehicle_type", "default_color", "thumbnail_url", "image_mode_enabled", "three_d_enabled", "glb_file_url", "created_at", "updated_at", "is_active"],
@@ -675,16 +675,23 @@ function handleGetSales_(payload, user) {
 
 function handleCreateReservation_(payload, user) {
   if (user.role !== "dealer") throw new Error("대리점 계정만 예약을 등록할 수 있습니다.");
-  const sku = required_(payload.sku, "sku");
-  const qty = Number(required_(payload.qty, "qty"));
-  if (!qty || qty < 1) throw new Error("예약 수량은 1 이상이어야 합니다.");
+  const products = readRows_(SHEETS.products).filter((row) => toBool_(row.is_active));
+  const productMap = mapBy_(products, "sku");
+  const items = normalizeReservationItems_(payload.reservation_items || payload.reservationItems, payload, productMap);
+  if (!items.length) throw new Error("예약 제품을 1개 이상 추가해 주세요.");
+  const groupedQty = groupReservationItemQty_(items);
+  let hasShortage = false;
+  Object.keys(groupedQty).forEach((sku) => {
+    const product = productMap[sku];
+    if (!product) throw new Error("제품을 찾을 수 없습니다: " + sku);
+    requireCategoryAccess_(user, normalizeProductCategory_(product.category, product), "해당 사업부 제품을 예약할 권한이 없습니다.");
+    const inventory = inventoryRowFor_(user.dealer_code, sku);
+    const availableQty = Math.max(Number(inventory.stock_qty || 0) - pendingReservationQty_(user.dealer_code, sku), 0);
+    if (availableQty < groupedQty[sku]) hasShortage = true;
+  });
 
-  const product = readRows_(SHEETS.products).find((row) => row.sku === sku && toBool_(row.is_active));
-  if (!product) throw new Error("제품을 찾을 수 없습니다.");
-  requireCategoryAccess_(user, normalizeProductCategory_(product.category, product));
-  const inventory = inventoryRowFor_(user.dealer_code, product.sku);
-  const pendingQty = pendingReservationQty_(user.dealer_code, product.sku);
-  const availableQty = Math.max(Number(inventory.stock_qty || 0) - pendingQty, 0);
+  const firstItem = items[0];
+  const totalQty = items.reduce((total, item) => total + Number(item.qty || 0), 0);
   const now = isoNow_();
   const reservation = {
     reservation_id: makeReservationId_(),
@@ -696,10 +703,11 @@ function handleCreateReservation_(payload, user) {
     vehicle_number: payload.vehicle_number || "",
     vehicle_model: payload.vehicle_model || "",
     reservation_date: payload.reservation_date || "",
-    product_name: product.product_name,
-    sku: product.sku,
-    qty: qty,
-    status: availableQty < qty ? "재고부족" : "예약",
+    product_name: items.length === 1 ? firstItem.product_name : firstItem.product_name + " 외 " + (items.length - 1) + "개",
+    sku: firstItem.sku,
+    qty: totalQty,
+    reservation_items: JSON.stringify(items),
+    status: hasShortage ? "재고부족" : "예약",
     memo: payload.memo || "",
     completed_at: "",
     created_at: now,
@@ -707,8 +715,7 @@ function handleCreateReservation_(payload, user) {
   };
   appendObject_(SHEETS.reservations, reservation);
   return {
-    reservation: reservation,
-    inventory: publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_())
+    reservation: reservation
   };
 }
 
@@ -722,25 +729,32 @@ function handleCompleteReservation_(payload, user) {
   }
   if (reservation.status === "시공완료") throw new Error("이미 시공완료 처리된 예약입니다.");
 
-  const product = readRows_(SHEETS.products).find((row) => row.sku === reservation.sku) || {
-    sku: reservation.sku,
-    product_name: reservation.product_name,
-    category: "",
-    unit: "롤"
-  };
-  requireCategoryAccess_(user, normalizeProductCategory_(product.category, product));
-  const inventory = adjustInventoryStock_(user.dealer_code, user.dealer_name, product, -Number(reservation.qty || 0), { requireEnoughStock: true });
+  const products = readRows_(SHEETS.products);
+  const productMap = mapBy_(products, "sku");
+  const items = normalizeReservationItems_(reservation.reservation_items, reservation, productMap);
+  const groupedQty = groupReservationItemQty_(items);
+  Object.keys(groupedQty).forEach((sku) => {
+    const product = productMap[sku] || { sku: sku, product_name: sku, category: "", unit: "롤" };
+    requireCategoryAccess_(user, normalizeProductCategory_(product.category, product));
+    const inventory = inventoryRowFor_(user.dealer_code, sku);
+    if (Number(inventory.stock_qty || 0) < groupedQty[sku]) throw new Error(product.product_name + " 재고가 부족합니다.");
+  });
+  const inventories = Object.keys(groupedQty).map((sku) => {
+    const product = productMap[sku] || { sku: sku, product_name: sku, category: "", unit: "롤" };
+    return adjustInventoryStock_(user.dealer_code, user.dealer_name, product, -groupedQty[sku], { requireEnoughStock: true });
+  });
   const now = isoNow_();
   const updated = updateRowByKey_(SHEETS.reservations, "reservation_id", reservationId, {
     status: "시공완료",
     completed_at: now,
     updated_at: now
   });
-  const certificate = createCertificateForReservation_(updated, user, product);
+  const certificateProduct = productMap[items[0] && items[0].sku] || { sku: updated.sku, product_name: updated.product_name, category: "" };
+  const certificate = createCertificateForReservation_(updated, user, certificateProduct);
   return {
     reservation: updated,
     certificate: certificate,
-    inventory: publicInventoryRow_(inventory, mapBy_(readRows_(SHEETS.products), "sku"), dealerNameMap_())
+    inventories: inventories.map((inventory) => publicInventoryRow_(inventory, productMap, dealerNameMap_()))
   };
 }
 
@@ -749,6 +763,8 @@ function handleGetReservations_(payload, user) {
   if (user.role === "dealer") {
     reservations = reservations.filter((reservation) => String(reservation.dealer_code).toUpperCase() === String(user.dealer_code).toUpperCase());
   }
+  const productMap = mapBy_(readRows_(SHEETS.products), "sku");
+  reservations = reservations.map((reservation) => filterReservationForUser_(reservation, user, productMap)).filter(Boolean);
   return { reservations: reservations.reverse() };
 }
 
@@ -901,10 +917,71 @@ function pendingReservationQty_(dealerCode, sku) {
   return readRows_(SHEETS.reservations)
     .filter((reservation) => (
       String(reservation.dealer_code).toUpperCase() === String(dealerCode).toUpperCase() &&
-      String(reservation.sku) === String(sku) &&
       reservation.status !== "시공완료"
     ))
-    .reduce((total, reservation) => total + Number(reservation.qty || 0), 0);
+    .reduce((total, reservation) => {
+      const items = normalizeReservationItems_(reservation.reservation_items, reservation, {});
+      return total + items
+        .filter((item) => String(item.sku) === String(sku))
+        .reduce((itemTotal, item) => itemTotal + Number(item.qty || 0), 0);
+    }, 0);
+}
+
+function normalizeReservationItems_(rawItems, legacy, productMap) {
+  let items = rawItems;
+  if (typeof items === "string" && items.trim()) {
+    try {
+      items = JSON.parse(items);
+    } catch (error) {
+      items = [];
+    }
+  }
+  if (!Array.isArray(items) || !items.length) {
+    items = legacy && legacy.sku ? [{
+      id: String(legacy.reservation_id || "legacy") + "-" + String(legacy.sku),
+      sku: legacy.sku,
+      product_name: legacy.product_name,
+      qty: legacy.qty,
+      usage_area: legacy.usage_area || "기타",
+      category: legacy.product_category || ""
+    }] : [];
+  }
+  return items.map((item, index) => {
+    const sku = String(item.sku || item.product_id || item.productId || "").trim();
+    if (!sku) return null;
+    const product = productMap[sku] || {};
+    const qty = Number(item.qty || item.quantity || 0);
+    if (!qty || qty < 1) throw new Error("예약 제품 수량은 1 이상이어야 합니다.");
+    return {
+      id: item.id || "RITEM-" + (index + 1),
+      product_id: item.product_id || item.productId || sku,
+      product_name: item.product_name || item.productName || product.product_name || sku,
+      sku: sku,
+      category: normalizeProductCategory_(item.category || product.category, product),
+      usage_area: item.usage_area || item.usageArea || "기타",
+      qty: qty
+    };
+  }).filter(Boolean);
+}
+
+function groupReservationItemQty_(items) {
+  return items.reduce((map, item) => {
+    map[item.sku] = Number(map[item.sku] || 0) + Number(item.qty || 0);
+    return map;
+  }, {});
+}
+
+function filterReservationForUser_(reservation, user, productMap) {
+  const items = normalizeReservationItems_(reservation.reservation_items, reservation, productMap)
+    .filter((item) => canAccessCategory_(user, item.category));
+  if (!items.length) return null;
+  const totalQty = items.reduce((total, item) => total + Number(item.qty || 0), 0);
+  return Object.assign({}, reservation, {
+    product_name: items.length === 1 ? items[0].product_name : items[0].product_name + " 외 " + (items.length - 1) + "개",
+    sku: items[0].sku,
+    qty: totalQty,
+    reservation_items: JSON.stringify(items)
+  });
 }
 
 function createCertificateForReservation_(reservation, user, product) {
