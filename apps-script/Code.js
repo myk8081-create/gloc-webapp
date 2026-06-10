@@ -46,6 +46,27 @@ const DEFAULT_RETAIL_PRICE = 1000000;
 const DEFAULT_PURCHASE_PRICE = 500000;
 const DEFAULT_LEGACY_ORDER_DISCOUNT_RATE = 20;
 const PRODUCT_CATEGORIES = ["PPF", "TINTING", "DETAILING"];
+const SCHEMA_CACHE_VERSION = "2026-06-10-v1";
+const SCHEMA_CACHE_SECONDS = 21600;
+const CACHE_CHUNK_SIZE = 18000;
+const MAX_CACHE_CHUNKS = 40;
+const SHEET_CACHE_TTL_SECONDS = {
+  "대리점관리": 60,
+  "재고현황": 45,
+  "발주현황": 30,
+  "판매현황": 30,
+  "예약현황": 30,
+  "정품인증서": 30,
+  "차량등록": 120,
+  "차량3D매핑": 120,
+  "상담현황": 30,
+  "제품등록": 120,
+  "settings": 120,
+  "푸시구독": 30,
+  "Agencies": 60,
+  "Settings": 120
+};
+let REQUEST_CONTEXT = createRequestContext_("");
 const LABEL_SETTING_DEFAULTS = {
   label_offset_x_mm: 0,
   label_offset_y_mm: 0,
@@ -93,10 +114,13 @@ const LABEL_SETTING_DEFAULTS = {
 };
 
 function doPost(e) {
+  const startedAt = Date.now();
+  let action = "unknown";
   try {
-    ensureSheets_();
     const body = parseBody_(e);
-    const action = body.action;
+    action = body.action || "unknown";
+    REQUEST_CONTEXT = createRequestContext_(action);
+    ensureSheetsReady_();
     const payload = body.payload || {};
     const token = body.token || "";
 
@@ -144,6 +168,8 @@ function doPost(e) {
     throw new Error("지원하지 않는 action입니다: " + action);
   } catch (error) {
     return fail_(error);
+  } finally {
+    logPerformance_(action, startedAt);
   }
 }
 
@@ -252,25 +278,10 @@ function handleLogin_(payload) {
 
   const session = createSession_(account);
   const user = publicAccount_(account);
-  const inventoryData = handleGetInventory_({}, user);
-  const orderData = handleGetOrders_({}, user);
-  const salesData = handleGetSales_({}, user);
-  const reservationData = handleGetReservations_({}, user);
-  const certificateData = handleGetCertificates_({}, user);
-  const consultationData = handleGetConsultationData_({}, user);
   return {
     session,
     user,
-    accounts: listAccessibleAccounts_(user),
-    products: inventoryData.products,
-    inventory: inventoryData.inventory,
-    orders: orderData.orders,
-    sales: salesData.sales,
-    reservations: reservationData.reservations,
-    certificates: certificateData.certificates,
-    vehicles: consultationData.vehicles,
-    consultations: consultationData.consultations,
-    label_settings: user.role === "admin" ? labelSettings_() : {}
+    bootstrap_pending: true
   };
 }
 
@@ -553,14 +564,16 @@ function handleGetLabelSettings_(payload, user) {
 function handleSaveLabelSettings_(payload, user) {
   requireAdmin_(user);
   const settings = payload.settings || payload.label_settings || {};
+  const updates = {};
   Object.keys(LABEL_SETTING_DEFAULTS).forEach((key) => {
     const fallback = LABEL_SETTING_DEFAULTS[key];
     const value = hasSnapshotValue_(settings[key]) ? Number(settings[key]) : Number(fallback);
     if (!isFinite(value)) throw new Error("라벨 보정값은 숫자여야 합니다: " + key);
     if (key === "label_scale" && value <= 0) throw new Error("라벨 배율은 0보다 커야 합니다.");
     if (/_width_mm$|_height_mm$/.test(key) && value <= 0) throw new Error("바코드 크기는 0보다 커야 합니다.");
-    setSetting_(key, value);
+    updates[key] = value;
   });
+  setSettings_(updates);
   return { label_settings: labelSettings_() };
 }
 
@@ -632,6 +645,7 @@ function handleClearOrders_(payload, user) {
 
   const deletedCount = sheet.getLastRow() - 1;
   sheet.deleteRows(2, deletedCount);
+  invalidateSheetCache_(SHEETS.orders);
   return { deleted_count: deletedCount };
 }
 
@@ -1196,21 +1210,24 @@ function handleUpdateDealerDiscount_(payload, user) {
 
   let topManagerUpdated = false;
   let clearedStaffCount = 0;
+  const now = isoNow_();
   for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
     const sameDealer = String(values[rowIndex][codeIndex]).toUpperCase() === dealerCode;
     const isDealer = String(values[rowIndex][roleIndex]) === "dealer";
     if (sameDealer && isDealer) {
       if (!topManagerUpdated) {
-        sheet.getRange(rowIndex + 1, discountIndex + 1).setValue(discountRate);
+        values[rowIndex][discountIndex] = discountRate;
         topManagerUpdated = true;
       } else {
-        sheet.getRange(rowIndex + 1, discountIndex + 1).setValue("");
+        values[rowIndex][discountIndex] = "";
         clearedStaffCount += 1;
       }
-      if (updatedIndex >= 0) sheet.getRange(rowIndex + 1, updatedIndex + 1).setValue(isoNow_());
+      if (updatedIndex >= 0) values[rowIndex][updatedIndex] = now;
     }
   }
   if (!topManagerUpdated) throw new Error("할인율을 수정할 대리점 최상위 관리자 계정을 찾을 수 없습니다.");
+  sheet.getRange(2, 1, values.length - 1, headers.length).setValues(values.slice(1));
+  invalidateSheetCache_(SHEETS.accounts);
   return {
     accounts: listAccessibleAccounts_(user),
     updated_count: 1,
@@ -1247,12 +1264,14 @@ function handleUpdateDealerCategoryPermissions_(payload, user) {
     if (!sameDealer || !isDealer) continue;
     Object.keys(permissions).forEach((key) => {
       const columnIndex = headers.indexOf(key);
-      if (columnIndex >= 0) sheet.getRange(rowIndex + 1, columnIndex + 1).setValue(permissions[key]);
+      if (columnIndex >= 0) values[rowIndex][columnIndex] = permissions[key];
     });
-    if (updatedIndex >= 0) sheet.getRange(rowIndex + 1, updatedIndex + 1).setValue(isoNow_());
+    if (updatedIndex >= 0) values[rowIndex][updatedIndex] = isoNow_();
     updatedCount += 1;
   }
   if (!updatedCount) throw new Error("권한을 수정할 대리점 계정을 찾을 수 없습니다.");
+  sheet.getRange(2, 1, values.length - 1, headers.length).setValues(values.slice(1));
+  invalidateSheetCache_(SHEETS.accounts);
   return { accounts: listAccessibleAccounts_(user), updated_count: updatedCount };
 }
 
@@ -1497,13 +1516,19 @@ function deactivateOtherPushSubscriptions_(loginId, currentSubscriptionId, now) 
   const updatedIndex = headers.indexOf("updated_at");
   if (subscriptionIndex === -1 || loginIndex === -1 || activeIndex === -1) return;
 
+  let changed = false;
   for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
     const sameLogin = String(values[rowIndex][loginIndex]) === String(loginId);
     const otherSubscription = String(values[rowIndex][subscriptionIndex]) !== String(currentSubscriptionId);
     if (sameLogin && otherSubscription && toBool_(values[rowIndex][activeIndex])) {
-      sheet.getRange(rowIndex + 1, activeIndex + 1).setValue(false);
-      if (updatedIndex >= 0) sheet.getRange(rowIndex + 1, updatedIndex + 1).setValue(now);
+      values[rowIndex][activeIndex] = false;
+      if (updatedIndex >= 0) values[rowIndex][updatedIndex] = now;
+      changed = true;
     }
+  }
+  if (changed) {
+    sheet.getRange(2, 1, values.length - 1, headers.length).setValues(values.slice(1));
+    invalidateSheetCache_(SHEETS.pushSubscriptions);
   }
 }
 
@@ -1654,12 +1679,124 @@ function commonLoginUrl_(baseUrl) {
   return baseUrl + "/login";
 }
 
+function createRequestContext_(action) {
+  return {
+    action: action || "",
+    rows: {},
+    sources: {}
+  };
+}
+
+function sheetCacheTtl_(sheetName) {
+  return Number(SHEET_CACHE_TTL_SECONDS[sheetName] || 0);
+}
+
+function sheetCacheBaseKey_(sheetName) {
+  return "sheet-rows:" + encodeURIComponent(String(sheetName));
+}
+
+function readSheetCache_(sheetName) {
+  if (!sheetCacheTtl_(sheetName)) return null;
+  const cache = CacheService.getScriptCache();
+  const baseKey = sheetCacheBaseKey_(sheetName);
+  const metaRaw = cache.get(baseKey + ":meta");
+  if (!metaRaw) return null;
+
+  try {
+    const chunkCount = Number(JSON.parse(metaRaw).chunkCount || 0);
+    if (!chunkCount || chunkCount > MAX_CACHE_CHUNKS) return null;
+    const keys = [];
+    for (let index = 0; index < chunkCount; index += 1) keys.push(baseKey + ":" + index);
+    const chunks = cache.getAll(keys);
+    const json = keys.map((key) => chunks[key] || "").join("");
+    return json ? JSON.parse(json) : null;
+  } catch (error) {
+    invalidateSheetCache_(sheetName);
+    return null;
+  }
+}
+
+function writeSheetCache_(sheetName, rows) {
+  const ttl = sheetCacheTtl_(sheetName);
+  if (!ttl) return;
+  const json = JSON.stringify(rows || []);
+  const chunks = [];
+  for (let offset = 0; offset < json.length; offset += CACHE_CHUNK_SIZE) {
+    chunks.push(json.slice(offset, offset + CACHE_CHUNK_SIZE));
+  }
+  if (!chunks.length || chunks.length > MAX_CACHE_CHUNKS) return;
+
+  const baseKey = sheetCacheBaseKey_(sheetName);
+  const entries = {};
+  chunks.forEach((chunk, index) => {
+    entries[baseKey + ":" + index] = chunk;
+  });
+  entries[baseKey + ":meta"] = JSON.stringify({ chunkCount: chunks.length });
+  CacheService.getScriptCache().putAll(entries, ttl);
+}
+
+function invalidateSheetCache_(sheetNames) {
+  const names = Array.isArray(sheetNames) ? sheetNames : [sheetNames];
+  const keys = [];
+  names.filter(Boolean).forEach((sheetName) => {
+    delete REQUEST_CONTEXT.rows[sheetName];
+    delete REQUEST_CONTEXT.sources[sheetName];
+    const baseKey = sheetCacheBaseKey_(sheetName);
+    keys.push(baseKey + ":meta");
+    for (let index = 0; index < MAX_CACHE_CHUNKS; index += 1) keys.push(baseKey + ":" + index);
+  });
+  const cache = CacheService.getScriptCache();
+  for (let offset = 0; offset < keys.length; offset += 100) {
+    cache.removeAll(keys.slice(offset, offset + 100));
+  }
+}
+
+function rowObjectFromValues_(headers, row) {
+  const item = {};
+  headers.forEach((header, index) => {
+    item[header] = formatCell_(row[index]);
+  });
+  return item;
+}
+
+function logPerformance_(action, startedAt) {
+  const sourceCounts = {};
+  Object.keys(REQUEST_CONTEXT.sources || {}).forEach((sheetName) => {
+    const source = REQUEST_CONTEXT.sources[sheetName] || "unknown";
+    sourceCounts[source] = Number(sourceCounts[source] || 0) + 1;
+  });
+  Logger.log(JSON.stringify({
+    type: "api_performance",
+    action: action || "unknown",
+    durationMs: Date.now() - startedAt,
+    sources: sourceCounts
+  }));
+}
+
 function ensureSheets_() {
   Object.keys(SHEETS).forEach((key) => ensureSheet_(SHEETS[key], HEADERS[key]));
   ensureCategoryData_();
   ensureProductDefaultPrices_();
   ensureOrderPriceSnapshots_();
   ensurePasswordSalt_();
+  invalidateSheetCache_(Object.keys(SHEETS).map((key) => SHEETS[key]));
+}
+
+function ensureSheetsReady_() {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = "schema-ready:" + SCHEMA_CACHE_VERSION;
+  if (cache.get(cacheKey)) return;
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    if (!cache.get(cacheKey)) {
+      ensureSheets_();
+      cache.put(cacheKey, "1", SCHEMA_CACHE_SECONDS);
+    }
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function ensureCategoryData_() {
@@ -1670,6 +1807,7 @@ function ensureCategoryData_() {
   const productSkuIndex = productHeaders.indexOf("sku");
   const productNameIndex = productHeaders.indexOf("product_name");
   const productsBySku = {};
+  let productCategoriesChanged = false;
 
   for (let rowIndex = 1; rowIndex < productValues.length; rowIndex += 1) {
     if (!productValues[rowIndex].some((cell) => cell !== "")) continue;
@@ -1680,8 +1818,13 @@ function ensureCategoryData_() {
     const category = normalizeProductCategory_(productValues[rowIndex][productCategoryIndex], product);
     productsBySku[String(product.sku)] = category;
     if (String(productValues[rowIndex][productCategoryIndex] || "") !== category) {
-      productSheet.getRange(rowIndex + 1, productCategoryIndex + 1).setValue(category);
+      productValues[rowIndex][productCategoryIndex] = category;
+      productCategoriesChanged = true;
     }
+  }
+  if (productCategoriesChanged && productValues.length > 1) {
+    productSheet.getRange(2, productCategoryIndex + 1, productValues.length - 1, 1)
+      .setValues(productValues.slice(1).map((row) => [row[productCategoryIndex]]));
   }
 
   const accountSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.accounts);
@@ -1693,6 +1836,7 @@ function ensureCategoryData_() {
     can_access_tinting: accountHeaders.indexOf("can_access_tinting"),
     can_access_detailing: accountHeaders.indexOf("can_access_detailing")
   };
+  const changedAccountPermissionKeys = {};
   for (let rowIndex = 1; rowIndex < accountValues.length; rowIndex += 1) {
     if (!accountValues[rowIndex].some((cell) => cell !== "")) continue;
     const isAdmin = String(accountValues[rowIndex][accountRoleIndex]) === "admin";
@@ -1700,21 +1844,33 @@ function ensureCategoryData_() {
     Object.keys(accountPermissionIndexes).forEach((key) => {
       const columnIndex = accountPermissionIndexes[key];
       if (columnIndex >= 0 && (accountValues[rowIndex][columnIndex] === "" || accountValues[rowIndex][columnIndex] === undefined)) {
-        accountSheet.getRange(rowIndex + 1, columnIndex + 1).setValue(defaults[key]);
+        accountValues[rowIndex][columnIndex] = defaults[key];
+        changedAccountPermissionKeys[key] = true;
       }
     });
   }
+  Object.keys(changedAccountPermissionKeys).forEach((key) => {
+    const columnIndex = accountPermissionIndexes[key];
+    accountSheet.getRange(2, columnIndex + 1, accountValues.length - 1, 1)
+      .setValues(accountValues.slice(1).map((row) => [row[columnIndex]]));
+  });
 
   const orderSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.orders);
   const orderValues = orderSheet.getDataRange().getValues();
   const orderHeaders = orderValues[0].map(String);
   const orderSkuIndex = orderHeaders.indexOf("sku");
   const orderCategoryIndex = orderHeaders.indexOf("product_category");
+  let orderCategoriesChanged = false;
   for (let rowIndex = 1; rowIndex < orderValues.length; rowIndex += 1) {
     if (!orderValues[rowIndex].some((cell) => cell !== "")) continue;
     if (orderValues[rowIndex][orderCategoryIndex] !== "") continue;
     const category = productsBySku[String(orderValues[rowIndex][orderSkuIndex])] || "PPF";
-    orderSheet.getRange(rowIndex + 1, orderCategoryIndex + 1).setValue(category);
+    orderValues[rowIndex][orderCategoryIndex] = category;
+    orderCategoriesChanged = true;
+  }
+  if (orderCategoriesChanged && orderValues.length > 1) {
+    orderSheet.getRange(2, orderCategoryIndex + 1, orderValues.length - 1, 1)
+      .setValues(orderValues.slice(1).map((row) => [row[orderCategoryIndex]]));
   }
 }
 
@@ -1743,7 +1899,28 @@ function ensureSheet_(name, headers) {
 }
 
 function readRows_(sheetName) {
+  if (REQUEST_CONTEXT.rows[sheetName]) {
+    REQUEST_CONTEXT.sources[sheetName] = "request_memory";
+    return REQUEST_CONTEXT.rows[sheetName];
+  }
+
+  const cached = readSheetCache_(sheetName);
+  if (cached) {
+    REQUEST_CONTEXT.rows[sheetName] = cached;
+    REQUEST_CONTEXT.sources[sheetName] = "cache";
+    return cached;
+  }
+
+  const rows = readRowsDirect_(sheetName);
+  REQUEST_CONTEXT.rows[sheetName] = rows;
+  REQUEST_CONTEXT.sources[sheetName] = "google_sheets";
+  writeSheetCache_(sheetName, rows);
+  return rows;
+}
+
+function readRowsDirect_(sheetName) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) return [];
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
   const headers = values[0].map(String);
@@ -1759,9 +1936,16 @@ function readRows_(sheetName) {
 }
 
 function appendObject_(sheetName, object) {
+  appendObjects_(sheetName, [object]);
+}
+
+function appendObjects_(sheetName, objects) {
+  if (!objects || !objects.length) return;
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
-  sheet.appendRow(headers.map((header) => object[header] === undefined ? "" : object[header]));
+  const rows = objects.map((object) => headers.map((header) => object[header] === undefined ? "" : object[header]));
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, headers.length).setValues(rows);
+  invalidateSheetCache_(sheetName);
 }
 
 function headersForSheet_(sheetName) {
@@ -1770,57 +1954,73 @@ function headersForSheet_(sheetName) {
   return HEADERS[sheetKey];
 }
 
-function updateRowByKey_(sheetName, key, value, updates) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  const values = sheet.getDataRange().getValues();
-  const headers = values[0].map(String);
+function findRowNumbersByKey_(sheet, headers, key, value) {
   const keyIndex = headers.indexOf(key);
   if (keyIndex === -1) throw new Error("키 컬럼이 없습니다: " + key);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
 
-  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
-    if (String(values[rowIndex][keyIndex]) === String(value)) {
-      Object.keys(updates).forEach((field) => {
-        const colIndex = headers.indexOf(field);
-        if (colIndex >= 0) sheet.getRange(rowIndex + 1, colIndex + 1).setValue(updates[field]);
-      });
-      return readRows_(sheetName).find((row) => String(row[key]) === String(value));
-    }
-  }
-  throw new Error("수정할 행을 찾을 수 없습니다.");
+  return sheet.getRange(2, keyIndex + 1, lastRow - 1, 1)
+    .createTextFinder(String(value))
+    .matchEntireCell(true)
+    .findAll()
+    .map((range) => range.getRow());
+}
+
+function updateRowByKey_(sheetName, key, value, updates) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) throw new Error("시트를 찾을 수 없습니다: " + sheetName);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const rowNumber = findRowNumbersByKey_(sheet, headers, key, value)[0];
+  if (!rowNumber) throw new Error("수정할 행을 찾을 수 없습니다.");
+
+  const row = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+  Object.keys(updates).forEach((field) => {
+    const colIndex = headers.indexOf(field);
+    if (colIndex >= 0) row[colIndex] = updates[field];
+  });
+  sheet.getRange(rowNumber, 1, 1, headers.length).setValues([row]);
+  invalidateSheetCache_(sheetName);
+  return rowObjectFromValues_(headers, row);
 }
 
 function deleteRowsByKey_(sheetName, key, value) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  const values = sheet.getDataRange().getValues();
-  if (values.length < 2) return 0;
-  const headers = values[0].map(String);
-  const keyIndex = headers.indexOf(key);
-  if (keyIndex === -1) throw new Error("키 컬럼이 없습니다: " + key);
-
-  let deleted = 0;
-  for (let rowIndex = values.length - 1; rowIndex >= 1; rowIndex -= 1) {
-    if (String(values[rowIndex][keyIndex]) === String(value)) {
-      sheet.deleteRow(rowIndex + 1);
-      deleted += 1;
-    }
-  }
-  return deleted;
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const rowNumbers = findRowNumbersByKey_(sheet, headers, key, value).sort((a, b) => b - a);
+  rowNumbers.forEach((rowNumber) => sheet.deleteRow(rowNumber));
+  if (rowNumbers.length) invalidateSheetCache_(sheetName);
+  return rowNumbers.length;
 }
 
 function upsertInventoryRow_(dealerCode, sku, object) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.inventory);
-  const values = sheet.getDataRange().getValues();
-  const headers = values[0].map(String);
+  if (!sheet) throw new Error("재고현황 시트를 찾을 수 없습니다.");
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   const dealerIndex = headers.indexOf("dealer_code");
   const skuIndex = headers.indexOf("sku");
   if (dealerIndex === -1 || skuIndex === -1) throw new Error("재고현황 시트에 dealer_code 또는 sku 컬럼이 없습니다.");
 
-  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
-    if (String(values[rowIndex][dealerIndex]).toUpperCase() === String(dealerCode).toUpperCase() && String(values[rowIndex][skuIndex]) === String(sku)) {
+  const lastRow = sheet.getLastRow();
+  const matchingSkuRows = lastRow < 2
+    ? []
+    : sheet.getRange(2, skuIndex + 1, lastRow - 1, 1)
+      .createTextFinder(String(sku))
+      .matchEntireCell(true)
+      .findAll()
+      .map((range) => range.getRow());
+
+  for (let index = 0; index < matchingSkuRows.length; index += 1) {
+    const rowNumber = matchingSkuRows[index];
+    const row = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+    if (String(row[dealerIndex]).toUpperCase() === String(dealerCode).toUpperCase()) {
       headers.forEach((header, index) => {
-        if (object[header] !== undefined) sheet.getRange(rowIndex + 1, index + 1).setValue(object[header]);
+        if (object[header] !== undefined) row[index] = object[header];
       });
-      return readRows_(SHEETS.inventory).find((row) => String(row.dealer_code).toUpperCase() === String(dealerCode).toUpperCase() && String(row.sku) === String(sku));
+      sheet.getRange(rowNumber, 1, 1, headers.length).setValues([row]);
+      invalidateSheetCache_(SHEETS.inventory);
+      return rowObjectFromValues_(headers, row);
     }
   }
 
@@ -1894,14 +2094,30 @@ function ensureProductDefaultPrices_() {
   const retailIndex = headers.indexOf("retail_price");
   const purchaseIndex = headers.indexOf("purchase_price");
   if (retailIndex === -1 || purchaseIndex === -1) return;
+  let retailChanged = false;
+  let purchaseChanged = false;
 
   for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
     const hasContent = values[rowIndex].some((cell) => cell !== "");
     if (!hasContent) continue;
     const retailValue = Number(values[rowIndex][retailIndex] || 0);
     const purchaseValue = Number(values[rowIndex][purchaseIndex] || 0);
-    if (!retailValue) sheet.getRange(rowIndex + 1, retailIndex + 1).setValue(DEFAULT_RETAIL_PRICE);
-    if (!purchaseValue) sheet.getRange(rowIndex + 1, purchaseIndex + 1).setValue(DEFAULT_PURCHASE_PRICE);
+    if (!retailValue) {
+      values[rowIndex][retailIndex] = DEFAULT_RETAIL_PRICE;
+      retailChanged = true;
+    }
+    if (!purchaseValue) {
+      values[rowIndex][purchaseIndex] = DEFAULT_PURCHASE_PRICE;
+      purchaseChanged = true;
+    }
+  }
+  if (retailChanged) {
+    sheet.getRange(2, retailIndex + 1, values.length - 1, 1)
+      .setValues(values.slice(1).map((row) => [row[retailIndex]]));
+  }
+  if (purchaseChanged) {
+    sheet.getRange(2, purchaseIndex + 1, values.length - 1, 1)
+      .setValues(values.slice(1).map((row) => [row[purchaseIndex]]));
   }
 }
 
@@ -1923,6 +2139,7 @@ function ensureOrderPriceSnapshots_() {
     productsBySku[product.sku] = product;
   });
   const legacyDiscountRate = legacyOrderDiscountRate_();
+  let changed = false;
 
   for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
     const hasContent = values[rowIndex].some((cell) => cell !== "");
@@ -1950,10 +2167,17 @@ function ensureOrderPriceSnapshots_() {
       ? Number(values[rowIndex][purchaseIndex])
       : productPurchasePrice_(product);
 
-    sheet.getRange(rowIndex + 1, retailIndex + 1).setValue(unitRetailPrice);
-    sheet.getRange(rowIndex + 1, discountIndex + 1).setValue(discountRate);
-    sheet.getRange(rowIndex + 1, saleIndex + 1).setValue(unitSalePrice);
-    sheet.getRange(rowIndex + 1, purchaseIndex + 1).setValue(unitPurchasePrice);
+    values[rowIndex][retailIndex] = unitRetailPrice;
+    values[rowIndex][discountIndex] = discountRate;
+    values[rowIndex][saleIndex] = unitSalePrice;
+    values[rowIndex][purchaseIndex] = unitPurchasePrice;
+    changed = true;
+  }
+  if (changed) {
+    [retailIndex, discountIndex, saleIndex, purchaseIndex].forEach((columnIndex) => {
+      sheet.getRange(2, columnIndex + 1, values.length - 1, 1)
+        .setValues(values.slice(1).map((row) => [row[columnIndex]]));
+    });
   }
 }
 
@@ -1974,18 +2198,24 @@ function updateDealerProfileRows_(dealerCode, updates) {
   if (codeIndex === -1 || roleIndex === -1) throw new Error("대리점관리 시트에 dealer_code 또는 role 컬럼이 없습니다.");
 
   const updatedLogins = [];
+  let changed = false;
   for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
     const sameDealer = String(values[rowIndex][codeIndex]).toUpperCase() === String(dealerCode).toUpperCase();
     const isDealer = String(values[rowIndex][roleIndex]) === "dealer";
     if (!sameDealer || !isDealer) continue;
     Object.keys(updates).forEach((field) => {
       const colIndex = headers.indexOf(field);
-      if (colIndex >= 0) sheet.getRange(rowIndex + 1, colIndex + 1).setValue(updates[field]);
+      if (colIndex >= 0) values[rowIndex][colIndex] = updates[field];
     });
+    changed = true;
     const loginIndex = headers.indexOf("login_id");
     if (loginIndex >= 0) updatedLogins.push(String(values[rowIndex][loginIndex]));
   }
   if (!updatedLogins.length) throw new Error("수정할 대리점 계정을 찾을 수 없습니다.");
+  if (changed) {
+    sheet.getRange(2, 1, values.length - 1, headers.length).setValues(values.slice(1));
+    invalidateSheetCache_(SHEETS.accounts);
+  }
   return readRows_(SHEETS.accounts).filter((account) => updatedLogins.indexOf(String(account.login_id)) >= 0);
 }
 
@@ -2221,6 +2451,33 @@ function setSetting_(key, value) {
   }
 }
 
+function setSettings_(updates) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.settings);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const keyIndex = headers.indexOf("key");
+  const valueIndex = headers.indexOf("value");
+  if (keyIndex === -1 || valueIndex === -1) throw new Error("settings 시트에 key 또는 value 컬럼이 없습니다.");
+
+  const pending = Object.assign({}, updates || {});
+  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    const key = String(values[rowIndex][keyIndex]);
+    if (!Object.prototype.hasOwnProperty.call(pending, key)) continue;
+    values[rowIndex][valueIndex] = pending[key];
+    delete pending[key];
+  }
+  Object.keys(pending).forEach((key) => {
+    values.push(headers.map((header) => {
+      if (header === "key") return key;
+      if (header === "value") return pending[key];
+      return "";
+    }));
+  });
+
+  sheet.getRange(1, 1, values.length, headers.length).setValues(values);
+  invalidateSheetCache_(SHEETS.settings);
+}
+
 function seedProductsIfEmpty_() {
   if (readRows_(SHEETS.products).length) return;
   const bases = [
@@ -2326,28 +2583,27 @@ function seedVehiclesIfEmpty_() {
 function ensureInventoryForOwner_(dealerCode, dealerName) {
   const products = readRows_(SHEETS.products).filter((row) => toBool_(row.is_active));
   const inventory = readRows_(SHEETS.inventory);
-  products.forEach((product) => {
+  const missingRows = products.map((product) => {
     const exists = inventory.some((row) => row.dealer_code === dealerCode && row.sku === product.sku);
-    if (!exists) {
-      appendObject_(SHEETS.inventory, {
-        dealer_code: dealerCode,
-        product_name: product.product_name,
-        sku: product.sku,
-        stock_qty: 0,
-        safety_stock: 0,
-        location: dealerName + " 창고",
-        updated_at: isoNow_()
-      });
-    }
-  });
+    if (exists) return null;
+    return {
+      dealer_code: dealerCode,
+      product_name: product.product_name,
+      sku: product.sku,
+      stock_qty: 0,
+      safety_stock: 0,
+      location: dealerName + " 창고",
+      updated_at: isoNow_()
+    };
+  }).filter(Boolean);
+  appendObjects_(SHEETS.inventory, missingRows);
 }
 
 function seedInventoryForDealer_(dealerCode, dealerName) {
   const existing = readRows_(SHEETS.inventory).some((row) => row.dealer_code === dealerCode);
   if (existing) return;
   const products = readRows_(SHEETS.products).filter((row) => toBool_(row.is_active));
-  products.forEach((product, index) => {
-    appendObject_(SHEETS.inventory, {
+  appendObjects_(SHEETS.inventory, products.map((product, index) => ({
       dealer_code: dealerCode,
       product_name: product.product_name,
       sku: product.sku,
@@ -2355,8 +2611,7 @@ function seedInventoryForDealer_(dealerCode, dealerName) {
       safety_stock: 80 + (index % 5) * 10,
       location: dealerName + " 창고",
       updated_at: isoNow_()
-    });
-  });
+    })));
 }
 
 function seedInventoryForProduct_(product) {
@@ -2370,20 +2625,20 @@ function seedInventoryForProduct_(product) {
     });
   const accounts = Object.keys(accountMap).map((code) => accountMap[code]);
   const inventory = readRows_(SHEETS.inventory);
-  accounts.forEach((account) => {
+  const missingRows = accounts.map((account) => {
     const exists = inventory.some((row) => row.dealer_code === account.dealer_code && row.sku === product.sku);
-    if (!exists) {
-      appendObject_(SHEETS.inventory, {
-        dealer_code: account.dealer_code,
-        product_name: product.product_name,
-        sku: product.sku,
-        stock_qty: 0,
-        safety_stock: 0,
-        location: account.dealer_name + " 창고",
-        updated_at: isoNow_()
-      });
-    }
-  });
+    if (exists) return null;
+    return {
+      dealer_code: account.dealer_code,
+      product_name: product.product_name,
+      sku: product.sku,
+      stock_qty: 0,
+      safety_stock: 0,
+      location: account.dealer_name + " 창고",
+      updated_at: isoNow_()
+    };
+  }).filter(Boolean);
+  appendObjects_(SHEETS.inventory, missingRows);
 }
 
 function dealerNameMap_() {
@@ -2632,11 +2887,15 @@ function freezeDealerOrderPricing_(dealerCode, discountRate) {
       ? Number(values[rowIndex][purchaseIndex])
       : productPurchasePrice_(product);
 
-    sheet.getRange(rowIndex + 1, retailIndex + 1).setValue(unitRetailPrice);
-    sheet.getRange(rowIndex + 1, discountIndex + 1).setValue(orderDiscountRate);
-    sheet.getRange(rowIndex + 1, saleIndex + 1).setValue(unitSalePrice);
-    sheet.getRange(rowIndex + 1, purchaseIndex + 1).setValue(unitPurchasePrice);
+    values[rowIndex][retailIndex] = unitRetailPrice;
+    values[rowIndex][discountIndex] = orderDiscountRate;
+    values[rowIndex][saleIndex] = unitSalePrice;
+    values[rowIndex][purchaseIndex] = unitPurchasePrice;
     frozenCount += 1;
+  }
+  if (frozenCount) {
+    sheet.getRange(2, 1, values.length - 1, headers.length).setValues(values.slice(1));
+    invalidateSheetCache_(SHEETS.orders);
   }
   return frozenCount;
 }

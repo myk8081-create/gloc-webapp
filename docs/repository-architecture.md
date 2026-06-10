@@ -16,6 +16,10 @@ src/lib/repositories
   orders.repository.ts
   agencies.repository.ts
   settings.repository.ts
+  products.repository.ts
+  inventory.repository.ts
+  reservations.repository.ts
+  dealers.repository.ts
 
 src/lib/providers
   googleSheets.provider.ts
@@ -77,6 +81,8 @@ API 요청에서 `x-gloc-customer: gloc_a` 헤더를 보내면 `APPS_SCRIPT_API_
 현재는 `DATA_PROVIDER=googleSheets`가 기본값입니다.
 
 나중에 Supabase로 전환할 때는 Repository는 유지하고 `src/lib/providers/supabase.provider.ts`만 실제 Supabase 쿼리로 채우면 됩니다.
+
+Google Sheets 운영 중 적용된 캐시, 묶음 저장, 단계별 초기 로딩 방식은 [google-sheets-performance.md](google-sheets-performance.md)를 참고하세요.
 
 ```text
 DATA_PROVIDER=supabase

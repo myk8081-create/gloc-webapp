@@ -47,6 +47,56 @@ export interface SettingRecord {
   value: string;
 }
 
+export type ProductCategory = "PPF" | "TINTING" | "DETAILING";
+
+export interface ProductRecord {
+  sku: string;
+  product_name: string;
+  category: ProductCategory;
+  brand?: string;
+  product_code?: string;
+  unit?: string;
+  retail_price?: number;
+  purchase_price?: number;
+  is_active: boolean;
+}
+
+export interface InventoryRecord {
+  dealer_code: string;
+  dealer_name?: string;
+  product_name: string;
+  sku: string;
+  category: ProductCategory;
+  stock_qty: number;
+  safety_stock: number;
+  location?: string;
+  updated_at?: string;
+}
+
+export interface ReservationRecord {
+  reservation_id: string;
+  dealer_code: string;
+  dealer_name?: string;
+  customer_name?: string;
+  reservation_date?: string;
+  reservation_items?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DealerRecord {
+  login_id: string;
+  dealer_code: string;
+  dealer_name: string;
+  role: "admin" | "dealer";
+  can_access_ppf: boolean;
+  can_access_tinting: boolean;
+  can_access_detailing: boolean;
+  is_active: boolean;
+  updated_at?: string;
+}
+
 export interface LogRecord {
   created_at: string;
   level: "debug" | "info" | "warn" | "error" | string;

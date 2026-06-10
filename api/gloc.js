@@ -27,6 +27,7 @@ function appsScriptUrlFor(req, body) {
 }
 
 module.exports = async function handler(req, res) {
+  const startedAt = Date.now();
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-gloc-customer");
@@ -38,6 +39,7 @@ module.exports = async function handler(req, res) {
   }
 
   const body = readBody(req);
+  const action = body.action || "unknown";
   const appsScriptUrl = appsScriptUrlFor(req, body);
   if (!appsScriptUrl) {
     return sendJson(res, 500, { ok: false, error: "APPS_SCRIPT_API_URL 환경변수가 설정되지 않았습니다." });
@@ -56,11 +58,30 @@ module.exports = async function handler(req, res) {
     });
 
     const text = await response.text();
+    const durationMs = Date.now() - startedAt;
     res.statusCode = response.status;
     res.setHeader("Content-Type", response.headers.get("content-type") || "application/json; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Server-Timing", `apps-script;dur=${durationMs}`);
+    console.info(JSON.stringify({
+      type: "api_performance",
+      endpoint: "/api/gloc",
+      action,
+      durationMs,
+      source: "apps_script",
+      status: response.status
+    }));
     res.end(text);
   } catch (error) {
+    console.error(JSON.stringify({
+      type: "api_performance",
+      endpoint: "/api/gloc",
+      action,
+      durationMs: Date.now() - startedAt,
+      source: "apps_script",
+      status: 502,
+      error: error && error.message ? error.message : "unknown"
+    }));
     return sendJson(res, 502, {
       ok: false,
       error: error && error.message ? error.message : "Apps Script API 호출에 실패했습니다."

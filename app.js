@@ -805,6 +805,11 @@ const state = {
   verification: {
     result: null,
     error: ""
+  },
+  dataLoading: {
+    priority: false,
+    deferred: false,
+    error: ""
   }
 };
 
@@ -863,6 +868,7 @@ function render() {
     <div class="app-shell ${state.session?.role === "admin" ? "admin-shell" : ""}">
       ${renderTopbar()}
       ${renderBusinessCategorySelector()}
+      ${renderDataLoadingStatus()}
       ${renderPublicVerify()}
       ${renderLogin()}
       ${renderPasswordChange()}
@@ -889,6 +895,24 @@ function render() {
   `;
   bindEvents();
   requestAnimationFrame(initConsultation3dViewer);
+}
+
+function renderDataLoadingStatus() {
+  if (!state.session || state.screen === "passwordChange" || state.screen === "onboarding") return "";
+  const loading = state.dataLoading.priority || state.dataLoading.deferred;
+  if (!loading && !state.dataLoading.error) return "";
+  const message = state.dataLoading.error
+    ? state.dataLoading.error
+    : state.dataLoading.priority
+      ? "상품과 재고를 먼저 불러오는 중입니다."
+      : "발주, 예약, 통계 데이터를 불러오는 중입니다.";
+  return `
+    <section class="data-loading-status ${state.dataLoading.error ? "error" : ""}" role="status">
+      <span class="data-loading-indicator" aria-hidden="true"></span>
+      <span>${escapeHtml(message)}</span>
+      ${state.dataLoading.error ? `<button type="button" class="secondary-button small-button" data-action="retryInitialLoad">다시 시도</button>` : ""}
+    </section>
+  `;
 }
 
 function renderBusinessCategorySelector() {
@@ -6091,6 +6115,7 @@ async function handleAction(action, button) {
   if (action === "saveDealerInfo") return saveDealerInfo();
   if (action === "logout") return logout();
   if (action === "refresh") return refreshData();
+  if (action === "retryInitialLoad") return loadInitialDataAfterLogin({ throwOnError: true });
   if (action === "refreshLinks") return refreshLinks();
   if (action === "enablePushNotifications") return enablePushNotifications();
   if (action === "checkPushNotifications") return updatePushState(true);
@@ -6155,6 +6180,9 @@ async function login() {
   render();
   syncAppBadgeFromOrders();
   if (state.session) updatePushState(false);
+  if (window.FilmStockApi?.isEnabled() && state.screen !== "onboarding" && state.screen !== "passwordChange") {
+    loadInitialDataAfterLogin().catch(() => {});
+  }
   scrollTop();
   showToast(state.screen === "onboarding" ? "최초 설정을 완료해 주세요." : state.screen === "passwordChange" ? "비밀번호 변경이 필요합니다." : "로그인되었습니다.");
 }
@@ -6182,6 +6210,18 @@ function applyRemoteSession(data) {
   if (Array.isArray(data.certificates)) state.certificates = data.certificates;
   if (Array.isArray(data.vehicles)) state.vehicles = data.vehicles.length ? data.vehicles : createMockVehicles();
   if (Array.isArray(data.consultations)) state.consultations = data.consultations;
+  if (data.bootstrap_pending) {
+    state.accounts = [data.user];
+    state.products = [];
+    state.inventory = [];
+    state.orders = [];
+    state.retailSales = [];
+    state.reservations = [];
+    state.certificates = [];
+    state.vehicles = [];
+    state.consultations = [];
+    state.dataLoading.error = "";
+  }
   applyLabelSettings(data.label_settings || data.labelSettings);
   normalizeSelectedBusinessCategory();
   syncAppBadgeFromOrders();
@@ -6245,6 +6285,7 @@ async function changePassword() {
   state.forms.newPasswordConfirm = "";
   state.screen = defaultScreen();
   render();
+  if (window.FilmStockApi?.isEnabled()) loadInitialDataAfterLogin().catch(() => {});
   scrollTop();
   showToast("비밀번호가 변경되었습니다.");
 }
@@ -6284,6 +6325,7 @@ async function completeOnboarding() {
   state.forms.onboardingPasswordConfirm = "";
   state.screen = defaultScreen();
   render();
+  if (window.FilmStockApi?.isEnabled()) loadInitialDataAfterLogin().catch(() => {});
   scrollTop();
   showToast("최초 설정이 완료되었습니다.");
 }
@@ -6397,32 +6439,66 @@ function loadDaumPostcode() {
   return daumPostcodeLoading;
 }
 
+async function loadPriorityData() {
+  const inventoryData = await window.FilmStockApi.getInventory({});
+  if (Array.isArray(inventoryData?.products)) state.products = inventoryData.products;
+  if (Array.isArray(inventoryData?.inventory)) state.inventory = inventoryData.inventory;
+  if (!state.products.some((product) => product.sku === state.selectedSku)) {
+    state.selectedSku = state.products[0]?.sku || "";
+  }
+}
+
+async function loadDeferredData() {
+  const [orderData, salesData, reservationData, certificateData, consultationData, labelData] = await Promise.all([
+    window.FilmStockApi.getOrders({}),
+    window.FilmStockApi.getSales({}),
+    window.FilmStockApi.getReservations({}),
+    window.FilmStockApi.getCertificates({}),
+    window.FilmStockApi.getConsultationData({}),
+    state.session?.role === "admin" ? window.FilmStockApi.getLabelSettings().catch(() => null) : Promise.resolve(null)
+  ]);
+  if (Array.isArray(orderData?.orders)) state.orders = orderData.orders;
+  if (Array.isArray(orderData?.accounts)) state.accounts = orderData.accounts;
+  if (Array.isArray(salesData?.sales)) state.retailSales = salesData.sales;
+  if (Array.isArray(reservationData?.reservations)) state.reservations = reservationData.reservations;
+  if (Array.isArray(certificateData?.certificates)) state.certificates = certificateData.certificates;
+  if (Array.isArray(consultationData?.vehicles)) state.vehicles = consultationData.vehicles.length ? consultationData.vehicles : createMockVehicles();
+  if (Array.isArray(consultationData?.consultations)) state.consultations = consultationData.consultations;
+  applyLabelSettings(labelData?.label_settings || labelData?.settings);
+  if (state.screen === "dealerInfo" && state.session?.role === "dealer") prepareDealerInfoForm();
+  syncAppBadgeFromOrders();
+}
+
+async function loadInitialDataAfterLogin({ throwOnError = false } = {}) {
+  if (!window.FilmStockApi?.isEnabled() || !state.session) return;
+  state.dataLoading.priority = true;
+  state.dataLoading.deferred = false;
+  state.dataLoading.error = "";
+  render();
+
+  try {
+    await loadPriorityData();
+    state.dataLoading.priority = false;
+    state.dataLoading.deferred = true;
+    render();
+    await loadDeferredData();
+    state.dataLoading.deferred = false;
+    render();
+  } catch (error) {
+    state.dataLoading.priority = false;
+    state.dataLoading.deferred = false;
+    state.dataLoading.error = error.message || "데이터를 불러오지 못했습니다.";
+    render();
+    if (throwOnError) throw error;
+  }
+}
+
 async function refreshData(showDone = true) {
   if (window.FilmStockApi?.isEnabled() && state.session) {
-    const requests = [
-      window.FilmStockApi.getInventory({}),
-      window.FilmStockApi.getOrders({}),
-      window.FilmStockApi.getSales({}),
-      window.FilmStockApi.getReservations({}),
-      window.FilmStockApi.getCertificates({}),
-      window.FilmStockApi.getConsultationData({})
-    ];
-    if (state.session.role === "admin") requests.push(window.FilmStockApi.getLabelSettings().catch(() => null));
-    const [inventoryData, orderData, salesData, reservationData, certificateData, consultationData, labelData] = await Promise.all(requests);
-    if (Array.isArray(inventoryData?.products)) state.products = inventoryData.products;
-    if (Array.isArray(inventoryData?.inventory)) state.inventory = inventoryData.inventory;
-    if (Array.isArray(orderData?.orders)) state.orders = orderData.orders;
-    if (Array.isArray(orderData?.accounts)) state.accounts = orderData.accounts;
-    if (Array.isArray(salesData?.sales)) state.retailSales = salesData.sales;
-    if (Array.isArray(reservationData?.reservations)) state.reservations = reservationData.reservations;
-    if (Array.isArray(certificateData?.certificates)) state.certificates = certificateData.certificates;
-    if (Array.isArray(consultationData?.vehicles)) state.vehicles = consultationData.vehicles.length ? consultationData.vehicles : createMockVehicles();
-    if (Array.isArray(consultationData?.consultations)) state.consultations = consultationData.consultations;
-    applyLabelSettings(labelData?.label_settings || labelData?.settings);
-    if (state.screen === "dealerInfo" && state.session?.role === "dealer") prepareDealerInfoForm();
-    syncAppBadgeFromOrders();
+    await loadInitialDataAfterLogin({ throwOnError: true });
+  } else {
+    render();
   }
-  render();
   if (showDone) showToast("최신 데이터로 갱신했습니다.");
 }
 

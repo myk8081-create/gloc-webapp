@@ -21,6 +21,7 @@ PPF/틴팅/디테일링 제품을 판매하는 본사와 대리점용 재고조�
 - Next.js App Router 전환용 API Route 초안: `app/api`
 
 상세 구조와 고객별 Google Sheets 분리 방식은 [docs/repository-architecture.md](docs/repository-architecture.md)를 참고하세요.
+Google Sheets 로그인·조회·저장 속도 개선 구조와 배포 방법은 [docs/google-sheets-performance.md](docs/google-sheets-performance.md)를 참고하세요.
 
 ## 최종 인수인계
 

@@ -1,6 +1,16 @@
 (function () {
   const config = window.FILM_STOCK_CONFIG || {};
   const storageKey = "film_stock_apps_script_session";
+  const retryableActions = new Set([
+    "getInventory",
+    "getOrders",
+    "getSales",
+    "getReservations",
+    "getCertificates",
+    "getConsultationData",
+    "getLabelSettings",
+    "getDealerLinks"
+  ]);
 
   function apiUrl() {
     return String(config.apiBaseUrl || config.appsScriptUrl || "").trim();
@@ -32,17 +42,39 @@
     if (!isEnabled()) return null;
 
     const session = options.session === undefined ? getSession() : options.session;
-    const response = await fetch(apiUrl(), {
-      method: "POST",
-      redirect: "follow",
-      // Apps Script와 브라우저 CORS 충돌을 줄이기 위해 단순 요청 형식으로 보냅니다.
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        action,
-        token: session?.token || "",
-        payload
-      })
-    });
+    const startedAt = performance.now();
+    const attempts = retryableActions.has(action) ? 2 : 1;
+    let completedAttempts = 0;
+    let response = null;
+    let lastError = null;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      completedAttempts = attempt + 1;
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 30000);
+      try {
+        response = await fetch(apiUrl(), {
+          method: "POST",
+          redirect: "follow",
+          signal: controller.signal,
+          // Apps Script와 브라우저 CORS 충돌을 줄이기 위해 단순 요청 형식으로 보냅니다.
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action,
+            token: session?.token || "",
+            payload
+          })
+        });
+        if (response.ok || response.status < 500 || attempt === attempts - 1) break;
+      } catch (error) {
+        lastError = error;
+        if (attempt === attempts - 1) throw new Error(error?.name === "AbortError" ? "요청 시간이 초과되었습니다. 다시 시도해 주세요." : "네트워크 연결을 확인한 뒤 다시 시도해 주세요.");
+      } finally {
+        window.clearTimeout(timeout);
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 400));
+    }
+    if (!response) throw lastError || new Error("API 요청에 실패했습니다.");
 
     const text = await response.text();
     let result = null;
@@ -54,6 +86,14 @@
 
     if (!response.ok || result?.ok === false) {
       throw new Error(result?.error || response.statusText || "API 요청에 실패했습니다.");
+    }
+    if (config.dataMode === "appsScript") {
+      console.info("[GLOC API]", {
+        action,
+        durationMs: Math.round(performance.now() - startedAt),
+        attempts: completedAttempts,
+        retried: completedAttempts > 1
+      });
     }
     return result?.data ?? result;
   }

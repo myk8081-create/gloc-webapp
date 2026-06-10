@@ -152,6 +152,70 @@ button.is-loading {
   color: #fff;
 }
 
+.data-loading-status {
+  position: sticky;
+  top: calc(119px + env(safe-area-inset-top));
+  z-index: 18;
+  display: flex;
+  width: min(1088px, calc(100% - 32px));
+  min-height: 44px;
+  margin: 10px auto 0;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(217, 176, 93, 0.45);
+  border-radius: 8px;
+  background: rgba(27, 29, 27, 0.96);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+}
+
+.data-loading-status.error {
+  border-color: rgba(216, 79, 69, 0.72);
+}
+
+.data-loading-status .small-button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.data-loading-indicator {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: data-loading-spin 0.75s linear infinite;
+}
+
+.data-loading-status.error .data-loading-indicator {
+  border: 0;
+  border-radius: 0;
+  animation: none;
+}
+
+.data-loading-status.error .data-loading-indicator::before {
+  content: "!";
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+}
+
+@keyframes data-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -3364,6 +3428,17 @@ h3 {
 }
 
 @media (max-width: 420px) {
+  .data-loading-status {
+    top: calc(111px + env(safe-area-inset-top));
+    width: calc(100% - 24px);
+    align-items: flex-start;
+  }
+
+  .data-loading-status .small-button {
+    min-height: 36px;
+    margin-left: auto;
+  }
+
   .topbar {
     gap: 8px;
     padding-right: 10px;
