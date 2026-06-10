@@ -9,7 +9,8 @@
     "getCertificates",
     "getConsultationData",
     "getLabelSettings",
-    "getDealerLinks"
+    "getDealerLinks",
+    "getCommunicationData"
   ]);
 
   function apiUrl() {
@@ -146,6 +147,47 @@
       shipping_company: shippingCompany,
       tracking_number: trackingNumber
     });
+  }
+
+  async function updateOrderDiscount({ orderId, discountRate, applyType, memo }) {
+    return request("updateOrderDiscount", {
+      order_id: orderId,
+      order_discount_rate: discountRate,
+      discount_apply_type: applyType || "ORDER_CUSTOM",
+      memo: memo || ""
+    });
+  }
+
+  async function getCommunicationData() {
+    return request("getCommunicationData", {});
+  }
+
+  async function saveNotice(notice) {
+    return request("saveNotice", notice);
+  }
+
+  async function markNoticeRead({ noticeId }) {
+    return request("markNoticeRead", { notice_id: noticeId });
+  }
+
+  async function dismissNotice({ noticeId, dismissType }) {
+    return request("dismissNotice", { notice_id: noticeId, dismiss_type: dismissType });
+  }
+
+  async function createMessageThread(thread) {
+    return request("createMessageThread", thread);
+  }
+
+  async function sendMessage({ threadId, content }) {
+    return request("sendMessage", { thread_id: threadId, content });
+  }
+
+  async function markThreadRead({ threadId }) {
+    return request("markThreadRead", { thread_id: threadId });
+  }
+
+  async function updateThreadStatus({ threadId, status }) {
+    return request("updateThreadStatus", { thread_id: threadId, status });
   }
 
   async function markOrderPrinted({ orderId, printStatus, labelSize }) {
@@ -308,6 +350,15 @@
     getOrders,
     updateOrderStatus,
     updateOrderStatusWithShipping,
+    updateOrderDiscount,
+    getCommunicationData,
+    saveNotice,
+    markNoticeRead,
+    dismissNotice,
+    createMessageThread,
+    sendMessage,
+    markThreadRead,
+    updateThreadStatus,
     markOrderPrinted,
     getLabelSettings,
     saveLabelSettings,

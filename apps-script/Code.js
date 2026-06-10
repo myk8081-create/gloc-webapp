@@ -11,13 +11,19 @@ const SHEETS = {
   consultations: "상담현황",
   products: "제품등록",
   settings: "settings",
-  pushSubscriptions: "푸시구독"
+  pushSubscriptions: "푸시구독",
+  notices: "Notices",
+  noticeReads: "NoticeReads",
+  messageThreads: "MessageThreads",
+  messages: "Messages",
+  orderDiscountLogs: "OrderDiscountLogs",
+  orderDiscountNotifications: "OrderDiscountNotifications"
 };
 
 const HEADERS = {
   accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "can_access_ppf", "can_access_tinting", "can_access_detailing", "role", "is_first_login", "is_active", "contact_name", "phone", "zipcode", "address", "address_detail", "default_courier", "shipping_memo", "password_changed_at", "profile_completed_at", "updated_at"],
   inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
-  orders: ["order_id", "agency_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "product_category", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "courier", "tracking_no", "shipping_receipt_no", "shipping_error", "approved_at", "print_status", "printed_at", "print_count", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
+  orders: ["order_id", "agency_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "product_category", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "dealer_default_discount_rate", "order_discount_rate", "discount_apply_type", "applied_discount_rate", "subtotal_amount", "discount_amount", "final_order_amount", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "courier", "tracking_no", "shipping_receipt_no", "shipping_error", "approved_at", "print_status", "printed_at", "print_count", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
   reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "reservation_date", "product_name", "sku", "qty", "reservation_items", "status", "memo", "completed_at", "created_at", "updated_at"],
   certificates: ["id", "reservation_id", "dealer_id", "dealer_code", "dealer_name", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "product_type", "product_name", "product_serial", "certificate_number", "random_code", "check_digit", "installation_date", "issued_at", "issued_by", "verified_count", "last_verified_at", "status", "created_at"],
@@ -27,7 +33,13 @@ const HEADERS = {
   consultations: ["consultation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_id", "vehicle_model", "vehicle_color", "selected_tint_products", "selected_ppf_products", "selected_ppf_parts", "applications", "quote_total", "screenshot_url", "memo", "status", "created_at", "updated_at"],
   products: ["sku", "product_name", "category", "brand", "product_code", "color_name", "color_hex", "color_chart_image_url", "finish_type", "transparency_type", "opacity", "shade_percent", "available_parts", "description", "unit", "retail_price", "purchase_price", "is_active"],
   settings: ["key", "value"],
-  pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"]
+  pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"],
+  notices: ["id", "title", "content", "notice_type", "target_category", "target_dealer_ids", "is_popup", "popup_start_at", "popup_end_at", "is_pinned", "is_active", "created_by", "created_at", "updated_at"],
+  noticeReads: ["id", "notice_id", "login_id", "dealer_code", "read_at", "dismiss_type", "dismiss_until", "created_at", "updated_at"],
+  messageThreads: ["id", "dealer_code", "dealer_name", "subject", "status", "created_at", "updated_at"],
+  messages: ["id", "thread_id", "sender_role", "sender_id", "sender_name", "receiver_role", "receiver_id", "content", "is_read", "read_at", "message_type", "order_id", "created_at"],
+  orderDiscountLogs: ["id", "order_id", "dealer_code", "before_discount_rate", "after_discount_rate", "before_final_amount", "after_final_amount", "changed_by", "changed_at", "memo"],
+  orderDiscountNotifications: ["id", "order_id", "dealer_code", "before_discount_rate", "after_discount_rate", "before_final_amount", "after_final_amount", "sent_at"]
 };
 
 const REPOSITORY_SHEET_HEADERS = {
@@ -46,7 +58,7 @@ const DEFAULT_RETAIL_PRICE = 1000000;
 const DEFAULT_PURCHASE_PRICE = 500000;
 const DEFAULT_LEGACY_ORDER_DISCOUNT_RATE = 20;
 const PRODUCT_CATEGORIES = ["PPF", "TINTING", "DETAILING"];
-const SCHEMA_CACHE_VERSION = "2026-06-10-v1";
+const SCHEMA_CACHE_VERSION = "2026-06-10-v2-communication";
 const SCHEMA_CACHE_SECONDS = 21600;
 const CACHE_CHUNK_SIZE = 18000;
 const MAX_CACHE_CHUNKS = 40;
@@ -63,6 +75,12 @@ const SHEET_CACHE_TTL_SECONDS = {
   "제품등록": 120,
   "settings": 120,
   "푸시구독": 30,
+  "Notices": 30,
+  "NoticeReads": 20,
+  "MessageThreads": 20,
+  "Messages": 20,
+  "OrderDiscountLogs": 30,
+  "OrderDiscountNotifications": 30,
   "Agencies": 60,
   "Settings": 120
 };
@@ -134,6 +152,15 @@ function doPost(e) {
     if (action === "createOrder") return ok_(handleCreateOrder_(payload, user));
     if (action === "getOrders") return ok_(handleGetOrders_(payload, user));
     if (action === "updateOrderStatus") return ok_(handleUpdateOrderStatus_(payload, user));
+    if (action === "updateOrderDiscount") return ok_(handleUpdateOrderDiscount_(payload, user));
+    if (action === "getCommunicationData") return ok_(handleGetCommunicationData_(payload, user));
+    if (action === "saveNotice") return ok_(handleSaveNotice_(payload, user));
+    if (action === "markNoticeRead") return ok_(handleMarkNoticeRead_(payload, user));
+    if (action === "dismissNotice") return ok_(handleDismissNotice_(payload, user));
+    if (action === "createMessageThread") return ok_(handleCreateMessageThread_(payload, user));
+    if (action === "sendMessage") return ok_(handleSendMessage_(payload, user));
+    if (action === "markThreadRead") return ok_(handleMarkThreadRead_(payload, user));
+    if (action === "updateThreadStatus") return ok_(handleUpdateThreadStatus_(payload, user));
     if (action === "markOrderPrinted") return ok_(handleMarkOrderPrinted_(payload, user));
     if (action === "getLabelSettings") return ok_(handleGetLabelSettings_(payload, user));
     if (action === "saveLabelSettings") return ok_(handleSaveLabelSettings_(payload, user));
@@ -402,6 +429,8 @@ function handleCreateOrder_(payload, user) {
   const discountRate = dealerDiscountRate_(user.dealer_code);
   const unitSalePrice = Math.round(unitRetailPrice * (1 - discountRate / 100));
   const unitPurchasePrice = productPurchasePrice_(product);
+  const subtotalAmount = unitRetailPrice * qty;
+  const finalOrderAmount = unitSalePrice * qty;
 
   const order = {
     order_id: makeOrderId_(),
@@ -417,6 +446,13 @@ function handleCreateOrder_(payload, user) {
     dealer_discount_rate: discountRate,
     unit_sale_price: unitSalePrice,
     unit_purchase_price: unitPurchasePrice,
+    dealer_default_discount_rate: discountRate,
+    order_discount_rate: "",
+    discount_apply_type: "DEALER_DEFAULT",
+    applied_discount_rate: discountRate,
+    subtotal_amount: subtotalAmount,
+    discount_amount: subtotalAmount - finalOrderAmount,
+    final_order_amount: finalOrderAmount,
     status: "접수",
     memo: payload.memo || "",
     recipient_name: "",
@@ -527,6 +563,194 @@ function handleUpdateOrderStatus_(payload, user) {
     inventory_rows: publicInventories,
     notification: notifyDealerOrderUpdated_(order)
   };
+}
+
+function handleUpdateOrderDiscount_(payload, user) {
+  requireAdmin_(user);
+  const orderId = required_(payload.order_id, "order_id");
+  const applyType = String(payload.discount_apply_type || "ORDER_CUSTOM").toUpperCase();
+  if (["DEALER_DEFAULT", "ORDER_CUSTOM"].indexOf(applyType) === -1) throw new Error("할인 적용 유형이 올바르지 않습니다.");
+
+  const currentOrder = readRows_(SHEETS.orders).find((row) => row.order_id === orderId);
+  if (!currentOrder) throw new Error("발주를 찾을 수 없습니다.");
+
+  const defaultRate = Number(hasSnapshotValue_(currentOrder.dealer_default_discount_rate)
+    ? currentOrder.dealer_default_discount_rate
+    : hasSnapshotValue_(currentOrder.dealer_discount_rate)
+      ? currentOrder.dealer_discount_rate
+      : dealerDiscountRate_(currentOrder.dealer_code));
+  const requestedRate = applyType === "ORDER_CUSTOM" ? Number(payload.order_discount_rate) : defaultRate;
+  if (Number.isNaN(requestedRate) || requestedRate < 0 || requestedRate > 100) throw new Error("할인율은 0~100 사이로 입력해 주세요.");
+
+  const qty = Number(currentOrder.qty || 0);
+  const unitRetailPrice = Number(currentOrder.unit_retail_price || 0);
+  const subtotalAmount = Number(hasSnapshotValue_(currentOrder.subtotal_amount) ? currentOrder.subtotal_amount : unitRetailPrice * qty);
+  const beforeRate = Number(hasSnapshotValue_(currentOrder.applied_discount_rate) ? currentOrder.applied_discount_rate : currentOrder.dealer_discount_rate || defaultRate);
+  const beforeFinalAmount = Number(hasSnapshotValue_(currentOrder.final_order_amount)
+    ? currentOrder.final_order_amount
+    : Math.round(subtotalAmount * (1 - beforeRate / 100)));
+  const finalOrderAmount = Math.round(subtotalAmount * (1 - requestedRate / 100));
+  const discountAmount = subtotalAmount - finalOrderAmount;
+  const now = isoNow_();
+  const updates = {
+    dealer_default_discount_rate: defaultRate,
+    order_discount_rate: applyType === "ORDER_CUSTOM" ? requestedRate : "",
+    discount_apply_type: applyType,
+    applied_discount_rate: requestedRate,
+    dealer_discount_rate: requestedRate,
+    unit_sale_price: qty ? Math.round(finalOrderAmount / qty) : 0,
+    subtotal_amount: subtotalAmount,
+    discount_amount: discountAmount,
+    final_order_amount: finalOrderAmount,
+    updated_at: now
+  };
+  const order = updateRowByKey_(SHEETS.orders, "order_id", orderId, updates);
+  const log = {
+    id: makeCommunicationId_("ODL"),
+    order_id: orderId,
+    dealer_code: currentOrder.dealer_code,
+    before_discount_rate: beforeRate,
+    after_discount_rate: requestedRate,
+    before_final_amount: beforeFinalAmount,
+    after_final_amount: finalOrderAmount,
+    changed_by: user.login_id,
+    changed_at: now,
+    memo: payload.memo || ""
+  };
+  const notification = {
+    id: makeCommunicationId_("ODN"),
+    order_id: orderId,
+    dealer_code: currentOrder.dealer_code,
+    before_discount_rate: beforeRate,
+    after_discount_rate: requestedRate,
+    before_final_amount: beforeFinalAmount,
+    after_final_amount: finalOrderAmount,
+    sent_at: now
+  };
+  appendObject_(SHEETS.orderDiscountLogs, log);
+  appendObject_(SHEETS.orderDiscountNotifications, notification);
+  const messageResult = appendAutomaticDiscountMessage_(order, log, user);
+  return { order: order, log: log, notification: notification, thread: messageResult.thread, message: messageResult.message, push_notification: messageResult.push_notification };
+}
+
+function handleGetCommunicationData_(payload, user) {
+  const notices = visibleNoticesForUser_(user);
+  const noticeIds = {};
+  notices.forEach((notice) => { noticeIds[notice.id] = true; });
+  const noticeReads = readRows_(SHEETS.noticeReads).filter((row) => row.login_id === user.login_id && noticeIds[row.notice_id]);
+
+  let threads = readRows_(SHEETS.messageThreads);
+  if (user.role === "dealer") threads = threads.filter((thread) => sameCode_(thread.dealer_code, user.dealer_code));
+  const threadIds = {};
+  threads.forEach((thread) => { threadIds[thread.id] = true; });
+  const messages = readRows_(SHEETS.messages).filter((message) => threadIds[message.thread_id]);
+  const discountLogs = user.role === "admin"
+    ? readRows_(SHEETS.orderDiscountLogs).reverse()
+    : readRows_(SHEETS.orderDiscountLogs).filter((row) => sameCode_(row.dealer_code, user.dealer_code)).reverse();
+  return {
+    notices: notices,
+    notice_reads: noticeReads,
+    message_threads: threads.reverse(),
+    messages: messages,
+    order_discount_logs: discountLogs
+  };
+}
+
+function handleSaveNotice_(payload, user) {
+  requireAdmin_(user);
+  const now = isoNow_();
+  const noticeId = payload.id || makeCommunicationId_("NTC");
+  const noticeType = String(payload.notice_type || "NORMAL").toUpperCase();
+  const targetCategory = String(payload.target_category || "ALL").toUpperCase();
+  if (["NORMAL", "IMPORTANT", "POPUP"].indexOf(noticeType) === -1) throw new Error("공지 유형이 올바르지 않습니다.");
+  if (["ALL"].concat(PRODUCT_CATEGORIES).indexOf(targetCategory) === -1) throw new Error("공지 대상 사업부가 올바르지 않습니다.");
+  const notice = {
+    id: noticeId,
+    title: required_(payload.title, "title"),
+    content: required_(payload.content, "content"),
+    notice_type: noticeType,
+    target_category: targetCategory,
+    target_dealer_ids: Array.isArray(payload.target_dealer_ids) ? payload.target_dealer_ids.join(",") : payload.target_dealer_ids || "",
+    is_popup: toBool_(payload.is_popup) || noticeType === "POPUP",
+    popup_start_at: payload.popup_start_at || "",
+    popup_end_at: payload.popup_end_at || "",
+    is_pinned: toBool_(payload.is_pinned) || noticeType === "IMPORTANT",
+    is_active: payload.is_active === undefined ? true : toBool_(payload.is_active),
+    created_by: user.login_id,
+    created_at: payload.created_at || now,
+    updated_at: now
+  };
+  const exists = readRows_(SHEETS.notices).some((row) => row.id === noticeId);
+  const saved = exists ? updateRowByKey_(SHEETS.notices, "id", noticeId, notice) : (appendObject_(SHEETS.notices, notice), notice);
+  return { notice: saved };
+}
+
+function handleMarkNoticeRead_(payload, user) {
+  return { notice_read: upsertNoticeRead_(required_(payload.notice_id, "notice_id"), user, "READ", "") };
+}
+
+function handleDismissNotice_(payload, user) {
+  const type = String(payload.dismiss_type || "TODAY").toUpperCase();
+  if (["TODAY", "NEVER"].indexOf(type) === -1) throw new Error("지원하지 않는 팝업 숨김 방식입니다.");
+  return { notice_read: upsertNoticeRead_(required_(payload.notice_id, "notice_id"), user, type, type === "TODAY" ? tomorrowStartText_() : "") };
+}
+
+function handleCreateMessageThread_(payload, user) {
+  const dealerCode = user.role === "admin" ? required_(payload.dealer_code, "dealer_code").toUpperCase() : user.dealer_code;
+  const dealerName = dealerNameMap_()[dealerCode] || payload.dealer_name || dealerCode;
+  const now = isoNow_();
+  const thread = {
+    id: makeCommunicationId_("THR"),
+    dealer_code: dealerCode,
+    dealer_name: dealerName,
+    subject: required_(payload.subject, "subject"),
+    status: "OPEN",
+    created_at: now,
+    updated_at: now
+  };
+  appendObject_(SHEETS.messageThreads, thread);
+  const result = handleSendMessage_({ thread_id: thread.id, content: payload.content || "새 문의가 등록되었습니다." }, user);
+  return { thread: thread, message: result.message };
+}
+
+function handleSendMessage_(payload, user) {
+  const threadId = required_(payload.thread_id, "thread_id");
+  const thread = requireAccessibleThread_(threadId, user);
+  const now = isoNow_();
+  const message = {
+    id: makeCommunicationId_("MSG"),
+    thread_id: threadId,
+    sender_role: user.role.toUpperCase(),
+    sender_id: user.login_id,
+    sender_name: user.dealer_name,
+    receiver_role: user.role === "admin" ? "DEALER" : "ADMIN",
+    receiver_id: user.role === "admin" ? thread.dealer_code : HEAD_OFFICE_CODE,
+    content: required_(payload.content, "content"),
+    is_read: false,
+    read_at: "",
+    message_type: payload.message_type || "NORMAL",
+    order_id: payload.order_id || "",
+    created_at: now
+  };
+  appendObject_(SHEETS.messages, message);
+  const nextStatus = user.role === "admin" ? "ANSWERED" : "OPEN";
+  const updatedThread = updateRowByKey_(SHEETS.messageThreads, "id", threadId, { status: nextStatus, updated_at: now });
+  return { thread: updatedThread, message: message };
+}
+
+function handleMarkThreadRead_(payload, user) {
+  const thread = requireAccessibleThread_(required_(payload.thread_id, "thread_id"), user);
+  const receiverRole = user.role.toUpperCase();
+  const messages = readRows_(SHEETS.messages).filter((message) => message.thread_id === thread.id && message.receiver_role === receiverRole && !toBool_(message.is_read));
+  messages.forEach((message) => updateRowByKey_(SHEETS.messages, "id", message.id, { is_read: true, read_at: isoNow_() }));
+  return { thread_id: thread.id, read_count: messages.length };
+}
+
+function handleUpdateThreadStatus_(payload, user) {
+  requireAdmin_(user);
+  const status = String(payload.status || "CLOSED").toUpperCase();
+  if (["OPEN", "ANSWERED", "CLOSED"].indexOf(status) === -1) throw new Error("쪽지 상태가 올바르지 않습니다.");
+  return { thread: updateRowByKey_(SHEETS.messageThreads, "id", required_(payload.thread_id, "thread_id"), { status: status, updated_at: isoNow_() }) };
 }
 
 function handleMarkOrderPrinted_(payload, user) {
@@ -2941,6 +3165,125 @@ function makeReservationId_() {
   const date = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyMMdd");
   const suffix = Utilities.getUuid().slice(0, 6).toUpperCase();
   return "RSV-" + date + "-" + suffix;
+}
+
+function makeCommunicationId_(prefix) {
+  return String(prefix || "ID") + "-" + Utilities.getUuid().slice(0, 8).toUpperCase();
+}
+
+function sameCode_(left, right) {
+  return String(left || "").toUpperCase() === String(right || "").toUpperCase();
+}
+
+function visibleNoticesForUser_(user) {
+  const now = isoNow_();
+  return readRows_(SHEETS.notices)
+    .filter((notice) => {
+      if (!toBool_(notice.is_active)) return false;
+      if (user.role === "admin") return true;
+      const targets = String(notice.target_dealer_ids || "").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean);
+      if (targets.length && targets.indexOf(String(user.dealer_code).toUpperCase()) === -1) return false;
+      const category = String(notice.target_category || "ALL").toUpperCase();
+      if (category !== "ALL" && !canAccessCategory_(user, category)) return false;
+      if (toBool_(notice.is_popup) && notice.popup_start_at && String(notice.popup_start_at) > now) return false;
+      if (toBool_(notice.is_popup) && notice.popup_end_at && String(notice.popup_end_at) < now) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const pinned = Number(toBool_(b.is_pinned)) - Number(toBool_(a.is_pinned));
+      return pinned || String(b.created_at || "").localeCompare(String(a.created_at || ""));
+    });
+}
+
+function upsertNoticeRead_(noticeId, user, dismissType, dismissUntil) {
+  const now = isoNow_();
+  const existing = readRows_(SHEETS.noticeReads).find((row) => row.notice_id === noticeId && row.login_id === user.login_id);
+  const values = {
+    notice_id: noticeId,
+    login_id: user.login_id,
+    dealer_code: user.dealer_code,
+    read_at: now,
+    dismiss_type: dismissType || "READ",
+    dismiss_until: dismissUntil || "",
+    updated_at: now
+  };
+  if (existing) return updateRowByKey_(SHEETS.noticeReads, "id", existing.id, values);
+  const row = { id: makeCommunicationId_("NTR"), ...values, created_at: now };
+  appendObject_(SHEETS.noticeReads, row);
+  return row;
+}
+
+function tomorrowStartText_() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd 00:00:00");
+}
+
+function requireAccessibleThread_(threadId, user) {
+  const thread = readRows_(SHEETS.messageThreads).find((row) => row.id === threadId);
+  if (!thread) throw new Error("쪽지 대화를 찾을 수 없습니다.");
+  if (user.role !== "admin" && !sameCode_(thread.dealer_code, user.dealer_code)) throw new Error("본인 대리점의 쪽지만 확인할 수 있습니다.");
+  return thread;
+}
+
+function appendAutomaticDiscountMessage_(order, log, user) {
+  const subject = "주문 할인율 변경 안내";
+  let thread = readRows_(SHEETS.messageThreads).find((row) => sameCode_(row.dealer_code, order.dealer_code) && row.subject === subject && row.status !== "CLOSED");
+  const now = isoNow_();
+  if (!thread) {
+    thread = {
+      id: makeCommunicationId_("THR"),
+      dealer_code: order.dealer_code,
+      dealer_name: order.dealer_name,
+      subject: subject,
+      status: "ANSWERED",
+      created_at: now,
+      updated_at: now
+    };
+    appendObject_(SHEETS.messageThreads, thread);
+  } else {
+    thread = updateRowByKey_(SHEETS.messageThreads, "id", thread.id, { status: "ANSWERED", updated_at: now });
+  }
+  const content = [
+    "주문번호: " + order.order_id,
+    "",
+    "기존 할인율: " + log.before_discount_rate + "%",
+    "변경 할인율: " + log.after_discount_rate + "%",
+    "",
+    "정상가: " + numberText_(order.subtotal_amount) + "원",
+    "변경 전 금액: " + numberText_(log.before_final_amount) + "원",
+    "변경 후 금액: " + numberText_(log.after_final_amount) + "원",
+    "",
+    "적용일: " + now.slice(0, 10),
+    "문의사항은 본사로 연락 바랍니다."
+  ].join("\n");
+  const message = {
+    id: makeCommunicationId_("MSG"),
+    thread_id: thread.id,
+    sender_role: "ADMIN",
+    sender_id: user.login_id,
+    sender_name: HEAD_OFFICE_NAME,
+    receiver_role: "DEALER",
+    receiver_id: order.dealer_code,
+    content: content,
+    is_read: false,
+    read_at: "",
+    message_type: "ORDER_DISCOUNT",
+    order_id: order.order_id,
+    created_at: now
+  };
+  appendObject_(SHEETS.messages, message);
+  const pushNotification = sendPushNotification_({
+    title: "GLOC 주문 할인율 변경",
+    body: order.order_id + " · " + log.before_discount_rate + "% → " + log.after_discount_rate + "% · " + numberText_(log.after_final_amount) + "원",
+    url: getSetting_("push_click_url") || getSetting_("app_public_url") || "",
+    tag: "gloc-order-discount-" + order.order_id
+  }, { role: "dealer", dealer_code: order.dealer_code });
+  return { thread: thread, message: message, push_notification: pushNotification };
+}
+
+function numberText_(value) {
+  return Number(value || 0).toLocaleString("en-US");
 }
 
 function parseBody_(e) {

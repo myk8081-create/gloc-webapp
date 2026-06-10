@@ -89,12 +89,30 @@ Google Sheets 로그인·조회·저장 속도 개선 구조와 배포 방법은
 | dealer_discount_rate | 발주 당시 대리점 할인율(%) |
 | unit_sale_price | 발주 당시 할인 적용 판매가 |
 | unit_purchase_price | 발주 당시 제품 매입가 |
+| dealer_default_discount_rate | 대리점 기본 할인율 스냅샷 |
+| order_discount_rate | 해당 주문에만 적용하는 임시 할인율 |
+| discount_apply_type | `DEALER_DEFAULT` 또는 `ORDER_CUSTOM` |
+| applied_discount_rate | 실제 적용 할인율 |
+| subtotal_amount | 할인 전 정상가 합계 |
+| discount_amount | 할인 금액 |
+| final_order_amount | 최종 발주/매출 금액 |
 | status | `접수`, `승인`, `출고`, `완료`, `반려`, `취소` |
 | memo | 메모 |
 | shipping_company | 택배사 |
 | tracking_number | 송장번호 |
 | created_at | 생성일 |
 | updated_at | 수정일 |
+
+### 공지·쪽지·주문 할인 이력
+
+최신 Apps Script를 배포하면 아래 시트가 자동 생성됩니다.
+
+- `Notices`: 일반/중요/팝업 공지와 대상 사업부·대리점
+- `NoticeReads`: 계정별 읽음, 오늘 하루 숨김, 다시 보지 않기 상태
+- `MessageThreads`: 본사와 대리점의 대화 목록
+- `Messages`: 대화별 쪽지 내용과 읽음 상태
+- `OrderDiscountLogs`: 주문별 할인율 변경 이력
+- `OrderDiscountNotifications`: 주문 할인 변경 알림 발송 이력
 
 ### 제품등록
 
@@ -342,6 +360,15 @@ app_public_url=https://stock.example.com
 - 일별, 월별, 전체 기간으로 검색할 수 있고, 통합 또는 대리점별로 분리해서 볼 수 있습니다.
 - 계산식은 `판매가 = 소비자가 × (1 - 대리점 할인율/100)`, `이익 = 판매가 - 매입가`이며 수량이 자동 반영됩니다.
 - 발주 당시의 소비자가, 할인율, 매입가가 `발주현황` 시트에 함께 저장되므로 이후 제품 가격이나 할인율을 바꿔도 과거 매출 이력은 유지됩니다.
+- 관리자가 주문 카드에서 임시 할인율을 적용하면 해당 주문의 `final_order_amount`만 변경되고, 변경 이력과 대리점 안내 쪽지가 자동 생성됩니다.
+
+## 공지사항과 대리점 쪽지
+
+- 관리자는 `공지` 메뉴에서 전체, 사업부, 특정 대리점 대상 공지를 등록할 수 있습니다.
+- 팝업 공지는 로그인 후 자동 표시되며 `확인`, `오늘 하루 보지 않기`, `다시 보지 않기`를 지원합니다.
+- 관리자와 대리점은 `쪽지` 메뉴에서 대화 이력을 이어서 확인하고 답장할 수 있습니다.
+- 상단 알림 버튼과 하단 메뉴에 읽지 않은 공지·쪽지 개수가 표시됩니다.
+- 이 기능을 실데이터에서 사용하려면 최신 `apps-script/Code.js`를 붙여 넣고 Apps Script 웹 앱을 다시 배포해야 합니다.
 
 ## QR코드와 카카오톡 링크
 

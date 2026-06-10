@@ -648,6 +648,28 @@ const state = {
   certificates: [],
   vehicles: createMockVehicles(),
   consultations: [],
+  notices: [
+    {
+      id: "NTC-DEMO-1",
+      title: "GLOC ERP 공지사항 기능이 추가되었습니다.",
+      content: "공지사항과 본사 쪽지함에서 새로운 소식과 주문 안내를 확인할 수 있습니다.",
+      notice_type: "IMPORTANT",
+      target_category: "ALL",
+      target_dealer_ids: "",
+      is_popup: true,
+      is_pinned: true,
+      is_active: true,
+      created_by: "admin",
+      created_at: nowText(),
+      updated_at: nowText()
+    }
+  ],
+  noticeReads: [],
+  messageThreads: [],
+  messages: [],
+  orderDiscountLogs: [],
+  selectedThreadId: "",
+  popupNoticeId: "",
   labelCalibration: defaultLabelCalibration(),
   selectedColor: "전체",
   selectedSku: mockProducts[0].sku,
@@ -704,7 +726,8 @@ const state = {
     productManageQuery: "",
     inventoryCategory: "전체",
     orderCategory: "전체",
-    productManageCategory: "전체"
+    productManageCategory: "전체",
+    noticeQuery: ""
   },
   forms: {
     loginRole: "dealer",
@@ -791,7 +814,19 @@ const state = {
     vehicleGlbFileUrl: "",
     vehicleImageModeEnabled: true,
     vehicleThreeDEnabled: false,
-    resetPassword: ""
+    resetPassword: "",
+    noticeTitle: "",
+    noticeContent: "",
+    noticeType: "NORMAL",
+    noticeTargetCategory: "ALL",
+    noticeTargetDealerIds: "",
+    noticePopupStartAt: "",
+    noticePopupEndAt: "",
+    noticeIsPinned: false,
+    noticeIsActive: true,
+    messageSubject: "",
+    messageDealerCode: "",
+    messageContent: ""
   },
   tempPasswords: {},
   productSearches: {},
@@ -891,8 +926,11 @@ function render() {
       ${renderCertificates()}
       ${renderDealerLinks()}
       ${renderNotifications()}
+      ${renderNoticeBoard()}
+      ${renderMessageCenter()}
       ${renderLabelSettings()}
       ${renderBottomNav()}
+      ${renderPopupNotice()}
       <div id="toast" class="toast" role="status"></div>
     </div>
   `;
@@ -941,6 +979,7 @@ function renderTopbar() {
   const isLoggedIn = Boolean(state.session);
   const subtitle = isLoggedIn ? `${state.session.dealer_name} · ${roleLabel(state.session.role)} · ${state.session.login_id}` : "PPF · 틴팅 · 디테일링 재고관리";
   const chip = isLoggedIn ? "로그인됨" : state.dataMode === "appsScript" ? "실데이터 모드" : "샘플 모드";
+  const unread = unreadNotificationCount();
   return `
     <header class="topbar">
       <div class="brand">
@@ -952,7 +991,10 @@ function renderTopbar() {
           <div class="brand-subtitle">${escapeHtml(subtitle)}</div>
         </div>
       </div>
-      <div class="account-chip">${escapeHtml(chip)}</div>
+      <div class="topbar-actions">
+        ${isLoggedIn ? `<button type="button" class="notification-bell" data-nav="notifications" aria-label="알림센터">알림${unread ? `<span>${unread}</span>` : ""}</button>` : ""}
+        <div class="account-chip">${escapeHtml(chip)}</div>
+      </div>
     </header>
   `;
 }
@@ -1145,6 +1187,8 @@ function renderAdminDashboard() {
           <button class="secondary-button" type="button" data-nav="certificates">정품인증서</button>
           <button class="primary-button" type="button" data-nav="consultation">상담 시뮬레이터</button>
           <button class="primary-button" type="button" data-nav="dealers">대리점 계정 관리</button>
+          <button class="secondary-button" type="button" data-nav="notices">공지사항 관리</button>
+          <button class="secondary-button" type="button" data-nav="messages">대리점 쪽지</button>
           <button class="secondary-button" type="button" data-nav="links">QR/카카오톡 안내문</button>
           <button class="secondary-button" type="button" data-nav="labelSettings">송장출력 설정</button>
         </div>
@@ -1245,12 +1289,19 @@ function renderAdminDashboard() {
 function renderNotifications() {
   if (!state.session) return "";
   const admin = state.session.role === "admin";
+  const unreadNotices = unreadNoticeCount();
+  const unreadMessages = unreadMessageCount();
   return `
     <main class="screen ${state.screen === "notifications" ? "active" : ""}" data-screen="notifications">
       <section class="page-head">
         <p class="eyebrow">${admin ? "관리자" : currentDealerName()}</p>
-        <h1>알림 설정</h1>
-        <p class="lead">${admin ? "새 발주가 들어오면 이 기기에서 푸시 알림을 받을 수 있습니다." : "발주 상태 변경과 출고 정보를 이 기기에서 푸시 알림으로 받을 수 있습니다."}</p>
+        <h1>알림센터</h1>
+        <p class="lead">새 공지, 새 쪽지와 주문 할인 변경 안내를 한곳에서 확인합니다.</p>
+      </section>
+      <section class="notification-center-grid">
+        <button type="button" class="notification-center-card" data-nav="notices"><span>공지사항</span><strong>${unreadNotices}건</strong><small>읽지 않은 공지</small></button>
+        <button type="button" class="notification-center-card" data-nav="messages"><span>쪽지함</span><strong>${unreadMessages}건</strong><small>읽지 않은 대화</small></button>
+        <button type="button" class="notification-center-card" data-nav="orders"><span>발주</span><strong>${state.orders.filter((order) => admin ? order.status === "접수" : order.dealer_code === state.session.dealer_code && order.status === "접수").length}건</strong><small>확인할 발주</small></button>
       </section>
       ${renderPushNotificationPanel()}
       <section class="panel summary-panel">
@@ -1273,6 +1324,128 @@ function renderNotifications() {
         </div>
       </section>
     </main>
+  `;
+}
+
+function renderNoticeBoard() {
+  if (!state.session) return "";
+  const admin = state.session.role === "admin";
+  const rows = visibleNotices().filter((notice) => {
+    const query = normalize(state.filters.noticeQuery);
+    return !query || normalize(`${notice.title} ${notice.content}`).includes(query);
+  });
+  return `
+    <main class="screen ${state.screen === "notices" ? "active" : ""}" data-screen="notices">
+      <section class="page-head">
+        <p class="eyebrow">${admin ? "관리자 공지사항 관리" : "GLOC 공지사항"}</p>
+        <h1>공지사항</h1>
+        <p class="lead">${admin ? "전체 또는 사업부·특정 대리점 대상 공지와 로그인 팝업을 등록합니다." : "본사에서 전달한 중요 소식과 운영 안내를 확인합니다."}</p>
+      </section>
+      ${admin ? `
+        <section class="panel notice-editor">
+          <h3>새 공지 등록</h3>
+          <div class="two-col">
+            <label class="field"><span>제목</span><input id="noticeTitle" value="${escapeAttr(state.forms.noticeTitle)}" placeholder="공지 제목" /></label>
+            <label class="field"><span>공지 유형</span><select id="noticeType">${["NORMAL", "IMPORTANT", "POPUP"].map((value) => `<option value="${value}" ${state.forms.noticeType === value ? "selected" : ""}>${noticeTypeLabel(value)}</option>`).join("")}</select></label>
+          </div>
+          <label class="field"><span>내용</span><textarea id="noticeContent" placeholder="공지 내용을 입력하세요">${escapeHtml(state.forms.noticeContent)}</textarea></label>
+          <div class="two-col">
+            <label class="field"><span>대상 사업부</span><select id="noticeTargetCategory">${["ALL", "PPF", "TINTING", "DETAILING"].map((value) => `<option value="${value}" ${state.forms.noticeTargetCategory === value ? "selected" : ""}>${value === "ALL" ? "전체" : productCategoryLabel(value)}</option>`).join("")}</select></label>
+            <label class="field"><span>특정 대리점 코드</span><input id="noticeTargetDealerIds" value="${escapeAttr(state.forms.noticeTargetDealerIds)}" placeholder="예: D001,D002 (비우면 전체)" /></label>
+          </div>
+          <div class="two-col">
+            <label class="field"><span>팝업 시작일시</span><input id="noticePopupStartAt" type="datetime-local" value="${escapeAttr(state.forms.noticePopupStartAt)}" ${state.forms.noticeType === "POPUP" ? "" : "disabled"} /></label>
+            <label class="field"><span>팝업 종료일시</span><input id="noticePopupEndAt" type="datetime-local" value="${escapeAttr(state.forms.noticePopupEndAt)}" ${state.forms.noticeType === "POPUP" ? "" : "disabled"} /></label>
+          </div>
+          <div class="page-actions">
+            <button type="button" class="primary-button" data-action="saveNotice">공지 등록</button>
+          </div>
+        </section>
+      ` : ""}
+      <section class="toolbar"><input class="search-input" id="noticeQuery" type="search" value="${escapeAttr(state.filters.noticeQuery)}" placeholder="제목 또는 내용 검색" /></section>
+      <section class="notice-list">
+        ${rows.map(renderNoticeCard).join("") || `<div class="panel empty">표시할 공지사항이 없습니다.</div>`}
+      </section>
+    </main>
+  `;
+}
+
+function renderNoticeCard(notice) {
+  const read = noticeReadFor(notice.id);
+  return `
+    <article class="panel notice-card ${toBool(notice.is_pinned) ? "pinned" : ""}">
+      <div class="notice-card-head">
+        <div><span class="badge ${notice.notice_type === "IMPORTANT" || notice.notice_type === "POPUP" ? "warn" : ""}">${escapeHtml(noticeTypeLabel(notice.notice_type))}</span><h3>${escapeHtml(notice.title)}</h3></div>
+        <span class="product-meta">${escapeHtml(notice.created_at || "")}</span>
+      </div>
+      <p>${escapeHtml(notice.content).replace(/\n/g, "<br>")}</p>
+      <div class="notice-card-foot">
+        <span class="product-meta">${read ? "읽음" : "읽지 않음"} · 대상 ${escapeHtml(notice.target_category === "ALL" ? "전체" : productCategoryLabel(notice.target_category))}</span>
+        ${read ? "" : `<button type="button" class="secondary-button small-button" data-action="markNoticeRead" data-notice-id="${escapeAttr(notice.id)}">읽음 처리</button>`}
+      </div>
+    </article>
+  `;
+}
+
+function renderMessageCenter() {
+  if (!state.session) return "";
+  const admin = state.session.role === "admin";
+  const threads = visibleMessageThreads();
+  const selected = selectedMessageThread() || threads[0];
+  if (selected && state.selectedThreadId !== selected.id) state.selectedThreadId = selected.id;
+  const messages = selected ? messagesForThread(selected.id) : [];
+  return `
+    <main class="screen ${state.screen === "messages" ? "active" : ""}" data-screen="messages">
+      <section class="page-head">
+        <p class="eyebrow">${admin ? "대리점 소통내역" : "본사 문의"}</p>
+        <h1>쪽지함</h1>
+        <p class="lead">본사와 대리점이 한 대화 안에서 문의와 답변 이력을 이어갑니다.</p>
+      </section>
+      <section class="message-compose panel">
+        <div class="two-col">
+          ${admin ? `<label class="field"><span>대리점 코드</span><input id="messageDealerCode" value="${escapeAttr(state.forms.messageDealerCode)}" placeholder="예: D001" /></label>` : ""}
+          <label class="field"><span>새 대화 제목</span><input id="messageSubject" value="${escapeAttr(state.forms.messageSubject)}" placeholder="문의 제목" /></label>
+        </div>
+        <label class="field"><span>내용</span><textarea id="messageContent" placeholder="메시지를 입력하세요">${escapeHtml(state.forms.messageContent)}</textarea></label>
+        <div class="page-actions"><button type="button" class="secondary-button" data-action="createMessageThread">새 대화 시작</button></div>
+      </section>
+      <section class="message-layout">
+        <aside class="panel message-thread-list">
+          ${threads.map((thread) => `<button type="button" class="${selected?.id === thread.id ? "active" : ""}" data-message-thread="${escapeAttr(thread.id)}"><strong>${escapeHtml(thread.subject)}</strong><span>${escapeHtml(thread.dealer_name)} · ${threadUnreadCount(thread.id) ? `새 쪽지 ${threadUnreadCount(thread.id)}개` : messageStatusLabel(thread.status)}</span></button>`).join("") || `<div class="empty">대화가 없습니다.</div>`}
+        </aside>
+        <section class="panel message-chat">
+          ${selected ? `
+            <div class="message-chat-head"><div><h3>${escapeHtml(selected.subject)}</h3><span>${escapeHtml(selected.dealer_name)} · ${escapeHtml(messageStatusLabel(selected.status))}</span></div>${admin ? `<button type="button" class="secondary-button small-button" data-action="closeMessageThread" data-thread-id="${escapeAttr(selected.id)}">대화 종료</button>` : ""}</div>
+            <div class="message-bubbles">${messages.map(renderMessageBubble).join("") || `<div class="empty">첫 메시지를 보내 주세요.</div>`}</div>
+            <div class="message-reply"><textarea id="messageReplyContent" placeholder="답장 내용을 입력하세요"></textarea><button type="button" class="primary-button" data-action="sendMessageReply" data-thread-id="${escapeAttr(selected.id)}">답장 보내기</button></div>
+          ` : `<div class="empty">왼쪽에서 대화를 선택하거나 새 대화를 시작하세요.</div>`}
+        </section>
+      </section>
+    </main>
+  `;
+}
+
+function renderMessageBubble(message) {
+  const mine = String(message.sender_role || "").toLowerCase() === state.session?.role;
+  return `<article class="message-bubble ${mine ? "mine" : ""}"><strong>${escapeHtml(message.sender_name || message.sender_id)}</strong><p>${escapeHtml(message.content).replace(/\n/g, "<br>")}</p><span>${escapeHtml(message.created_at || "")}</span></article>`;
+}
+
+function renderPopupNotice() {
+  const notice = popupNoticeToShow();
+  if (!notice) return "";
+  return `
+    <div class="notice-modal-backdrop" role="dialog" aria-modal="true">
+      <article class="notice-modal">
+        <span class="badge warn">팝업 공지</span>
+        <h2>${escapeHtml(notice.title)}</h2>
+        <p>${escapeHtml(notice.content).replace(/\n/g, "<br>")}</p>
+        <div class="page-actions">
+          <button type="button" class="primary-button" data-action="confirmPopupNotice" data-notice-id="${escapeAttr(notice.id)}">확인</button>
+          <button type="button" class="secondary-button" data-action="dismissPopupToday" data-notice-id="${escapeAttr(notice.id)}">오늘 하루 보지 않기</button>
+          <button type="button" class="secondary-button" data-action="dismissPopupNever" data-notice-id="${escapeAttr(notice.id)}">다시 보지 않기</button>
+        </div>
+      </article>
+    </div>
   `;
 }
 
@@ -3652,6 +3825,7 @@ function renderOrderCard(order) {
   const hasRecipientOrShipping = hasRecipient || hasShipping;
   const staffId = order.created_by_login_id || "";
   const recipientAddress = [order.recipient_zipcode ? `(${order.recipient_zipcode})` : "", order.recipient_address, order.recipient_address_detail].filter(Boolean).join(" ");
+  const pricing = orderPricingDetails(order);
   return `
     <article class="order-card">
       <div>
@@ -3666,6 +3840,13 @@ function renderOrderCard(order) {
         <span>${escapeHtml(order.created_at || "")}</span>
       </div>
       <p class="order-memo">${escapeHtml(order.memo || "메모 없음")}</p>
+      <div class="order-price-summary">
+        <span>정상가 ${money(pricing.subtotalAmount)} · 적용 할인율 ${pricing.appliedDiscountRate}% (${pricing.applyType === "ORDER_CUSTOM" ? "주문 임시 할인" : "대리점 기본 할인"})</span>
+        <strong>최종 발주금액 ${money(pricing.finalOrderAmount)}</strong>
+        <small>할인금액 ${money(pricing.discountAmount)}</small>
+        ${canChange ? `<div class="order-discount-controls"><input type="number" min="0" max="100" step="0.1" value="${escapeAttr(pricing.appliedDiscountRate)}" data-order-discount-input="${escapeAttr(order.order_id)}" aria-label="주문 임시 할인율" /><button type="button" class="secondary-button small-button" data-action="applyOrderDiscount" data-order-id="${escapeAttr(order.order_id)}">할인율 적용</button><button type="button" class="secondary-button small-button" data-action="restoreOrderDiscount" data-order-id="${escapeAttr(order.order_id)}">기본 할인율 복원</button></div>` : ""}
+        ${canChange ? renderOrderDiscountHistory(order.order_id) : ""}
+      </div>
       ${hasRecipientOrShipping ? `
         <div class="shipping-info">
           <strong>수령/배송 정보</strong>
@@ -3703,6 +3884,12 @@ function renderOrderCard(order) {
       ` : ""}
     </article>
   `;
+}
+
+function renderOrderDiscountHistory(orderId) {
+  const rows = state.orderDiscountLogs.filter((row) => row.order_id === orderId).slice(0, 3);
+  if (!rows.length) return "";
+  return `<details class="discount-history"><summary>할인 변경 이력 ${rows.length}건</summary>${rows.map((row) => `<p>${escapeHtml(row.changed_at || "")} · ${row.before_discount_rate}% → ${row.after_discount_rate}% · ${money(row.after_final_amount)}</p>`).join("")}</details>`;
 }
 
 function renderReservationCard(reservation) {
@@ -3900,6 +4087,8 @@ function renderBottomNav() {
         ["dealers", "대리점"],
         ["dealerInfo", "정보"],
         ["links", "QR"],
+        ["notices", `공지${unreadNoticeCount() ? `(${unreadNoticeCount()})` : ""}`],
+        ["messages", `쪽지${unreadMessageCount() ? `(${unreadMessageCount()})` : ""}`],
         ["notifications", "알림"],
         ["labelSettings", "라벨"]
       ]
@@ -3913,6 +4102,8 @@ function renderBottomNav() {
         ["certificates", "인증서"],
         ["dealers", "담당자"],
         ["dealerInfo", "대리점 정보"],
+        ["notices", `공지${unreadNoticeCount() ? `(${unreadNoticeCount()})` : ""}`],
+        ["messages", `쪽지${unreadMessageCount() ? `(${unreadMessageCount()})` : ""}`],
         ["notifications", "알림"]
       ];
   return `
@@ -4145,6 +4336,26 @@ function bindEvents() {
   bindSearchInput("salesQuery", (value) => (state.filters.salesQuery = value));
   bindSearchInput("certificateQuery", (value) => (state.filters.certificateQuery = value));
   bindSearchInput("consultationQuery", (value) => (state.filters.consultationQuery = value));
+  bindInput("noticeQuery", (value) => {
+    state.filters.noticeQuery = value;
+    render();
+  });
+  bindInput("noticeTitle", (value) => (state.forms.noticeTitle = value));
+  bindInput("noticeContent", (value) => (state.forms.noticeContent = value));
+  bindInput("noticeTargetDealerIds", (value) => (state.forms.noticeTargetDealerIds = value.toUpperCase()));
+  bindInput("noticePopupStartAt", (value) => (state.forms.noticePopupStartAt = value));
+  bindInput("noticePopupEndAt", (value) => (state.forms.noticePopupEndAt = value));
+  bindInput("messageDealerCode", (value) => (state.forms.messageDealerCode = value.toUpperCase()));
+  bindInput("messageSubject", (value) => (state.forms.messageSubject = value));
+  bindInput("messageContent", (value) => (state.forms.messageContent = value));
+
+  document.querySelector("#noticeType")?.addEventListener("change", (event) => {
+    state.forms.noticeType = event.target.value;
+    render();
+  });
+  document.querySelector("#noticeTargetCategory")?.addEventListener("change", (event) => {
+    state.forms.noticeTargetCategory = event.target.value;
+  });
 
   document.querySelector("#orderStatus")?.addEventListener("change", (event) => {
     state.filters.orderStatus = event.target.value;
@@ -4348,6 +4559,10 @@ function bindPhoneInput(id, update) {
 }
 
 function bindDynamicListEvents(root) {
+  root.querySelectorAll("[data-message-thread]").forEach((button) => {
+    button.addEventListener("click", () => selectMessageThread(button.dataset.messageThread));
+  });
+
   root.querySelectorAll("[data-remove-reservation-item]").forEach((button) => {
     button.addEventListener("click", () => {
       state.forms.reservationItems = state.forms.reservationItems.filter((item) => item.id !== button.dataset.removeReservationItem);
@@ -6108,6 +6323,258 @@ async function sendTestPushNotification() {
   showToast("테스트 알림을 보냈습니다.");
 }
 
+function noticeTypeLabel(type) {
+  return { NORMAL: "일반", IMPORTANT: "중요", POPUP: "팝업" }[String(type || "").toUpperCase()] || "일반";
+}
+
+function messageStatusLabel(status) {
+  return { OPEN: "답변 대기", ANSWERED: "답변 완료", CLOSED: "종료" }[String(status || "").toUpperCase()] || "진행 중";
+}
+
+function visibleNotices() {
+  if (!state.session) return [];
+  return state.notices
+    .filter((notice) => {
+      if (!toBool(notice.is_active)) return false;
+      if (state.session.role === "admin") return true;
+      const targets = String(notice.target_dealer_ids || "").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean);
+      if (targets.length && !targets.includes(String(state.session.dealer_code).toUpperCase())) return false;
+      const category = String(notice.target_category || "ALL").toUpperCase();
+      return category === "ALL" || hasCategoryPermission(state.session, category);
+    })
+    .sort((a, b) => Number(toBool(b.is_pinned)) - Number(toBool(a.is_pinned)) || String(b.created_at || "").localeCompare(String(a.created_at || "")));
+}
+
+function noticeReadFor(noticeId) {
+  return state.noticeReads.find((row) => row.notice_id === noticeId && row.login_id === state.session?.login_id);
+}
+
+function unreadNoticeCount() {
+  return visibleNotices().filter((notice) => !noticeReadFor(notice.id)).length;
+}
+
+function visibleMessageThreads() {
+  if (!state.session) return [];
+  return state.messageThreads
+    .filter((thread) => state.session.role === "admin" || sameDealerCode(thread.dealer_code, state.session.dealer_code))
+    .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+}
+
+function selectedMessageThread() {
+  return visibleMessageThreads().find((thread) => thread.id === state.selectedThreadId);
+}
+
+function messagesForThread(threadId) {
+  return state.messages.filter((message) => message.thread_id === threadId).sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+}
+
+function threadUnreadCount(threadId) {
+  return messagesForThread(threadId).filter((message) => String(message.receiver_role || "").toLowerCase() === state.session?.role && !toBool(message.is_read)).length;
+}
+
+function unreadMessageCount() {
+  return visibleMessageThreads().reduce((total, thread) => total + threadUnreadCount(thread.id), 0);
+}
+
+function unreadNotificationCount() {
+  return unreadNoticeCount() + unreadMessageCount();
+}
+
+function popupNoticeToShow() {
+  if (!state.session || ["login", "onboarding", "passwordChange"].includes(state.screen)) return null;
+  const now = nowText();
+  return visibleNotices().find((notice) => {
+    if (!toBool(notice.is_popup) && notice.notice_type !== "POPUP") return false;
+    if (state.popupNoticeId === notice.id) return false;
+    if (notice.popup_start_at && String(notice.popup_start_at) > now) return false;
+    if (notice.popup_end_at && String(notice.popup_end_at) < now) return false;
+    const read = noticeReadFor(notice.id);
+    if (!read) return true;
+    if (read.dismiss_type === "NEVER") return false;
+    if (read.dismiss_type === "TODAY" && String(read.dismiss_until || "") > now) return false;
+    return true;
+  }) || null;
+}
+
+function upsertNoticeReadLocal(row) {
+  const index = state.noticeReads.findIndex((item) => item.notice_id === row.notice_id && item.login_id === row.login_id);
+  if (index >= 0) state.noticeReads[index] = { ...state.noticeReads[index], ...row };
+  else state.noticeReads.push(row);
+}
+
+async function saveNotice() {
+  if (state.session?.role !== "admin") throw new Error("관리자만 공지사항을 등록할 수 있습니다.");
+  const notice = {
+    id: `NTC-${Date.now()}`,
+    title: state.forms.noticeTitle.trim(),
+    content: state.forms.noticeContent.trim(),
+    notice_type: state.forms.noticeType,
+    target_category: state.forms.noticeTargetCategory,
+    target_dealer_ids: state.forms.noticeTargetDealerIds.trim(),
+    is_popup: state.forms.noticeType === "POPUP",
+    popup_start_at: state.forms.noticeType === "POPUP" ? state.forms.noticePopupStartAt : "",
+    popup_end_at: state.forms.noticeType === "POPUP" ? state.forms.noticePopupEndAt : "",
+    is_pinned: state.forms.noticeType === "IMPORTANT",
+    is_active: true,
+    created_by: state.session.login_id,
+    created_at: nowText(),
+    updated_at: nowText()
+  };
+  if (!notice.title || !notice.content) throw new Error("공지 제목과 내용을 입력해 주세요.");
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.saveNotice(notice);
+    if (data?.notice) state.notices.unshift(data.notice);
+  } else {
+    state.notices.unshift(notice);
+  }
+  state.forms.noticeTitle = "";
+  state.forms.noticeContent = "";
+  state.forms.noticePopupStartAt = "";
+  state.forms.noticePopupEndAt = "";
+  render();
+  showToast("공지사항을 등록했습니다.");
+}
+
+async function markNoticeRead(noticeId) {
+  state.popupNoticeId = noticeId;
+  const row = { id: `NTR-${Date.now()}`, notice_id: noticeId, login_id: state.session.login_id, dealer_code: state.session.dealer_code, read_at: nowText(), dismiss_type: "READ", dismiss_until: "", created_at: nowText(), updated_at: nowText() };
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.markNoticeRead({ noticeId });
+    if (data?.notice_read) upsertNoticeReadLocal(data.notice_read);
+  } else upsertNoticeReadLocal(row);
+  render();
+}
+
+async function dismissPopupNotice(noticeId, dismissType) {
+  const row = { id: `NTR-${Date.now()}`, notice_id: noticeId, login_id: state.session.login_id, dealer_code: state.session.dealer_code, read_at: nowText(), dismiss_type: dismissType, dismiss_until: dismissType === "TODAY" ? `${dateInputValue(new Date(Date.now() + 86400000))} 00:00:00` : "", created_at: nowText(), updated_at: nowText() };
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.dismissNotice({ noticeId, dismissType });
+    if (data?.notice_read) upsertNoticeReadLocal(data.notice_read);
+  } else upsertNoticeReadLocal(row);
+  render();
+}
+
+function upsertThread(thread) {
+  const index = state.messageThreads.findIndex((item) => item.id === thread.id);
+  if (index >= 0) state.messageThreads[index] = { ...state.messageThreads[index], ...thread };
+  else state.messageThreads.unshift(thread);
+}
+
+function upsertMessage(message) {
+  if (!message || state.messages.some((item) => item.id === message.id)) return;
+  state.messages.push(message);
+}
+
+async function createMessageThread() {
+  const subject = state.forms.messageSubject.trim();
+  const content = state.forms.messageContent.trim();
+  const dealerCode = state.session.role === "admin" ? state.forms.messageDealerCode.trim().toUpperCase() : state.session.dealer_code;
+  if (!dealerCode || !subject || !content) throw new Error("대리점 코드, 제목과 내용을 모두 입력해 주세요.");
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.createMessageThread({ dealer_code: dealerCode, subject, content });
+    if (data?.thread) upsertThread(data.thread);
+    if (data?.message) upsertMessage(data.message);
+    state.selectedThreadId = data?.thread?.id || "";
+  } else {
+    const now = nowText();
+    const thread = { id: `THR-${Date.now()}`, dealer_code: dealerCode, dealer_name: dealerNameByCode(dealerCode), subject, status: state.session.role === "admin" ? "ANSWERED" : "OPEN", created_at: now, updated_at: now };
+    const message = { id: `MSG-${Date.now()}`, thread_id: thread.id, sender_role: state.session.role.toUpperCase(), sender_id: state.session.login_id, sender_name: state.session.dealer_name, receiver_role: state.session.role === "admin" ? "DEALER" : "ADMIN", receiver_id: state.session.role === "admin" ? dealerCode : headOfficeCode, content, is_read: false, read_at: "", message_type: "NORMAL", order_id: "", created_at: now };
+    upsertThread(thread); upsertMessage(message); state.selectedThreadId = thread.id;
+  }
+  state.forms.messageSubject = "";
+  state.forms.messageContent = "";
+  render();
+  showToast("새 대화를 시작했습니다.");
+}
+
+async function selectMessageThread(threadId) {
+  state.selectedThreadId = threadId;
+  if (window.FilmStockApi?.isEnabled()) await window.FilmStockApi.markThreadRead({ threadId }).catch(() => null);
+  state.messages = state.messages.map((message) => message.thread_id === threadId && String(message.receiver_role || "").toLowerCase() === state.session.role ? { ...message, is_read: true, read_at: nowText() } : message);
+  render();
+}
+
+async function sendMessageReply(threadId) {
+  const input = document.querySelector("#messageReplyContent");
+  const content = String(input?.value || "").trim();
+  if (!content) throw new Error("답장 내용을 입력해 주세요.");
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.sendMessage({ threadId, content });
+    if (data?.thread) upsertThread(data.thread);
+    if (data?.message) upsertMessage(data.message);
+  } else {
+    const thread = state.messageThreads.find((item) => item.id === threadId);
+    const now = nowText();
+    upsertMessage({ id: `MSG-${Date.now()}`, thread_id: threadId, sender_role: state.session.role.toUpperCase(), sender_id: state.session.login_id, sender_name: state.session.dealer_name, receiver_role: state.session.role === "admin" ? "DEALER" : "ADMIN", receiver_id: state.session.role === "admin" ? thread.dealer_code : headOfficeCode, content, is_read: false, read_at: "", message_type: "NORMAL", order_id: "", created_at: now });
+    upsertThread({ ...thread, status: state.session.role === "admin" ? "ANSWERED" : "OPEN", updated_at: now });
+  }
+  render();
+  showToast("답장을 보냈습니다.");
+}
+
+async function closeMessageThread(threadId) {
+  if (state.session?.role !== "admin") throw new Error("관리자만 대화를 종료할 수 있습니다.");
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.updateThreadStatus({ threadId, status: "CLOSED" });
+    if (data?.thread) upsertThread(data.thread);
+  } else {
+    const thread = state.messageThreads.find((item) => item.id === threadId);
+    if (thread) upsertThread({ ...thread, status: "CLOSED", updated_at: nowText() });
+  }
+  render();
+}
+
+function orderPricingDetails(order) {
+  const qty = Number(order.qty || 0);
+  const unitRetailPrice = Number(order.unit_retail_price || productRetailPrice(state.products.find((item) => item.sku === order.sku) || {}));
+  const defaultRate = Number(hasSnapshotValue(order.dealer_default_discount_rate) ? order.dealer_default_discount_rate : fallbackOrderDiscountRate(order));
+  const appliedDiscountRate = Number(hasSnapshotValue(order.applied_discount_rate) ? order.applied_discount_rate : fallbackOrderDiscountRate(order));
+  const subtotalAmount = Number(hasSnapshotValue(order.subtotal_amount) ? order.subtotal_amount : unitRetailPrice * qty);
+  const finalOrderAmount = Number(hasSnapshotValue(order.final_order_amount) ? order.final_order_amount : Math.round(subtotalAmount * (1 - appliedDiscountRate / 100)));
+  return { defaultRate, appliedDiscountRate, subtotalAmount, discountAmount: Number(hasSnapshotValue(order.discount_amount) ? order.discount_amount : subtotalAmount - finalOrderAmount), finalOrderAmount, applyType: order.discount_apply_type || "DEALER_DEFAULT" };
+}
+
+async function updateOrderDiscount(orderId, applyType) {
+  if (state.session?.role !== "admin") throw new Error("관리자만 주문별 할인율을 변경할 수 있습니다.");
+  const input = document.querySelector(`[data-order-discount-input="${CSS.escape(orderId)}"]`);
+  const discountRate = applyType === "ORDER_CUSTOM" ? Number(input?.value) : undefined;
+  if (applyType === "ORDER_CUSTOM" && (Number.isNaN(discountRate) || discountRate < 0 || discountRate > 100)) throw new Error("할인율은 0~100 사이로 입력해 주세요.");
+  if (window.FilmStockApi?.isEnabled()) {
+    const data = await window.FilmStockApi.updateOrderDiscount({ orderId, discountRate, applyType });
+    if (data?.order) state.orders = state.orders.map((order) => order.order_id === orderId ? data.order : order);
+    if (data?.thread) upsertThread(data.thread);
+    if (data?.message) upsertMessage(data.message);
+    if (data?.log) state.orderDiscountLogs.unshift(data.log);
+  } else {
+    applyLocalOrderDiscount(orderId, discountRate, applyType);
+  }
+  render();
+  showToast(applyType === "ORDER_CUSTOM" ? "주문 임시 할인율을 적용하고 대리점에 쪽지를 보냈습니다." : "대리점 기본 할인율로 복원했습니다.");
+}
+
+function applyLocalOrderDiscount(orderId, discountRate, applyType) {
+  const order = state.orders.find((item) => item.order_id === orderId);
+  if (!order) throw new Error("발주를 찾을 수 없습니다.");
+  const before = orderPricingDetails(order);
+  const defaultRate = before.defaultRate;
+  const appliedRate = applyType === "ORDER_CUSTOM" ? discountRate : defaultRate;
+  const finalAmount = Math.round(before.subtotalAmount * (1 - appliedRate / 100));
+  Object.assign(order, { dealer_default_discount_rate: defaultRate, order_discount_rate: applyType === "ORDER_CUSTOM" ? appliedRate : "", discount_apply_type: applyType, applied_discount_rate: appliedRate, dealer_discount_rate: appliedRate, unit_sale_price: order.qty ? Math.round(finalAmount / Number(order.qty)) : 0, subtotal_amount: before.subtotalAmount, discount_amount: before.subtotalAmount - finalAmount, final_order_amount: finalAmount, updated_at: nowText() });
+  state.orderDiscountLogs.unshift({ id: `ODL-${Date.now()}`, order_id: orderId, dealer_code: order.dealer_code, before_discount_rate: before.appliedDiscountRate, after_discount_rate: appliedRate, before_final_amount: before.finalOrderAmount, after_final_amount: finalAmount, changed_by: state.session.login_id, changed_at: nowText() });
+  appendLocalDiscountMessage(order, before, appliedRate, finalAmount);
+}
+
+function appendLocalDiscountMessage(order, before, appliedRate, finalAmount) {
+  const subject = "주문 할인율 변경 안내";
+  let thread = state.messageThreads.find((item) => item.dealer_code === order.dealer_code && item.subject === subject && item.status !== "CLOSED");
+  if (!thread) {
+    thread = { id: `THR-${Date.now()}`, dealer_code: order.dealer_code, dealer_name: order.dealer_name, subject, status: "ANSWERED", created_at: nowText(), updated_at: nowText() };
+    upsertThread(thread);
+  }
+  const content = `주문번호: ${order.order_id}\n\n기존 할인율: ${before.appliedDiscountRate}%\n변경 할인율: ${appliedRate}%\n\n정상가: ${money(before.subtotalAmount)}\n변경 전 금액: ${money(before.finalOrderAmount)}\n변경 후 금액: ${money(finalAmount)}\n\n문의사항은 본사로 연락 바랍니다.`;
+  upsertMessage({ id: `MSG-${Date.now()}`, thread_id: thread.id, sender_role: "ADMIN", sender_id: state.session.login_id, sender_name: headOfficeName, receiver_role: "DEALER", receiver_id: order.dealer_code, content, is_read: false, read_at: "", message_type: "ORDER_DISCOUNT", order_id: order.order_id, created_at: nowText() });
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -6133,6 +6600,16 @@ async function handleAction(action, button) {
   if (action === "enablePushNotifications") return enablePushNotifications();
   if (action === "checkPushNotifications") return updatePushState(true);
   if (action === "sendTestPushNotification") return sendTestPushNotification();
+  if (action === "saveNotice") return saveNotice();
+  if (action === "markNoticeRead") return markNoticeRead(button.dataset.noticeId);
+  if (action === "confirmPopupNotice") return markNoticeRead(button.dataset.noticeId);
+  if (action === "dismissPopupToday") return dismissPopupNotice(button.dataset.noticeId, "TODAY");
+  if (action === "dismissPopupNever") return dismissPopupNotice(button.dataset.noticeId, "NEVER");
+  if (action === "createMessageThread") return createMessageThread();
+  if (action === "sendMessageReply") return sendMessageReply(button.dataset.threadId);
+  if (action === "closeMessageThread") return closeMessageThread(button.dataset.threadId);
+  if (action === "applyOrderDiscount") return updateOrderDiscount(button.dataset.orderId, "ORDER_CUSTOM");
+  if (action === "restoreOrderDiscount") return updateOrderDiscount(button.dataset.orderId, "DEALER_DEFAULT");
   if (action === "refreshLabelSettings") return loadLabelSettings(true);
   if (action === "saveLabelSettings") return saveLabelSettings();
   if (action === "resetLabelSettings") return resetLabelSettings();
@@ -6186,6 +6663,7 @@ async function login() {
     state.session = accountToSession(account);
   }
 
+  state.popupNoticeId = "";
   normalizeSelectedBusinessCategory();
   state.forms.password = "";
   prepareOnboardingForm();
@@ -6463,13 +6941,14 @@ async function loadPriorityData() {
 }
 
 async function loadDeferredData() {
-  const [orderData, salesData, reservationData, certificateData, consultationData, labelData] = await Promise.all([
+  const [orderData, salesData, reservationData, certificateData, consultationData, labelData, communicationData] = await Promise.all([
     window.FilmStockApi.getOrders({}),
     window.FilmStockApi.getSales({}),
     window.FilmStockApi.getReservations({}),
     window.FilmStockApi.getCertificates({}),
     window.FilmStockApi.getConsultationData({}),
-    state.session?.role === "admin" ? window.FilmStockApi.getLabelSettings().catch(() => null) : Promise.resolve(null)
+    state.session?.role === "admin" ? window.FilmStockApi.getLabelSettings().catch(() => null) : Promise.resolve(null),
+    window.FilmStockApi.getCommunicationData().catch(() => null)
   ]);
   if (Array.isArray(orderData?.orders)) state.orders = orderData.orders;
   if (Array.isArray(orderData?.accounts)) state.accounts = orderData.accounts;
@@ -6478,9 +6957,19 @@ async function loadDeferredData() {
   if (Array.isArray(certificateData?.certificates)) state.certificates = certificateData.certificates;
   if (Array.isArray(consultationData?.vehicles)) state.vehicles = consultationData.vehicles.length ? consultationData.vehicles : createMockVehicles();
   if (Array.isArray(consultationData?.consultations)) state.consultations = consultationData.consultations;
+  applyCommunicationData(communicationData);
   applyLabelSettings(labelData?.label_settings || labelData?.settings);
   if (state.screen === "dealerInfo" && state.session?.role === "dealer") prepareDealerInfoForm();
   syncAppBadgeFromOrders();
+}
+
+function applyCommunicationData(data) {
+  if (!data) return;
+  if (Array.isArray(data.notices)) state.notices = data.notices;
+  if (Array.isArray(data.notice_reads)) state.noticeReads = data.notice_reads;
+  if (Array.isArray(data.message_threads)) state.messageThreads = data.message_threads;
+  if (Array.isArray(data.messages)) state.messages = data.messages;
+  if (Array.isArray(data.order_discount_logs)) state.orderDiscountLogs = data.order_discount_logs;
 }
 
 async function loadInitialDataAfterLogin({ throwOnError = false } = {}) {
@@ -6637,6 +7126,13 @@ async function createOrder() {
       dealer_discount_rate: dealerDiscountRate(state.session.dealer_code),
       unit_sale_price: dealerSalePrice(product, state.session.dealer_code),
       unit_purchase_price: productPurchasePrice(product),
+      dealer_default_discount_rate: dealerDiscountRate(state.session.dealer_code),
+      order_discount_rate: "",
+      discount_apply_type: "DEALER_DEFAULT",
+      applied_discount_rate: dealerDiscountRate(state.session.dealer_code),
+      subtotal_amount: productRetailPrice(product) * qty,
+      discount_amount: productRetailPrice(product) * qty - dealerSalePrice(product, state.session.dealer_code) * qty,
+      final_order_amount: dealerSalePrice(product, state.session.dealer_code) * qty,
       status: "접수",
       memo: state.forms.orderMemo,
       recipient_name: "",
@@ -8444,6 +8940,8 @@ async function deleteProduct(sku) {
 function logout() {
   window.FilmStockApi?.signOut?.();
   state.session = null;
+  state.popupNoticeId = "";
+  state.selectedThreadId = "";
   state.screen = "login";
   updateAppBadgeCount(0);
   render();
@@ -8455,6 +8953,14 @@ function navigate(screen) {
   if (!canAccessScreen(screen)) {
     showToast("관리자만 접근할 수 있습니다.");
     return;
+  }
+  if (screen === "messages") {
+    const threadId = selectedMessageThread()?.id || visibleMessageThreads()[0]?.id || "";
+    if (threadId) {
+      state.selectedThreadId = threadId;
+      state.messages = state.messages.map((message) => message.thread_id === threadId && String(message.receiver_role || "").toLowerCase() === state.session?.role ? { ...message, is_read: true, read_at: nowText() } : message);
+      if (window.FilmStockApi?.isEnabled()) window.FilmStockApi.markThreadRead({ threadId }).catch(() => null);
+    }
   }
   if (screen === "inventoryManage") {
     ensureInventoryForm();
@@ -8789,10 +9295,11 @@ function enrichSalesRow(order) {
   const product = state.products.find((item) => item.sku === order.sku) || {};
   const qty = Number(order.qty || 0);
   const unitRetailPrice = Number(hasSnapshotValue(order.unit_retail_price) ? order.unit_retail_price : productRetailPrice(product));
-  const discountRate = Number(hasSnapshotValue(order.dealer_discount_rate) ? order.dealer_discount_rate : fallbackOrderDiscountRate(order));
-  const unitSalePrice = Number(hasSnapshotValue(order.unit_sale_price) ? order.unit_sale_price : Math.round(unitRetailPrice * (1 - discountRate / 100)));
+  const pricing = orderPricingDetails(order);
+  const discountRate = pricing.appliedDiscountRate;
+  const unitSalePrice = qty ? pricing.finalOrderAmount / qty : 0;
   const unitPurchasePrice = Number(hasSnapshotValue(order.unit_purchase_price) ? order.unit_purchase_price : productPurchasePrice(product));
-  const revenue = unitSalePrice * qty;
+  const revenue = pricing.finalOrderAmount;
   const cost = unitPurchasePrice * qty;
   const profit = revenue - cost;
   return {
