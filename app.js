@@ -9,6 +9,7 @@ const defaultRetailPrice = 1000000;
 const defaultPurchasePrice = 500000;
 const defaultLegacyOrderDiscountRate = 20;
 const inventoryPageSize = 10;
+const CATEGORY_ALL = "ALL";
 const productCategoryOptions = [
   { value: "PPF", label: "PPF", permissionKey: "ppf" },
   { value: "TINTING", label: "틴팅", permissionKey: "tinting" },
@@ -832,14 +833,16 @@ function initialScreenFromUrl() {
 
 function initialBusinessCategory() {
   const requested = new URLSearchParams(window.location.search).get("category");
-  if (requested === "PPF" || requested === "TINTING" || requested === "DETAILING" || requested === "전체") return requested;
+  if (requested === "PPF" || requested === "TINTING" || requested === "DETAILING") return requested;
+  if (requested === CATEGORY_ALL || requested === "전체") return CATEGORY_ALL;
   try {
     const saved = window.localStorage.getItem(businessCategoryStorageKey);
-    if (saved === "PPF" || saved === "TINTING" || saved === "DETAILING" || saved === "전체") return saved;
+    if (saved === "PPF" || saved === "TINTING" || saved === "DETAILING") return saved;
+    if (saved === CATEGORY_ALL || saved === "전체") return CATEGORY_ALL;
   } catch (error) {
     // Local file previews or privacy modes can disable localStorage.
   }
-  return "전체";
+  return CATEGORY_ALL;
 }
 
 function requestedScreenFromUrl() {
@@ -917,7 +920,7 @@ function renderDataLoadingStatus() {
 
 function renderBusinessCategorySelector() {
   if (!state.session || state.screen === "passwordChange" || state.screen === "onboarding") return "";
-  const options = [{ value: "전체", label: "전체" }, ...availableCategoryOptions()];
+  const options = [{ value: CATEGORY_ALL, label: "전체" }, ...availableCategoryOptions()];
   return `
     <section class="business-category-bar" aria-label="사업부 선택">
       <div class="business-category-inner">
@@ -1916,6 +1919,7 @@ function renderInventoryPager(rows) {
 function renderInventoryManage() {
   ensureInventoryForm();
   const rows = editableInventoryRows();
+  const visibleProducts = getVisibleProducts();
   const selectedProductName = state.products.find((product) => product.sku === state.forms.inventorySku)?.product_name || "";
   const ownerLabel = state.session?.role === "admin"
     ? `${headOfficeCode} · ${headOfficeName} 재고`
@@ -1935,7 +1939,8 @@ function renderInventoryManage() {
       <section class="work-layout">
         <div class="panel list-panel">
           <h3>수정할 재고 선택</h3>
-          <input class="search-input" id="inventoryQuery" type="search" placeholder="구분, 제품명, SKU 검색" value="${escapeAttr(state.filters.inventoryQuery)}" />
+          <p class="product-meta">검색창을 누르면 현재 사업부의 전체 제품이 표시됩니다.</p>
+          ${renderSearchableProductSelect("inventoryProduct", state.forms.inventorySku, visibleProducts)}
           <div class="product-list" id="inventoryEditList">
             ${rows.slice(0, 16).map(renderInventoryEditRow).join("") || `<div class="empty">수정할 재고가 없습니다.</div>`}
           </div>
@@ -1951,7 +1956,7 @@ function renderInventoryManage() {
             <label class="field">
               <span>제품 SKU</span>
               <select id="inventorySku">
-                ${activeProducts().map((product) => `<option value="${escapeAttr(product.sku)}" ${state.forms.inventorySku === product.sku ? "selected" : ""}>${escapeHtml(product.sku)} · ${escapeHtml(product.product_name)}</option>`).join("")}
+                ${visibleProducts.map((product) => `<option value="${escapeAttr(product.sku)}" ${state.forms.inventorySku === product.sku ? "selected" : ""}>${escapeHtml(product.sku)} · ${escapeHtml(product.product_name)}</option>`).join("")}
               </select>
             </label>
             <label class="field">
@@ -3481,9 +3486,7 @@ function productSearchState(id) {
 }
 
 function searchableProducts(products, query) {
-  const normalizedQuery = normalize(query);
-  if (!normalizedQuery) return products;
-  return products.filter((product) => productSearchFields(product).some((value) => normalize(value).includes(normalizedQuery)));
+  return filterProductsBySearchKeyword(products, query);
 }
 
 function renderSearchableProductSelect(id, selectedSku, products) {
@@ -3518,7 +3521,11 @@ function renderSearchableProductSelect(id, selectedSku, products) {
 
 function renderSearchableProductOptions(id, products = activeProducts()) {
   const search = productSearchState(id);
-  const results = searchableProducts(products, search.query).slice(0, 40);
+  const results = getVisibleProducts({
+    products,
+    selectedBusinessCategory: state.selectedBusinessCategory,
+    keyword: search.query
+  });
   if (!results.length) return `<div class="empty">검색 결과가 없습니다.</div>`;
   return results.map((product, index) => {
     const inventory = dealerInventoryForProduct(product.sku);
@@ -3537,8 +3544,9 @@ function renderSearchableProductOptions(id, products = activeProducts()) {
 
 function ensureReservationDraft() {
   if (!Array.isArray(state.forms.reservationItems)) state.forms.reservationItems = [];
-  if (!activeProducts().some((product) => product.sku === state.forms.reservationDraftSku)) {
-    state.forms.reservationDraftSku = activeProducts()[0]?.sku || "";
+  const products = getVisibleProducts();
+  if (!products.some((product) => product.sku === state.forms.reservationDraftSku)) {
+    state.forms.reservationDraftSku = products[0]?.sku || "";
   }
   const product = state.products.find((item) => item.sku === state.forms.reservationDraftSku);
   const areas = reservationAreasForProduct(product);
@@ -4566,7 +4574,7 @@ function bindSearchableProductSelects(root = document) {
       if (!composing && !event.isComposing) refreshProductSearchMenu(id);
     });
     input.addEventListener("keydown", (event) => {
-      const results = searchableProducts(activeProducts(), search.query).slice(0, 40);
+      const results = getVisibleProducts({ keyword: search.query });
       if (event.key === "ArrowDown") {
         event.preventDefault();
         search.open = true;
@@ -4603,6 +4611,11 @@ function refreshProductSearchMenu(id) {
 
 function selectSearchableProduct(id, sku) {
   if (id === "orderProduct") state.selectedSku = sku;
+  if (id === "inventoryProduct") {
+    state.forms.inventorySku = sku;
+    state.selectedSku = sku;
+    syncInventoryForm();
+  }
   if (id === "reservationDraft") {
     state.forms.reservationDraftSku = sku;
     const product = state.products.find((item) => item.sku === sku);
@@ -6173,6 +6186,7 @@ async function login() {
     state.session = accountToSession(account);
   }
 
+  normalizeSelectedBusinessCategory();
   state.forms.password = "";
   prepareOnboardingForm();
   prepareDealerInfoForm();
@@ -8467,8 +8481,9 @@ function canAccessScreen(screen) {
 function ensureInventoryForm() {
   if (!state.session) return;
   state.forms.inventoryDealerCode = editableInventoryOwnerCode();
-  if (!state.forms.inventorySku) {
-    state.forms.inventorySku = state.selectedSku || state.products[0]?.sku || "";
+  const products = getVisibleProducts();
+  if (!products.some((product) => product.sku === state.forms.inventorySku)) {
+    state.forms.inventorySku = products.find((product) => product.sku === state.selectedSku)?.sku || products[0]?.sku || "";
   }
   syncInventoryForm();
 }
@@ -8524,14 +8539,12 @@ function selectProductForEdit(sku) {
 }
 
 function editableInventoryRows() {
-  const query = normalize(state.filters.inventoryQuery);
+  const visibleSkus = new Set(getVisibleProducts().map((product) => product.sku));
   return state.inventory
     .filter((row) => {
-      if (!canAccessProductCategory(row.category, row)) return false;
+      if (!visibleSkus.has(row.sku)) return false;
       if (row.dealer_code !== editableInventoryOwnerCode()) return false;
-      if (!query) return true;
-      return [row.product_name, row.sku, row.dealer_name, row.dealer_code, row.stock_qty, row.location]
-        .some((value) => normalize(value).includes(query));
+      return true;
     })
     .sort((a, b) => String(a.dealer_code).localeCompare(String(b.dealer_code)) || String(a.product_name).localeCompare(String(b.product_name), "ko"));
 }
@@ -8602,11 +8615,9 @@ function paginatedInventoryRows(rows) {
 }
 
 function filteredProducts() {
-  const query = normalize(state.filters.inventoryQuery);
-  return activeProducts().filter((product) => {
+  return getVisibleProducts({ keyword: state.filters.inventoryQuery }).filter((product) => {
     if (state.selectedColor !== "전체" && product.color !== state.selectedColor && !normalize(product.product_name).includes(normalize(state.selectedColor))) return false;
-    if (!query) return true;
-    return [product.product_name, product.sku, product.category, product.color].some((value) => normalize(value).includes(query));
+    return true;
   });
 }
 
@@ -8951,6 +8962,56 @@ function normalizeProductCategory(value, product = {}) {
   return "PPF";
 }
 
+function normalizeBusinessCategory(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (!normalized || normalized === CATEGORY_ALL || normalized === "전체") return CATEGORY_ALL;
+  return normalizeProductCategory(normalized);
+}
+
+function normalizeProductSearchText(value) {
+  return String(value ?? "").toLowerCase().replace(/\s+/g, "").trim();
+}
+
+function hasCategoryPermission(user, category, product = {}) {
+  if (!user) return false;
+  if (String(user.role || "").toLowerCase() === "admin") return true;
+  const normalized = normalizeProductCategory(category, product);
+  const permissions = dealerCategoryPermissions(user);
+  if (normalized === "PPF") return permissions.ppf === true;
+  if (normalized === "TINTING") return permissions.tinting === true;
+  if (normalized === "DETAILING") return permissions.detailing === true;
+  return false;
+}
+
+function filterProductsByBusinessCategory(products, selectedBusinessCategory) {
+  const selected = normalizeBusinessCategory(selectedBusinessCategory);
+  if (selected === CATEGORY_ALL) return products;
+  return products.filter((product) => normalizeProductCategory(product.category, product) === selected);
+}
+
+function filterProductsBySearchKeyword(products, keyword) {
+  const query = normalizeProductSearchText(keyword);
+  if (!query) return products;
+  return products.filter((product) => normalizeProductSearchText(productSearchFields(product).filter(Boolean).join(" ")).includes(query));
+}
+
+function getVisibleProducts({
+  products = state.products,
+  user = state.session,
+  selectedBusinessCategory = state.selectedBusinessCategory,
+  keyword = "",
+  activeOnly = true
+} = {}) {
+  const activeFiltered = activeOnly
+    ? products.filter((product) => product.useYn === undefined && product.use_yn === undefined
+      ? toBool(product.is_active)
+      : toBool(product.useYn ?? product.use_yn))
+    : products.slice();
+  const permissionFiltered = activeFiltered.filter((product) => hasCategoryPermission(user, product.category, product));
+  const categoryFiltered = filterProductsByBusinessCategory(permissionFiltered, selectedBusinessCategory);
+  return filterProductsBySearchKeyword(categoryFiltered, keyword);
+}
+
 function productCategoryLabel(category, product = {}) {
   return productCategoryOptions.find((option) => option.value === normalizeProductCategory(category, product))?.label || "PPF";
 }
@@ -8975,10 +9036,7 @@ function dealerPermissionLabels(account) {
 }
 
 function canAccessProductCategory(category, product = {}) {
-  if (state.session?.role === "admin") return true;
-  const normalized = normalizeProductCategory(category, product);
-  const option = productCategoryOptions.find((item) => item.value === normalized);
-  return Boolean(option && dealerCategoryPermissions()[option.permissionKey]);
+  return hasCategoryPermission(state.session, category, product);
 }
 
 function availableCategoryOptions() {
@@ -8988,26 +9046,40 @@ function availableCategoryOptions() {
 }
 
 function normalizeSelectedBusinessCategory() {
-  const allowed = ["전체", ...availableCategoryOptions().map((option) => option.value)];
-  if (!allowed.includes(state.selectedBusinessCategory)) state.selectedBusinessCategory = allowed[0] || "전체";
+  const allowed = [CATEGORY_ALL, ...availableCategoryOptions().map((option) => option.value)];
+  const selected = normalizeBusinessCategory(state.selectedBusinessCategory);
+  state.selectedBusinessCategory = allowed.includes(selected) ? selected : CATEGORY_ALL;
+  if (state.session) syncProductSelectionsToVisibleProducts();
+}
+
+function syncProductSelectionsToVisibleProducts() {
+  const products = getVisibleProducts();
+  const first = products[0];
+  if (first && !products.some((product) => product.sku === state.selectedSku)) state.selectedSku = first.sku;
+  if (!products.some((product) => product.sku === state.forms.inventorySku)) state.forms.inventorySku = first?.sku || "";
+  if (!products.some((product) => product.sku === state.forms.reservationDraftSku)) state.forms.reservationDraftSku = first?.sku || "";
 }
 
 function setBusinessCategory(category) {
-  const allowed = ["전체", ...availableCategoryOptions().map((option) => option.value)];
-  state.selectedBusinessCategory = allowed.includes(category) ? category : "전체";
+  const allowed = [CATEGORY_ALL, ...availableCategoryOptions().map((option) => option.value)];
+  const selected = normalizeBusinessCategory(category);
+  state.selectedBusinessCategory = allowed.includes(selected) ? selected : CATEGORY_ALL;
   state.filters.inventoryCategory = state.selectedBusinessCategory;
   state.filters.orderCategory = state.selectedBusinessCategory;
   state.filters.productManageCategory = state.selectedBusinessCategory;
   state.filters.inventoryPage = 1;
-  const first = activeProducts()[0];
-  if (first && !activeProducts().some((product) => product.sku === state.selectedSku)) state.selectedSku = first.sku;
+  Object.values(state.productSearches).forEach((search) => {
+    search.query = "";
+    search.activeIndex = 0;
+  });
+  syncProductSelectionsToVisibleProducts();
   try {
     window.localStorage.setItem(businessCategoryStorageKey, state.selectedBusinessCategory);
   } catch (error) {
     // Keep the in-memory selection when storage is unavailable.
   }
   const url = new URL(window.location.href);
-  if (state.selectedBusinessCategory === "전체") url.searchParams.delete("category");
+  if (state.selectedBusinessCategory === CATEGORY_ALL) url.searchParams.delete("category");
   else url.searchParams.set("category", state.selectedBusinessCategory);
   window.history.replaceState({}, "", url);
   render();
@@ -9018,7 +9090,8 @@ function businessCategoryMatches(category, product = {}) {
 }
 
 function categoryFilterMatches(category, selected, product = {}) {
-  return !selected || selected === "전체" || normalizeProductCategory(category, product) === selected;
+  const normalizedSelected = normalizeBusinessCategory(selected);
+  return normalizedSelected === CATEGORY_ALL || normalizeProductCategory(category, product) === normalizedSelected;
 }
 
 function orderProductCategory(order) {
@@ -9783,7 +9856,7 @@ async function saveVehicle() {
 }
 
 function selectedProduct() {
-  const products = activeProducts();
+  const products = getVisibleProducts();
   return products.find((product) => product.sku === state.selectedSku) || products[0];
 }
 
@@ -9808,11 +9881,7 @@ function editableInventoryOwnerCode() {
 }
 
 function activeProducts() {
-  return state.products.filter((product) => product.useYn === undefined && product.use_yn === undefined
-    ? toBool(product.is_active)
-    : toBool(product.useYn ?? product.use_yn))
-    .filter((product) => canAccessProductCategory(product.category, product))
-    .filter((product) => businessCategoryMatches(product.category, product));
+  return getVisibleProducts();
 }
 
 function dealerAccounts() {
