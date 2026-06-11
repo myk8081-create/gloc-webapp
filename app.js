@@ -667,6 +667,21 @@ const state = {
   noticeReads: [],
   messageThreads: [],
   messages: [],
+  notifications: [
+    {
+      id: "NTF-DEMO-1",
+      type: "NOTICE",
+      target_role: "DEALER",
+      target_dealer_id: "D001",
+      title: "새 공지사항",
+      message: "GLOC ERP 공지사항 기능이 추가되었습니다.",
+      ref_type: "NOTICE",
+      ref_id: "NTC-DEMO-1",
+      is_read: false,
+      read_at: "",
+      created_at: nowText()
+    }
+  ],
   orderDiscountLogs: [],
   selectedThreadId: "",
   popupNoticeId: "",
@@ -1291,6 +1306,7 @@ function renderNotifications() {
   const admin = state.session.role === "admin";
   const unreadNotices = unreadNoticeCount();
   const unreadMessages = unreadMessageCount();
+  const notifications = visibleNotifications();
   return `
     <main class="screen ${state.screen === "notifications" ? "active" : ""}" data-screen="notifications">
       <section class="page-head">
@@ -1302,6 +1318,18 @@ function renderNotifications() {
         <button type="button" class="notification-center-card" data-nav="notices"><span>공지사항</span><strong>${unreadNotices}건</strong><small>읽지 않은 공지</small></button>
         <button type="button" class="notification-center-card" data-nav="messages"><span>쪽지함</span><strong>${unreadMessages}건</strong><small>읽지 않은 대화</small></button>
         <button type="button" class="notification-center-card" data-nav="orders"><span>발주</span><strong>${state.orders.filter((order) => admin ? order.status === "접수" : order.dealer_code === state.session.dealer_code && order.status === "접수").length}건</strong><small>확인할 발주</small></button>
+      </section>
+      <section class="panel notification-list-panel">
+        <div class="panel-head-row"><div><p class="eyebrow">통합 알림</p><h3>최근 알림</h3></div><span class="badge">${unreadNotificationCount()}건 미확인</span></div>
+        <div class="notification-list">
+          ${notifications.map((notification) => `
+            <button type="button" class="notification-item ${toBool(notification.is_read) ? "" : "unread"}" data-action="openNotification" data-notification-id="${escapeAttr(notification.id)}">
+              <span class="notification-type">${escapeHtml(notificationTypeLabel(notification.type))}</span>
+              <span class="notification-copy"><strong>${escapeHtml(notification.title)}</strong><small>${escapeHtml(notification.message)}</small></span>
+              <time>${escapeHtml(notification.created_at || "")}</time>
+            </button>
+          `).join("") || `<div class="empty">도착한 알림이 없습니다.</div>`}
+        </div>
       </section>
       ${renderPushNotificationPanel()}
       <section class="panel summary-panel">
@@ -1372,6 +1400,7 @@ function renderNoticeBoard() {
 
 function renderNoticeCard(notice) {
   const read = noticeReadFor(notice.id);
+  const isRead = Boolean(read?.read_at);
   return `
     <article class="panel notice-card ${toBool(notice.is_pinned) ? "pinned" : ""}">
       <div class="notice-card-head">
@@ -1380,8 +1409,8 @@ function renderNoticeCard(notice) {
       </div>
       <p>${escapeHtml(notice.content).replace(/\n/g, "<br>")}</p>
       <div class="notice-card-foot">
-        <span class="product-meta">${read ? "읽음" : "읽지 않음"} · 대상 ${escapeHtml(notice.target_category === "ALL" ? "전체" : productCategoryLabel(notice.target_category))}</span>
-        ${read ? "" : `<button type="button" class="secondary-button small-button" data-action="markNoticeRead" data-notice-id="${escapeAttr(notice.id)}">읽음 처리</button>`}
+        <span class="product-meta">${isRead ? "읽음" : "읽지 않음"} · 대상 ${escapeHtml(notice.target_category === "ALL" ? "전체" : productCategoryLabel(notice.target_category))}</span>
+        ${isRead ? "" : `<button type="button" class="secondary-button small-button" data-action="markNoticeRead" data-notice-id="${escapeAttr(notice.id)}">읽음 처리</button>`}
       </div>
     </article>
   `;
@@ -6303,9 +6332,9 @@ async function updateAppBadgeCount(count) {
 }
 
 function syncAppBadgeFromOrders() {
-  if (state.session?.role !== "admin") return;
-  const pendingCount = state.orders.filter((order) => order.status === "접수").length;
-  updateAppBadgeCount(pendingCount);
+  if (!state.session) return;
+  const pendingCount = state.session.role === "admin" ? state.orders.filter((order) => order.status === "접수").length : 0;
+  updateAppBadgeCount(pendingCount + unreadNotificationCount());
 }
 
 async function sendTestPushNotification() {
@@ -6331,6 +6360,10 @@ function messageStatusLabel(status) {
   return { OPEN: "답변 대기", ANSWERED: "답변 완료", CLOSED: "종료" }[String(status || "").toUpperCase()] || "진행 중";
 }
 
+function notificationTypeLabel(type) {
+  return { NOTICE: "공지", MESSAGE: "쪽지", ORDER_DISCOUNT: "할인 변경", SYSTEM: "시스템" }[String(type || "").toUpperCase()] || "알림";
+}
+
 function visibleNotices() {
   if (!state.session) return [];
   return state.notices
@@ -6349,8 +6382,19 @@ function noticeReadFor(noticeId) {
   return state.noticeReads.find((row) => row.notice_id === noticeId && row.login_id === state.session?.login_id);
 }
 
+function visibleNotifications() {
+  if (!state.session) return [];
+  return state.notifications
+    .filter((notification) => {
+      const targetRole = String(notification.target_role || "").toLowerCase();
+      if (state.session.role === "admin") return targetRole === "admin";
+      return targetRole === "dealer" && sameDealerCode(notification.target_dealer_id, state.session.dealer_code);
+    })
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+}
+
 function unreadNoticeCount() {
-  return visibleNotices().filter((notice) => !noticeReadFor(notice.id)).length;
+  return visibleNotifications().filter((notification) => String(notification.type || "").toUpperCase() === "NOTICE" && !toBool(notification.is_read)).length;
 }
 
 function visibleMessageThreads() {
@@ -6373,27 +6417,102 @@ function threadUnreadCount(threadId) {
 }
 
 function unreadMessageCount() {
-  return visibleMessageThreads().reduce((total, thread) => total + threadUnreadCount(thread.id), 0);
+  return visibleNotifications().filter((notification) => ["MESSAGE", "ORDER_DISCOUNT"].includes(String(notification.type || "").toUpperCase()) && !toBool(notification.is_read)).length;
 }
 
 function unreadNotificationCount() {
-  return unreadNoticeCount() + unreadMessageCount();
+  return visibleNotifications().filter((notification) => !toBool(notification.is_read)).length;
 }
 
 function popupNoticeToShow() {
-  if (!state.session || ["login", "onboarding", "passwordChange"].includes(state.screen)) return null;
-  const now = nowText();
+  if (!state.session || state.session.role !== "dealer" || ["login", "onboarding", "passwordChange"].includes(state.screen)) return null;
+  const now = Date.now();
   return visibleNotices().find((notice) => {
     if (!toBool(notice.is_popup) && notice.notice_type !== "POPUP") return false;
     if (state.popupNoticeId === notice.id) return false;
-    if (notice.popup_start_at && String(notice.popup_start_at) > now) return false;
-    if (notice.popup_end_at && String(notice.popup_end_at) < now) return false;
+    if (notice.popup_start_at && timestampValue(notice.popup_start_at) > now) return false;
+    if (notice.popup_end_at && timestampValue(notice.popup_end_at) < now) return false;
     const read = noticeReadFor(notice.id);
     if (!read) return true;
+    if (read.read_at) return false;
     if (read.dismiss_type === "NEVER") return false;
-    if (read.dismiss_type === "TODAY" && String(read.dismiss_until || "") > now) return false;
+    if (read.dismiss_type === "TODAY" && timestampValue(read.dismiss_until) > now) return false;
     return true;
   }) || null;
+}
+
+function upsertNotificationLocal(notification) {
+  if (!notification) return;
+  const index = state.notifications.findIndex((item) => item.id === notification.id);
+  if (index >= 0) state.notifications[index] = { ...state.notifications[index], ...notification };
+  else state.notifications.unshift(notification);
+}
+
+function markNotificationsReadLocalByRef(refType, refId, types = []) {
+  const allowedTypes = types.map((value) => String(value).toUpperCase());
+  state.notifications = state.notifications.map((notification) => (
+    String(notification.ref_type || "").toUpperCase() === String(refType || "").toUpperCase()
+    && String(notification.ref_id) === String(refId)
+    && (!allowedTypes.length || allowedTypes.includes(String(notification.type || "").toUpperCase()))
+    && visibleNotifications().some((visible) => visible.id === notification.id)
+      ? { ...notification, is_read: true, read_at: nowText() }
+      : notification
+  ));
+}
+
+function noticeTargetsAccount(notice, account) {
+  if (String(account.role || "").toLowerCase() !== "dealer" || !toBool(account.is_active)) return false;
+  const targets = String(notice.target_dealer_ids || "").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean);
+  if (targets.length) return targets.includes(String(account.dealer_code || "").toUpperCase()) || targets.includes(String(account.login_id || "").toUpperCase());
+  const category = String(notice.target_category || "ALL").toUpperCase();
+  return category === "ALL" || hasCategoryPermission(account, category);
+}
+
+function createLocalNoticeNotifications(notice) {
+  const seen = new Set();
+  state.accounts.filter((account) => noticeTargetsAccount(notice, account)).forEach((account) => {
+    const dealerCode = String(account.dealer_code || "").toUpperCase();
+    if (!dealerCode || seen.has(dealerCode)) return;
+    seen.add(dealerCode);
+    upsertNotificationLocal({
+      id: `NTF-NOTICE-${notice.id}-${dealerCode}`,
+      type: "NOTICE",
+      target_role: "DEALER",
+      target_dealer_id: dealerCode,
+      title: "새 공지사항",
+      message: notice.title,
+      ref_type: "NOTICE",
+      ref_id: notice.id,
+      is_read: false,
+      read_at: "",
+      created_at: notice.created_at || nowText()
+    });
+  });
+}
+
+function createLocalMessageNotification(message, thread, type = "MESSAGE") {
+  const receiverRole = String(message.receiver_role || "").toUpperCase();
+  const targetDealerId = receiverRole === "DEALER" ? thread.dealer_code : "";
+  const existing = state.notifications.find((notification) => (
+    String(notification.type || "").toUpperCase() === String(type).toUpperCase()
+    && String(notification.target_role || "").toUpperCase() === receiverRole
+    && sameDealerCode(notification.target_dealer_id, targetDealerId)
+    && String(notification.ref_type || "").toUpperCase() === "MESSAGE_THREAD"
+    && notification.ref_id === thread.id
+  ));
+  upsertNotificationLocal({
+    id: existing?.id || `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type,
+    target_role: receiverRole,
+    target_dealer_id: targetDealerId,
+    title: receiverRole === "ADMIN" ? "새 대리점 쪽지" : (type === "ORDER_DISCOUNT" ? "주문 할인율 변경 안내" : "본사 쪽지 도착"),
+    message: receiverRole === "ADMIN" ? `${thread.dealer_name}에서 새 쪽지를 보냈습니다.` : String(message.content || "").slice(0, 80),
+    ref_type: "MESSAGE_THREAD",
+    ref_id: thread.id,
+    is_read: false,
+    read_at: "",
+    created_at: message.created_at || nowText()
+  });
 }
 
 function upsertNoticeReadLocal(row) {
@@ -6426,6 +6545,7 @@ async function saveNotice() {
     if (data?.notice) state.notices.unshift(data.notice);
   } else {
     state.notices.unshift(notice);
+    createLocalNoticeNotifications(notice);
   }
   state.forms.noticeTitle = "";
   state.forms.noticeContent = "";
@@ -6442,11 +6562,14 @@ async function markNoticeRead(noticeId) {
     const data = await window.FilmStockApi.markNoticeRead({ noticeId });
     if (data?.notice_read) upsertNoticeReadLocal(data.notice_read);
   } else upsertNoticeReadLocal(row);
+  markNotificationsReadLocalByRef("NOTICE", noticeId, ["NOTICE"]);
   render();
 }
 
 async function dismissPopupNotice(noticeId, dismissType) {
-  const row = { id: `NTR-${Date.now()}`, notice_id: noticeId, login_id: state.session.login_id, dealer_code: state.session.dealer_code, read_at: nowText(), dismiss_type: dismissType, dismiss_until: dismissType === "TODAY" ? `${dateInputValue(new Date(Date.now() + 86400000))} 00:00:00` : "", created_at: nowText(), updated_at: nowText() };
+  state.popupNoticeId = noticeId;
+  const existing = noticeReadFor(noticeId);
+  const row = { id: existing?.id || `NTR-${Date.now()}`, notice_id: noticeId, login_id: state.session.login_id, dealer_code: state.session.dealer_code, read_at: existing?.read_at || "", dismiss_type: dismissType, dismiss_until: dismissType === "TODAY" ? `${dateInputValue(new Date(Date.now() + 86400000))} 00:00:00` : "", created_at: existing?.created_at || nowText(), updated_at: nowText() };
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.dismissNotice({ noticeId, dismissType });
     if (data?.notice_read) upsertNoticeReadLocal(data.notice_read);
@@ -6479,7 +6602,7 @@ async function createMessageThread() {
     const now = nowText();
     const thread = { id: `THR-${Date.now()}`, dealer_code: dealerCode, dealer_name: dealerNameByCode(dealerCode), subject, status: state.session.role === "admin" ? "ANSWERED" : "OPEN", created_at: now, updated_at: now };
     const message = { id: `MSG-${Date.now()}`, thread_id: thread.id, sender_role: state.session.role.toUpperCase(), sender_id: state.session.login_id, sender_name: state.session.dealer_name, receiver_role: state.session.role === "admin" ? "DEALER" : "ADMIN", receiver_id: state.session.role === "admin" ? dealerCode : headOfficeCode, content, is_read: false, read_at: "", message_type: "NORMAL", order_id: "", created_at: now };
-    upsertThread(thread); upsertMessage(message); state.selectedThreadId = thread.id;
+    upsertThread(thread); upsertMessage(message); createLocalMessageNotification(message, thread); state.selectedThreadId = thread.id;
   }
   state.forms.messageSubject = "";
   state.forms.messageContent = "";
@@ -6491,6 +6614,28 @@ async function selectMessageThread(threadId) {
   state.selectedThreadId = threadId;
   if (window.FilmStockApi?.isEnabled()) await window.FilmStockApi.markThreadRead({ threadId }).catch(() => null);
   state.messages = state.messages.map((message) => message.thread_id === threadId && String(message.receiver_role || "").toLowerCase() === state.session.role ? { ...message, is_read: true, read_at: nowText() } : message);
+  markNotificationsReadLocalByRef("MESSAGE_THREAD", threadId, ["MESSAGE", "ORDER_DISCOUNT"]);
+  render();
+}
+
+async function openNotification(notificationId) {
+  const notification = visibleNotifications().find((item) => item.id === notificationId);
+  if (!notification) throw new Error("확인할 수 없는 알림입니다.");
+  if (window.FilmStockApi?.isEnabled()) {
+    await window.FilmStockApi.markNotificationRead({ notificationId }).catch(() => null);
+  }
+  upsertNotificationLocal({ ...notification, is_read: true, read_at: nowText() });
+  const refType = String(notification.ref_type || "").toUpperCase();
+  if (refType === "NOTICE") {
+    state.screen = "notices";
+    await markNoticeRead(notification.ref_id);
+    return;
+  }
+  if (refType === "MESSAGE_THREAD") {
+    state.screen = "messages";
+    await selectMessageThread(notification.ref_id);
+    return;
+  }
   render();
 }
 
@@ -6505,7 +6650,9 @@ async function sendMessageReply(threadId) {
   } else {
     const thread = state.messageThreads.find((item) => item.id === threadId);
     const now = nowText();
-    upsertMessage({ id: `MSG-${Date.now()}`, thread_id: threadId, sender_role: state.session.role.toUpperCase(), sender_id: state.session.login_id, sender_name: state.session.dealer_name, receiver_role: state.session.role === "admin" ? "DEALER" : "ADMIN", receiver_id: state.session.role === "admin" ? thread.dealer_code : headOfficeCode, content, is_read: false, read_at: "", message_type: "NORMAL", order_id: "", created_at: now });
+    const message = { id: `MSG-${Date.now()}`, thread_id: threadId, sender_role: state.session.role.toUpperCase(), sender_id: state.session.login_id, sender_name: state.session.dealer_name, receiver_role: state.session.role === "admin" ? "DEALER" : "ADMIN", receiver_id: state.session.role === "admin" ? thread.dealer_code : headOfficeCode, content, is_read: false, read_at: "", message_type: "NORMAL", order_id: "", created_at: now };
+    upsertMessage(message);
+    createLocalMessageNotification(message, thread);
     upsertThread({ ...thread, status: state.session.role === "admin" ? "ANSWERED" : "OPEN", updated_at: now });
   }
   render();
@@ -6572,7 +6719,9 @@ function appendLocalDiscountMessage(order, before, appliedRate, finalAmount) {
     upsertThread(thread);
   }
   const content = `주문번호: ${order.order_id}\n\n기존 할인율: ${before.appliedDiscountRate}%\n변경 할인율: ${appliedRate}%\n\n정상가: ${money(before.subtotalAmount)}\n변경 전 금액: ${money(before.finalOrderAmount)}\n변경 후 금액: ${money(finalAmount)}\n\n문의사항은 본사로 연락 바랍니다.`;
-  upsertMessage({ id: `MSG-${Date.now()}`, thread_id: thread.id, sender_role: "ADMIN", sender_id: state.session.login_id, sender_name: headOfficeName, receiver_role: "DEALER", receiver_id: order.dealer_code, content, is_read: false, read_at: "", message_type: "ORDER_DISCOUNT", order_id: order.order_id, created_at: nowText() });
+  const message = { id: `MSG-${Date.now()}`, thread_id: thread.id, sender_role: "ADMIN", sender_id: state.session.login_id, sender_name: headOfficeName, receiver_role: "DEALER", receiver_id: order.dealer_code, content, is_read: false, read_at: "", message_type: "ORDER_DISCOUNT", order_id: order.order_id, created_at: nowText() };
+  upsertMessage(message);
+  createLocalMessageNotification(message, thread, "ORDER_DISCOUNT");
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -6600,6 +6749,7 @@ async function handleAction(action, button) {
   if (action === "enablePushNotifications") return enablePushNotifications();
   if (action === "checkPushNotifications") return updatePushState(true);
   if (action === "sendTestPushNotification") return sendTestPushNotification();
+  if (action === "openNotification") return openNotification(button.dataset.notificationId);
   if (action === "saveNotice") return saveNotice();
   if (action === "markNoticeRead") return markNoticeRead(button.dataset.noticeId);
   if (action === "confirmPopupNotice") return markNoticeRead(button.dataset.noticeId);
@@ -6969,6 +7119,7 @@ function applyCommunicationData(data) {
   if (Array.isArray(data.notice_reads)) state.noticeReads = data.notice_reads;
   if (Array.isArray(data.message_threads)) state.messageThreads = data.message_threads;
   if (Array.isArray(data.messages)) state.messages = data.messages;
+  if (Array.isArray(data.notifications)) state.notifications = data.notifications;
   if (Array.isArray(data.order_discount_logs)) state.orderDiscountLogs = data.order_discount_logs;
 }
 
@@ -8959,6 +9110,7 @@ function navigate(screen) {
     if (threadId) {
       state.selectedThreadId = threadId;
       state.messages = state.messages.map((message) => message.thread_id === threadId && String(message.receiver_role || "").toLowerCase() === state.session?.role ? { ...message, is_read: true, read_at: nowText() } : message);
+      markNotificationsReadLocalByRef("MESSAGE_THREAD", threadId, ["MESSAGE", "ORDER_DISCOUNT"]);
       if (window.FilmStockApi?.isEnabled()) window.FilmStockApi.markThreadRead({ threadId }).catch(() => null);
     }
   }
@@ -10793,6 +10945,21 @@ function nowText() {
     minute: "2-digit",
     hour12: false
   }).format(new Date());
+}
+
+function timestampValue(value) {
+  if (value === undefined || value === null || value === "") return 0;
+  if (value instanceof Date) return value.getTime();
+
+  const text = String(value).trim();
+  const normalized = text
+    .replace(/\.\s*/g, "-")
+    .replace(/-\s+(?=\d{2}:)/, "T")
+    .replace(/\s+(?=\d{2}:)/, "T")
+    .replace(/-T/, "T")
+    .replace(/-$/, "");
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function dateInputValue(date = new Date()) {

@@ -16,6 +16,7 @@ const SHEETS = {
   noticeReads: "NoticeReads",
   messageThreads: "MessageThreads",
   messages: "Messages",
+  notifications: "Notifications",
   orderDiscountLogs: "OrderDiscountLogs",
   orderDiscountNotifications: "OrderDiscountNotifications"
 };
@@ -38,6 +39,7 @@ const HEADERS = {
   noticeReads: ["id", "notice_id", "login_id", "dealer_code", "read_at", "dismiss_type", "dismiss_until", "created_at", "updated_at"],
   messageThreads: ["id", "dealer_code", "dealer_name", "subject", "status", "created_at", "updated_at"],
   messages: ["id", "thread_id", "sender_role", "sender_id", "sender_name", "receiver_role", "receiver_id", "content", "is_read", "read_at", "message_type", "order_id", "created_at"],
+  notifications: ["id", "type", "target_role", "target_dealer_id", "title", "message", "ref_type", "ref_id", "is_read", "read_at", "created_at"],
   orderDiscountLogs: ["id", "order_id", "dealer_code", "before_discount_rate", "after_discount_rate", "before_final_amount", "after_final_amount", "changed_by", "changed_at", "memo"],
   orderDiscountNotifications: ["id", "order_id", "dealer_code", "before_discount_rate", "after_discount_rate", "before_final_amount", "after_final_amount", "sent_at"]
 };
@@ -58,7 +60,7 @@ const DEFAULT_RETAIL_PRICE = 1000000;
 const DEFAULT_PURCHASE_PRICE = 500000;
 const DEFAULT_LEGACY_ORDER_DISCOUNT_RATE = 20;
 const PRODUCT_CATEGORIES = ["PPF", "TINTING", "DETAILING"];
-const SCHEMA_CACHE_VERSION = "2026-06-10-v2-communication";
+const SCHEMA_CACHE_VERSION = "2026-06-11-v3-notifications";
 const SCHEMA_CACHE_SECONDS = 21600;
 const CACHE_CHUNK_SIZE = 18000;
 const MAX_CACHE_CHUNKS = 40;
@@ -79,6 +81,7 @@ const SHEET_CACHE_TTL_SECONDS = {
   "NoticeReads": 20,
   "MessageThreads": 20,
   "Messages": 20,
+  "Notifications": 15,
   "OrderDiscountLogs": 30,
   "OrderDiscountNotifications": 30,
   "Agencies": 60,
@@ -160,6 +163,7 @@ function doPost(e) {
     if (action === "createMessageThread") return ok_(handleCreateMessageThread_(payload, user));
     if (action === "sendMessage") return ok_(handleSendMessage_(payload, user));
     if (action === "markThreadRead") return ok_(handleMarkThreadRead_(payload, user));
+    if (action === "markNotificationRead") return ok_(handleMarkNotificationRead_(payload, user));
     if (action === "updateThreadStatus") return ok_(handleUpdateThreadStatus_(payload, user));
     if (action === "markOrderPrinted") return ok_(handleMarkOrderPrinted_(payload, user));
     if (action === "getLabelSettings") return ok_(handleGetLabelSettings_(payload, user));
@@ -634,6 +638,7 @@ function handleUpdateOrderDiscount_(payload, user) {
 }
 
 function handleGetCommunicationData_(payload, user) {
+  syncMissingCommunicationNotifications_();
   const notices = visibleNoticesForUser_(user);
   const noticeIds = {};
   notices.forEach((notice) => { noticeIds[notice.id] = true; });
@@ -652,7 +657,8 @@ function handleGetCommunicationData_(payload, user) {
     notice_reads: noticeReads,
     message_threads: threads.reverse(),
     messages: messages,
-    order_discount_logs: discountLogs
+    order_discount_logs: discountLogs,
+    notifications: notificationsForUser_(user)
   };
 }
 
@@ -682,17 +688,25 @@ function handleSaveNotice_(payload, user) {
   };
   const exists = readRows_(SHEETS.notices).some((row) => row.id === noticeId);
   const saved = exists ? updateRowByKey_(SHEETS.notices, "id", noticeId, notice) : (appendObject_(SHEETS.notices, notice), notice);
-  return { notice: saved };
+  const notificationCount = syncNoticeNotifications_(saved);
+  return { notice: saved, notification_count: notificationCount };
 }
 
 function handleMarkNoticeRead_(payload, user) {
-  return { notice_read: upsertNoticeRead_(required_(payload.notice_id, "notice_id"), user, "READ", "") };
+  const noticeId = required_(payload.notice_id, "notice_id");
+  requireAccessibleNotice_(noticeId, user);
+  return {
+    notice_read: upsertNoticeRead_(noticeId, user, "READ", ""),
+    notifications_read: markNotificationsReadByReference_(user, "NOTICE", noticeId, ["NOTICE"])
+  };
 }
 
 function handleDismissNotice_(payload, user) {
+  const noticeId = required_(payload.notice_id, "notice_id");
+  requireAccessibleNotice_(noticeId, user);
   const type = String(payload.dismiss_type || "TODAY").toUpperCase();
   if (["TODAY", "NEVER"].indexOf(type) === -1) throw new Error("지원하지 않는 팝업 숨김 방식입니다.");
-  return { notice_read: upsertNoticeRead_(required_(payload.notice_id, "notice_id"), user, type, type === "TODAY" ? tomorrowStartText_() : "") };
+  return { notice_read: upsertNoticeRead_(noticeId, user, type, type === "TODAY" ? tomorrowStartText_() : "") };
 }
 
 function handleCreateMessageThread_(payload, user) {
@@ -735,7 +749,8 @@ function handleSendMessage_(payload, user) {
   appendObject_(SHEETS.messages, message);
   const nextStatus = user.role === "admin" ? "ANSWERED" : "OPEN";
   const updatedThread = updateRowByKey_(SHEETS.messageThreads, "id", threadId, { status: nextStatus, updated_at: now });
-  return { thread: updatedThread, message: message };
+  createOrRefreshMessageNotification_(message, updatedThread, "MESSAGE");
+  return { thread: updatedThread, message: message, notification_created: true };
 }
 
 function handleMarkThreadRead_(payload, user) {
@@ -743,7 +758,22 @@ function handleMarkThreadRead_(payload, user) {
   const receiverRole = user.role.toUpperCase();
   const messages = readRows_(SHEETS.messages).filter((message) => message.thread_id === thread.id && message.receiver_role === receiverRole && !toBool_(message.is_read));
   messages.forEach((message) => updateRowByKey_(SHEETS.messages, "id", message.id, { is_read: true, read_at: isoNow_() }));
-  return { thread_id: thread.id, read_count: messages.length };
+  return {
+    thread_id: thread.id,
+    read_count: messages.length,
+    notifications_read: markNotificationsReadByReference_(user, "MESSAGE_THREAD", thread.id, ["MESSAGE", "ORDER_DISCOUNT"])
+  };
+}
+
+function handleMarkNotificationRead_(payload, user) {
+  const notificationId = required_(payload.notification_id, "notification_id");
+  const notification = notificationsForUser_(user).find((row) => row.id === notificationId);
+  if (!notification) throw new Error("확인할 수 없는 알림입니다.");
+  const updated = updateRowByKey_(SHEETS.notifications, "id", notificationId, {
+    is_read: true,
+    read_at: isoNow_()
+  });
+  return { notification: updated };
 }
 
 function handleUpdateThreadStatus_(payload, user) {
@@ -3176,18 +3206,11 @@ function sameCode_(left, right) {
 }
 
 function visibleNoticesForUser_(user) {
-  const now = isoNow_();
   return readRows_(SHEETS.notices)
     .filter((notice) => {
       if (!toBool_(notice.is_active)) return false;
       if (user.role === "admin") return true;
-      const targets = String(notice.target_dealer_ids || "").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean);
-      if (targets.length && targets.indexOf(String(user.dealer_code).toUpperCase()) === -1) return false;
-      const category = String(notice.target_category || "ALL").toUpperCase();
-      if (category !== "ALL" && !canAccessCategory_(user, category)) return false;
-      if (toBool_(notice.is_popup) && notice.popup_start_at && String(notice.popup_start_at) > now) return false;
-      if (toBool_(notice.is_popup) && notice.popup_end_at && String(notice.popup_end_at) < now) return false;
-      return true;
+      return isNoticeTargetDealer_(user, notice);
     })
     .sort((a, b) => {
       const pinned = Number(toBool_(b.is_pinned)) - Number(toBool_(a.is_pinned));
@@ -3195,14 +3218,40 @@ function visibleNoticesForUser_(user) {
     });
 }
 
+function requireAccessibleNotice_(noticeId, user) {
+  const notice = visibleNoticesForUser_(user).find((row) => row.id === noticeId);
+  if (!notice) throw new Error("확인할 수 없는 공지사항입니다.");
+  return notice;
+}
+
+function noticeTargetIds_(notice) {
+  return String(notice.target_dealer_ids || "")
+    .split(",")
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function isNoticeTargetDealer_(dealer, notice) {
+  if (!dealer || String(dealer.role || "").toLowerCase() !== "dealer") return false;
+  const targets = noticeTargetIds_(notice);
+  if (targets.length) {
+    const dealerCode = String(dealer.dealer_code || dealer.dealerId || "").toUpperCase();
+    const loginId = String(dealer.login_id || "").toUpperCase();
+    return targets.indexOf(dealerCode) >= 0 || targets.indexOf(loginId) >= 0;
+  }
+  const category = String(notice.target_category || "ALL").toUpperCase();
+  return category === "ALL" || canAccessCategory_(dealer, category);
+}
+
 function upsertNoticeRead_(noticeId, user, dismissType, dismissUntil) {
   const now = isoNow_();
   const existing = readRows_(SHEETS.noticeReads).find((row) => row.notice_id === noticeId && row.login_id === user.login_id);
+  const isReadAction = String(dismissType || "READ").toUpperCase() === "READ";
   const values = {
     notice_id: noticeId,
     login_id: user.login_id,
     dealer_code: user.dealer_code,
-    read_at: now,
+    read_at: isReadAction ? now : (existing ? existing.read_at || "" : ""),
     dismiss_type: dismissType || "READ",
     dismiss_until: dismissUntil || "",
     updated_at: now
@@ -3211,6 +3260,161 @@ function upsertNoticeRead_(noticeId, user, dismissType, dismissUntil) {
   const row = { id: makeCommunicationId_("NTR"), ...values, created_at: now };
   appendObject_(SHEETS.noticeReads, row);
   return row;
+}
+
+function activeDealerAccountsByCode_() {
+  const unique = {};
+  readRows_(SHEETS.accounts)
+    .filter((account) => String(account.role || "").toLowerCase() === "dealer" && toBool_(account.is_active))
+    .forEach((account) => {
+      const dealerCode = String(account.dealer_code || "").toUpperCase();
+      if (!dealerCode) return;
+      if (!unique[dealerCode]) unique[dealerCode] = account;
+      else {
+        unique[dealerCode].can_access_ppf = toBool_(unique[dealerCode].can_access_ppf) || toBool_(account.can_access_ppf);
+        unique[dealerCode].can_access_tinting = toBool_(unique[dealerCode].can_access_tinting) || toBool_(account.can_access_tinting);
+        unique[dealerCode].can_access_detailing = toBool_(unique[dealerCode].can_access_detailing) || toBool_(account.can_access_detailing);
+      }
+    });
+  return Object.keys(unique).map((key) => unique[key]);
+}
+
+function notificationValues_(values) {
+  return {
+    id: values.id || makeCommunicationId_("NTF"),
+    type: String(values.type || "SYSTEM").toUpperCase(),
+    target_role: String(values.target_role || "").toUpperCase(),
+    target_dealer_id: String(values.target_dealer_id || "").toUpperCase(),
+    title: values.title || "",
+    message: values.message || "",
+    ref_type: String(values.ref_type || "").toUpperCase(),
+    ref_id: values.ref_id || "",
+    is_read: values.is_read === undefined ? false : toBool_(values.is_read),
+    read_at: values.read_at || "",
+    created_at: values.created_at || isoNow_()
+  };
+}
+
+function ensureNotification_(values) {
+  const normalized = notificationValues_(values);
+  const existing = readRows_(SHEETS.notifications).find((row) => (
+    String(row.type).toUpperCase() === normalized.type
+    && String(row.target_role).toUpperCase() === normalized.target_role
+    && sameCode_(row.target_dealer_id, normalized.target_dealer_id)
+    && String(row.ref_type).toUpperCase() === normalized.ref_type
+    && String(row.ref_id) === String(normalized.ref_id)
+  ));
+  if (existing) return existing;
+  appendObject_(SHEETS.notifications, normalized);
+  return normalized;
+}
+
+function createOrRefreshNotification_(values) {
+  const normalized = notificationValues_(values);
+  const existing = readRows_(SHEETS.notifications).find((row) => (
+    String(row.type).toUpperCase() === normalized.type
+    && String(row.target_role).toUpperCase() === normalized.target_role
+    && sameCode_(row.target_dealer_id, normalized.target_dealer_id)
+    && String(row.ref_type).toUpperCase() === normalized.ref_type
+    && String(row.ref_id) === String(normalized.ref_id)
+  ));
+  if (!existing) {
+    appendObject_(SHEETS.notifications, normalized);
+    return normalized;
+  }
+  return updateRowByKey_(SHEETS.notifications, "id", existing.id, {
+    title: normalized.title,
+    message: normalized.message,
+    is_read: false,
+    read_at: "",
+    created_at: normalized.created_at
+  });
+}
+
+function notificationsForUser_(user) {
+  return readRows_(SHEETS.notifications)
+    .filter((row) => {
+      const targetRole = String(row.target_role || "").toUpperCase();
+      if (user.role === "admin") return targetRole === "ADMIN";
+      return targetRole === "DEALER" && sameCode_(row.target_dealer_id, user.dealer_code);
+    })
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+}
+
+function markNotificationsReadByReference_(user, refType, refId, types) {
+  const allowedTypes = (types || []).map((value) => String(value).toUpperCase());
+  const rows = notificationsForUser_(user).filter((row) => (
+    String(row.ref_type || "").toUpperCase() === String(refType || "").toUpperCase()
+    && String(row.ref_id) === String(refId)
+    && (!allowedTypes.length || allowedTypes.indexOf(String(row.type || "").toUpperCase()) >= 0)
+    && !toBool_(row.is_read)
+  ));
+  rows.forEach((row) => updateRowByKey_(SHEETS.notifications, "id", row.id, { is_read: true, read_at: isoNow_() }));
+  return rows.length;
+}
+
+function syncNoticeNotifications_(notice) {
+  const targetDealers = toBool_(notice.is_active)
+    ? activeDealerAccountsByCode_().filter((dealer) => isNoticeTargetDealer_(dealer, notice))
+    : [];
+  const targetCodes = targetDealers.map((dealer) => String(dealer.dealer_code || "").toUpperCase());
+  const existing = readRows_(SHEETS.notifications).filter((row) => (
+    String(row.type || "").toUpperCase() === "NOTICE"
+    && String(row.ref_type || "").toUpperCase() === "NOTICE"
+    && String(row.ref_id) === String(notice.id)
+  ));
+  existing
+    .filter((row) => targetCodes.indexOf(String(row.target_dealer_id || "").toUpperCase()) < 0 || String(row.target_role || "").toUpperCase() !== "DEALER")
+    .forEach((row) => deleteRowsByKey_(SHEETS.notifications, "id", row.id));
+  targetDealers.forEach((dealer) => ensureNotification_({
+    type: "NOTICE",
+    target_role: "DEALER",
+    target_dealer_id: dealer.dealer_code,
+    title: "새 공지사항",
+    message: notice.title,
+    ref_type: "NOTICE",
+    ref_id: notice.id,
+    is_read: false,
+    created_at: notice.created_at || isoNow_()
+  }));
+  return targetDealers.length;
+}
+
+function createOrRefreshMessageNotification_(message, thread, type) {
+  const receiverRole = String(message.receiver_role || "").toUpperCase();
+  return createOrRefreshNotification_({
+    type: type || "MESSAGE",
+    target_role: receiverRole,
+    target_dealer_id: receiverRole === "DEALER" ? thread.dealer_code : "",
+    title: receiverRole === "ADMIN" ? "새 대리점 쪽지" : (type === "ORDER_DISCOUNT" ? "주문 할인율 변경 안내" : "본사 쪽지 도착"),
+    message: receiverRole === "ADMIN" ? thread.dealer_name + "에서 새 쪽지를 보냈습니다." : String(message.content || "").slice(0, 80),
+    ref_type: "MESSAGE_THREAD",
+    ref_id: thread.id,
+    is_read: false,
+    created_at: message.created_at || isoNow_()
+  });
+}
+
+function syncMissingCommunicationNotifications_() {
+  readRows_(SHEETS.notices).forEach((notice) => syncNoticeNotifications_(notice));
+  const threads = mapBy_(readRows_(SHEETS.messageThreads), "id");
+  readRows_(SHEETS.messages)
+    .filter((message) => !toBool_(message.is_read))
+    .forEach((message) => {
+      const thread = threads[message.thread_id];
+      if (!thread) return;
+      ensureNotification_({
+        type: String(message.message_type || "").toUpperCase() === "ORDER_DISCOUNT" ? "ORDER_DISCOUNT" : "MESSAGE",
+        target_role: message.receiver_role,
+        target_dealer_id: String(message.receiver_role || "").toUpperCase() === "DEALER" ? thread.dealer_code : "",
+        title: String(message.receiver_role || "").toUpperCase() === "ADMIN" ? "새 대리점 쪽지" : "본사 쪽지 도착",
+        message: String(message.content || "").slice(0, 80),
+        ref_type: "MESSAGE_THREAD",
+        ref_id: thread.id,
+        is_read: false,
+        created_at: message.created_at
+      });
+    });
 }
 
 function tomorrowStartText_() {
@@ -3273,6 +3477,7 @@ function appendAutomaticDiscountMessage_(order, log, user) {
     created_at: now
   };
   appendObject_(SHEETS.messages, message);
+  createOrRefreshMessageNotification_(message, thread, "ORDER_DISCOUNT");
   const pushNotification = sendPushNotification_({
     title: "GLOC 주문 할인율 변경",
     body: order.order_id + " · " + log.before_discount_rate + "% → " + log.after_discount_rate + "% · " + numberText_(log.after_final_amount) + "원",

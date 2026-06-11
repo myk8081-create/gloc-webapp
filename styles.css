@@ -2645,6 +2645,61 @@ h3 {
   font-size: 25px;
 }
 
+.notification-list-panel {
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.notification-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.notification-item {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+}
+
+.notification-item.unread {
+  border-color: var(--gold);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.notification-type {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.notification-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.notification-copy strong,
+.notification-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-copy small,
+.notification-item time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .notice-editor {
   display: grid;
   gap: 14px;
@@ -3896,6 +3951,14 @@ h3 {
 
   .message-thread-list {
     max-height: 230px;
+  }
+
+  .notification-item {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+
+  .notification-item time {
+    grid-column: 2;
   }
 
   .message-chat {

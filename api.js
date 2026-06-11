@@ -186,6 +186,10 @@
     return request("markThreadRead", { thread_id: threadId });
   }
 
+  async function markNotificationRead({ notificationId }) {
+    return request("markNotificationRead", { notification_id: notificationId });
+  }
+
   async function updateThreadStatus({ threadId, status }) {
     return request("updateThreadStatus", { thread_id: threadId, status });
   }
@@ -358,6 +362,7 @@
     createMessageThread,
     sendMessage,
     markThreadRead,
+    markNotificationRead,
     updateThreadStatus,
     markOrderPrinted,
     getLabelSettings,
