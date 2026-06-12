@@ -683,6 +683,14 @@ const state = {
     }
   ],
   orderDiscountLogs: [],
+  productBulk: {
+    category: "PPF",
+    mode: "UPDATE",
+    fileName: "",
+    rows: [],
+    result: null,
+    parsing: false
+  },
   selectedThreadId: "",
   popupNoticeId: "",
   labelCalibration: defaultLabelCalibration(),
@@ -2200,6 +2208,8 @@ function renderProductManage() {
         </div>
       </section>
 
+      ${renderProductBulkUpload()}
+
       <section class="work-layout">
         <div class="panel form-panel">
           <h3>제품 정보</h3>
@@ -2278,6 +2288,102 @@ function renderProductManage() {
         </div>
       </section>
     </main>
+  `;
+}
+
+function renderProductBulkUpload() {
+  const bulk = state.productBulk;
+  const validRows = bulk.rows.filter((row) => !row.errors.length);
+  const errorRows = bulk.rows.filter((row) => row.errors.length);
+  return `
+    <section class="panel product-bulk-panel">
+      <div class="panel-head-row">
+        <div>
+          <p class="eyebrow">엑셀 일괄등록</p>
+          <h3>여러 제품을 한 번에 등록</h3>
+          <p class="product-meta">기존 개별 등록과 상담앱 연동은 그대로 유지됩니다. SKU는 신규 제품에 자동 생성됩니다.</p>
+        </div>
+        ${bulk.fileName ? `<span class="badge">${escapeHtml(bulk.fileName)}</span>` : ""}
+      </div>
+      <div class="bulk-upload-toolbar">
+        <label class="field">
+          <span>등록 카테고리</span>
+          <select id="productBulkCategory">
+            <option value="PPF" ${bulk.category === "PPF" ? "selected" : ""}>PPF</option>
+            <option value="TINTING" ${bulk.category === "TINTING" ? "selected" : ""}>Tint</option>
+            <option value="DETAILING" ${bulk.category === "DETAILING" ? "selected" : ""}>Detailing Care</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>중복 상품 처리</span>
+          <select id="productBulkMode">
+            <option value="UPDATE" ${bulk.mode === "UPDATE" ? "selected" : ""}>중복 상품 업데이트</option>
+            <option value="SKIP" ${bulk.mode === "SKIP" ? "selected" : ""}>중복 상품 건너뛰기</option>
+            <option value="NEW" ${bulk.mode === "NEW" ? "selected" : ""}>신규 등록 (중복은 실패)</option>
+          </select>
+        </label>
+        <button type="button" class="secondary-button" data-action="downloadProductBulkTemplate">샘플 엑셀 다운로드</button>
+      </div>
+      <div class="product-bulk-dropzone ${bulk.parsing ? "is-loading" : ""}" id="productBulkDropzone" tabindex="0">
+        <input id="productBulkFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+        <strong>${bulk.parsing ? "엑셀 파일을 읽는 중..." : "엑셀 파일을 이곳에 놓으세요"}</strong>
+        <span>.xlsx 파일만 지원합니다.</span>
+        <button type="button" class="primary-button" data-action="openProductBulkFile">엑셀 파일 선택</button>
+      </div>
+      ${bulk.rows.length ? `
+        <div class="bulk-upload-summary">
+          <div><span>총 행 수</span><strong>${bulk.rows.length}개</strong></div>
+          <div><span>등록 가능</span><strong>${validRows.length}개</strong></div>
+          <div class="${errorRows.length ? "danger-box" : ""}"><span>오류 행</span><strong>${errorRows.length}개</strong></div>
+          <button type="button" class="primary-button" data-action="submitProductBulkUpload" ${validRows.length ? "" : "disabled"}>검증 완료 제품 등록</button>
+        </div>
+        ${renderProductBulkPreview()}
+      ` : ""}
+      ${bulk.result ? renderProductBulkResult(bulk.result) : ""}
+    </section>
+  `;
+}
+
+function renderProductBulkPreview() {
+  return `
+    <div class="table-wrap product-bulk-preview">
+      <table>
+        <thead><tr><th>행</th><th>상태</th><th>제품명/코드</th><th>브랜드</th><th>카테고리</th><th>검증 결과</th></tr></thead>
+        <tbody>
+          ${state.productBulk.rows.map((row) => `
+            <tr class="${row.errors.length ? "is-low" : ""}">
+              <td>${row.source_row}</td>
+              <td><span class="badge ${row.errors.length ? "danger" : row.duplicate ? "warn" : ""}">${row.errors.length ? "오류" : row.duplicate ? "중복" : "신규"}</span></td>
+              <td><strong>${escapeHtml(row.product.product_name || row.product.product_code)}</strong><div class="product-meta">${escapeHtml(row.product.product_code || "SKU 자동 생성")}</div></td>
+              <td>${escapeHtml(row.product.brand || row.product.brand_line)}</td>
+              <td>${escapeHtml(productCategoryLabel(row.product.category, row.product))}</td>
+              <td>${escapeHtml(row.errors.join(", ") || (row.duplicate_source_row ? `${row.duplicate_source_row}행과 중복입니다. 등록 방식에 따라 처리됩니다.` : row.duplicate ? "기존 상품과 중복입니다. 등록 방식에 따라 처리됩니다." : "등록 가능"))}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderProductBulkResult(result) {
+  return `
+    <div class="bulk-result-panel">
+      <h3>일괄등록 결과</h3>
+      <div class="bulk-upload-summary">
+        <div><span>총 행 수</span><strong>${Number(result.total || 0)}개</strong></div>
+        <div><span>신규 등록</span><strong>${Number(result.created || 0)}개</strong></div>
+        <div><span>업데이트</span><strong>${Number(result.updated || 0)}개</strong></div>
+        <div><span>건너뜀</span><strong>${Number(result.skipped || 0)}개</strong></div>
+        <div class="${Number(result.failed || 0) ? "danger-box" : ""}"><span>실패</span><strong>${Number(result.failed || 0)}개</strong></div>
+      </div>
+      ${Array.isArray(result.rows) && result.rows.some((row) => row.status === "failed") ? `
+        <div class="bulk-error-list">
+          ${result.rows.filter((row) => row.status === "failed").map((row) => `<p>${row.source_row}행: ${escapeHtml(row.message)}</p>`).join("")}
+        </div>
+      ` : ""}
+      ${result.warning ? `<div class="bulk-error-list"><p>${escapeHtml(result.warning)}</p></div>` : ""}
+    </div>
   `;
 }
 
@@ -4304,6 +4410,36 @@ function bindEvents() {
   document.querySelector("#productCategory")?.addEventListener("change", (event) => {
     state.forms.productCategory = event.target.value;
     render();
+  });
+
+  document.querySelector("#productBulkCategory")?.addEventListener("change", (event) => {
+    state.productBulk.category = event.target.value;
+    state.productBulk.rows = [];
+    state.productBulk.fileName = "";
+    state.productBulk.result = null;
+    render();
+  });
+
+  document.querySelector("#productBulkMode")?.addEventListener("change", (event) => {
+    state.productBulk.mode = event.target.value;
+  });
+
+  document.querySelector("#productBulkFile")?.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    if (file) parseProductBulkFile(file);
+  });
+
+  const bulkDropzone = document.querySelector("#productBulkDropzone");
+  bulkDropzone?.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    bulkDropzone.classList.add("dragging");
+  });
+  bulkDropzone?.addEventListener("dragleave", () => bulkDropzone.classList.remove("dragging"));
+  bulkDropzone?.addEventListener("drop", (event) => {
+    event.preventDefault();
+    bulkDropzone.classList.remove("dragging");
+    const file = event.dataTransfer?.files?.[0];
+    if (file) parseProductBulkFile(file);
   });
 
   document.querySelector("#reservationDraftUsageArea")?.addEventListener("change", (event) => {
@@ -6786,6 +6922,9 @@ async function handleAction(action, button) {
   if (action === "cancelOrder") return cancelOrder(button.dataset.orderId);
   if (action === "saveInventory") return saveInventory();
   if (action === "saveProduct") return saveProduct();
+  if (action === "openProductBulkFile") return document.querySelector("#productBulkFile")?.click();
+  if (action === "downloadProductBulkTemplate") return downloadProductBulkTemplate();
+  if (action === "submitProductBulkUpload") return submitProductBulkUpload();
   if (action === "saveVehicle") return saveVehicle();
   if (action === "createAccount") return createDealerAccount();
   if (action === "resetPassword") return resetDealerPassword(button.dataset.loginId);
@@ -8796,6 +8935,326 @@ async function saveInventory() {
   showToast("재고가 저장되었습니다.");
 }
 
+const productBulkSheetNames = {
+  PPF: "PPF_등록양식",
+  TINTING: "Tint_등록양식",
+  DETAILING: "Detailing_등록양식"
+};
+
+const productBulkHeaders = {
+  PPF: ["제품명", "브랜드", "색상명", "색상HEX", "색상표이미지", "광택타입", "투명도타입", "투명도수치", "단위", "소비자가", "매입가", "설명", "사용여부"],
+  TINTING: ["제품명", "브랜드", "색상명", "색상HEX", "색상표이미지", "틴팅농도", "투명도", "단위", "소비자가", "매입가", "설명", "사용여부"],
+  DETAILING: ["상품코드", "메인카테고리", "하위카테고리", "브랜드/라인", "제품명코드", "라인업", "용도", "재고단위", "소비자가", "매입가", "사용여부"]
+};
+
+function productBulkSampleRows(category) {
+  if (category === "PPF") return [["프리미엄 컬러 PPF", "GLOC", "울트라 레드", "#B00020", "", "유광", "불투명", 100, "롤", 1000000, 500000, "PPF 샘플 제품", "Y"]];
+  if (category === "TINTING") return [["세라믹 틴팅 차콜 15%", "GLOC", "차콜", "#111111", "", 15, 55, "롤", 1000000, 500000, "틴팅 샘플 제품", "Y"]];
+  return [["DET-GLOC-001", "Detailing Care", "코팅", "GLOC", "CERAMIC-001", "Premium", "외장 세라믹 코팅", "개", "", "", "Y"]];
+}
+
+function requireXlsxLibrary() {
+  if (!window.XLSX) throw new Error("엑셀 처리 라이브러리를 불러오지 못했습니다. 페이지를 새로고침해 주세요.");
+  return window.XLSX;
+}
+
+function downloadProductBulkTemplate() {
+  const XLSX = requireXlsxLibrary();
+  const workbook = XLSX.utils.book_new();
+  ["PPF", "TINTING", "DETAILING"].forEach((category) => {
+    const sheet = XLSX.utils.aoa_to_sheet([productBulkHeaders[category], ...productBulkSampleRows(category)]);
+    sheet["!cols"] = productBulkHeaders[category].map((header) => ({ wch: Math.max(14, header.length + 4) }));
+    XLSX.utils.book_append_sheet(workbook, sheet, productBulkSheetNames[category]);
+  });
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["구분", "허용값"],
+    ["PPF 광택타입", "유광, 무광, 반무광, 사틴"],
+    ["PPF 투명도타입", "투명, 반투명, 불투명"],
+    ["사용여부", "Y, N"],
+    ["수치 범위", "틴팅농도/투명도/투명도수치: 0~100"]
+  ]), "코드목록");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["사용안내"],
+    ["1. 상품관리에서 업로드할 카테고리를 먼저 선택합니다."],
+    ["2. 선택한 카테고리의 등록양식 시트에 제품을 입력합니다."],
+    ["3. 헤더명은 변경하지 말고 .xlsx 형식으로 저장합니다."],
+    ["4. SKU는 신규 등록 시 자동 생성되며, 업데이트 시 기존 SKU를 유지합니다."],
+    ["5. 업로드 미리보기의 오류 행을 수정한 뒤 등록합니다."]
+  ]), "사용안내");
+  XLSX.writeFile(workbook, `GLOC_상품_일괄등록_양식_${dateInputValue()}.xlsx`);
+}
+
+async function parseProductBulkFile(file) {
+  if (!/\.xlsx$/i.test(file.name || "")) {
+    showToast(".xlsx 파일만 업로드할 수 있습니다.");
+    return;
+  }
+  state.productBulk.parsing = true;
+  state.productBulk.fileName = file.name;
+  state.productBulk.result = null;
+  render();
+  try {
+    const XLSX = requireXlsxLibrary();
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data, { type: "array", cellDates: false });
+    const expectedSheet = productBulkSheetNames[state.productBulk.category];
+    const fallbackSheet = workbook.SheetNames.length === 1 ? workbook.Sheets[workbook.SheetNames[0]] : null;
+    const sheet = workbook.Sheets[expectedSheet] || fallbackSheet;
+    if (!sheet) throw new Error("엑셀 파일에서 등록양식 시트를 찾을 수 없습니다.");
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
+    state.productBulk.rows = annotateProductBulkDuplicates(rawRows
+      .filter((row) => Object.values(row).some((value) => String(value ?? "").trim() !== ""))
+      .map((row, index) => prepareProductBulkRow(row, index + 2, state.productBulk.category)), state.productBulk.category);
+  } catch (error) {
+    state.productBulk.rows = [];
+    state.productBulk.fileName = "";
+    showToast(error.message || "엑셀 파일을 읽지 못했습니다.");
+  } finally {
+    state.productBulk.parsing = false;
+    render();
+  }
+}
+
+function prepareProductBulkRow(row, sourceRow, category) {
+  const product = mapProductBulkRow(row, category);
+  const errors = validateProductBulkRow(product, category);
+  return {
+    source_row: sourceRow,
+    product,
+    errors,
+    duplicate: findProductBulkDuplicate(product, category)
+  };
+}
+
+function annotateProductBulkDuplicates(rows, category) {
+  const seen = new Map();
+  rows.forEach((row) => {
+    const key = productBulkDuplicateKey(row.product, category);
+    if (seen.has(key)) {
+      row.duplicate = row.duplicate || { source_row: seen.get(key) };
+      row.duplicate_source_row = seen.get(key);
+      return;
+    }
+    seen.set(key, row.source_row);
+  });
+  return rows;
+}
+
+function mapProductBulkRow(row, category) {
+  const activeValue = String(row["사용여부"] ?? "").trim().toUpperCase();
+  if (category === "DETAILING") {
+    return {
+      category,
+      product_code: productBulkText(row["상품코드"]),
+      main_category: productBulkText(row["메인카테고리"]) || "Detailing Care",
+      sub_category: productBulkText(row["하위카테고리"]),
+      brand_line: productBulkText(row["브랜드/라인"]),
+      brand: productBulkText(row["브랜드/라인"]),
+      product_name_code: productBulkText(row["제품명코드"]),
+      product_name: productBulkText(row["제품명코드"]),
+      lineup: productBulkText(row["라인업"]),
+      purpose: productBulkText(row["용도"]),
+      unit: productBulkText(row["재고단위"]),
+      retail_price: productBulkOptionalNumber(row["소비자가"]),
+      purchase_price: productBulkOptionalNumber(row["매입가"]),
+      is_active: activeValue === "Y",
+      active_source: activeValue
+    };
+  }
+  const common = {
+    category,
+    product_name: productBulkText(row["제품명"]),
+    brand: productBulkText(row["브랜드"]),
+    color_name: productBulkText(row["색상명"]),
+    color_hex: productBulkText(row["색상HEX"]),
+    color_chart_image_url: productBulkText(row["색상표이미지"]),
+    unit: productBulkText(row["단위"]),
+    retail_price: productBulkOptionalNumber(row["소비자가"]),
+    purchase_price: productBulkOptionalNumber(row["매입가"]),
+    description: productBulkText(row["설명"]),
+    is_active: activeValue === "Y",
+    active_source: activeValue
+  };
+  if (category === "PPF") {
+    return {
+      ...common,
+      finish_type: normalizeBulkFinishType(row["광택타입"]),
+      finish_source: productBulkText(row["광택타입"]),
+      transparency_type: normalizeBulkTransparencyType(row["투명도타입"]),
+      transparency_source: productBulkText(row["투명도타입"]),
+      opacity: productBulkOptionalNumber(row["투명도수치"])
+    };
+  }
+  return {
+    ...common,
+    shade_percent: productBulkOptionalNumber(row["틴팅농도"]),
+    opacity: productBulkOptionalNumber(row["투명도"]),
+    available_parts: tintAreaOptions.map((area) => area.key).join(",")
+  };
+}
+
+function productBulkText(value) {
+  return String(value ?? "").trim();
+}
+
+function productBulkOptionalNumber(value) {
+  if (value === "" || value === null || value === undefined) return "";
+  const number = Number(String(value).replace(/,/g, ""));
+  return Number.isFinite(number) ? number : NaN;
+}
+
+function normalizeBulkFinishType(value) {
+  const map = { "유광": "gloss", "무광": "matte", "반무광": "semi_matte", "사틴": "satin" };
+  return map[productBulkText(value)] || "";
+}
+
+function normalizeBulkTransparencyType(value) {
+  const map = { "투명": "transparent", "반투명": "semi_transparent", "불투명": "opaque" };
+  return map[productBulkText(value)] || "";
+}
+
+function validateProductBulkRow(product, category) {
+  const errors = [];
+  const required = category === "DETAILING"
+    ? [["product_code", "상품코드"], ["sub_category", "하위카테고리"], ["brand_line", "브랜드/라인"], ["product_name_code", "제품명코드"], ["lineup", "라인업"], ["purpose", "용도"], ["unit", "재고단위"]]
+    : [["product_name", "제품명"], ["brand", "브랜드"], ["color_name", "색상명"], ["color_hex", "색상HEX"], ["unit", "단위"]];
+  required.forEach(([key, label]) => {
+    if (!String(product[key] ?? "").trim()) errors.push(`${label} 누락`);
+  });
+  if (category !== "DETAILING" && !/^#[0-9A-Fa-f]{6}$/.test(product.color_hex || "")) errors.push("색상HEX 형식 오류");
+  if (category === "PPF") {
+    if (!product.finish_type) errors.push("광택타입 허용값 오류");
+    if (!product.transparency_type) errors.push("투명도타입 허용값 오류");
+    validateProductBulkPercent(product.opacity, "투명도수치", errors);
+  }
+  if (category === "TINTING") {
+    validateProductBulkPercent(product.shade_percent, "틴팅농도", errors);
+    validateProductBulkPercent(product.opacity, "투명도", errors);
+  }
+  if (category !== "DETAILING") {
+    validateProductBulkPrice(product.retail_price, "소비자가", errors, true);
+    validateProductBulkPrice(product.purchase_price, "매입가", errors, true);
+  } else {
+    validateProductBulkPrice(product.retail_price, "소비자가", errors, false);
+    validateProductBulkPrice(product.purchase_price, "매입가", errors, false);
+  }
+  if (!["Y", "N"].includes(product.active_source)) errors.push("사용여부는 Y 또는 N만 가능");
+  return errors;
+}
+
+function validateProductBulkPercent(value, label, errors) {
+  if (value === "") errors.push(`${label} 누락`);
+  else if (!Number.isFinite(value) || value < 0 || value > 100) errors.push(`${label}가 0~100 범위를 벗어남`);
+}
+
+function validateProductBulkPrice(value, label, errors, required) {
+  if (value === "" && required) errors.push(`${label} 누락`);
+  else if (value !== "" && (!Number.isFinite(value) || value < 0)) errors.push(`${label} 값 오류`);
+}
+
+function productBulkDuplicateKey(product, category) {
+  if (category === "DETAILING") return `DETAILING|${normalizeProductSearchText(product.product_code)}`;
+  return `${category}|${normalizeProductSearchText(product.product_name)}|${normalizeProductSearchText(product.brand)}|${normalizeProductSearchText(product.color_name)}`;
+}
+
+function findProductBulkDuplicate(product, category) {
+  const key = productBulkDuplicateKey(product, category);
+  return state.products.find((item) => normalizeProductCategory(item.category, item) === category && productBulkDuplicateKey(item, category) === key) || null;
+}
+
+async function submitProductBulkUpload() {
+  if (state.session?.role !== "admin") throw new Error("관리자만 제품을 일괄등록할 수 있습니다.");
+  const validRows = state.productBulk.rows.filter((row) => !row.errors.length);
+  if (!validRows.length) throw new Error("등록 가능한 제품 행이 없습니다.");
+  const clientFailures = state.productBulk.rows
+    .filter((row) => row.errors.length)
+    .map((row) => ({ source_row: row.source_row, status: "failed", message: row.errors.join(", "), sku: "" }));
+  let result;
+  if (window.FilmStockApi?.isEnabled()) {
+    result = await window.FilmStockApi.bulkSaveProducts({
+      category: state.productBulk.category,
+      mode: state.productBulk.mode,
+      rows: validRows.map((row) => ({ ...row.product, source_row: row.source_row }))
+    });
+    await refreshData(false);
+  } else {
+    result = saveProductBulkLocally(validRows, state.productBulk.category, state.productBulk.mode);
+  }
+  state.productBulk.result = {
+    ...result,
+    total: state.productBulk.rows.length,
+    failed: Number(result.failed || 0) + clientFailures.length,
+    rows: [...clientFailures, ...(result.rows || [])].sort((a, b) => a.source_row - b.source_row)
+  };
+  render();
+  showToast(`일괄등록 완료: 신규 ${state.productBulk.result.created || 0}개, 업데이트 ${state.productBulk.result.updated || 0}개`);
+}
+
+function saveProductBulkLocally(rows, category, mode) {
+  const result = { total: rows.length, created: 0, updated: 0, skipped: 0, failed: 0, rows: [], products: [] };
+  rows.forEach((row) => {
+    const existing = findProductBulkDuplicate(row.product, category);
+    if (existing && mode === "NEW") {
+      result.failed += 1;
+      result.rows.push({ source_row: row.source_row, status: "failed", message: "중복 상품이라 신규 등록할 수 없음", sku: existing.sku });
+      return;
+    }
+    if (existing && mode === "SKIP") {
+      result.skipped += 1;
+      result.rows.push({ source_row: row.source_row, status: "skipped", message: "중복 상품 건너뜀", sku: existing.sku });
+      return;
+    }
+    const product = { ...row.product };
+    if (existing) {
+      product.sku = existing.sku;
+      product.updated_at = nowText();
+      result.updated += 1;
+    } else {
+      product.sku = generateLocalBulkSku(category, product.brand || product.brand_line);
+      product.product_code = product.product_code || product.sku;
+      product.created_at = nowText();
+      product.updated_at = product.created_at;
+      result.created += 1;
+    }
+    upsertProduct(product);
+    if (!existing) seedLocalInventoryForBulkProduct(product);
+    result.products.push(product);
+    result.rows.push({ source_row: row.source_row, status: existing ? "updated" : "created", message: existing ? "기존 상품 업데이트" : "신규 등록", sku: product.sku });
+  });
+  return result;
+}
+
+function seedLocalInventoryForBulkProduct(product) {
+  inventoryOwnerAccounts().forEach((account) => {
+    const exists = state.inventory.some((row) => row.dealer_code === account.dealer_code && row.sku === product.sku);
+    if (exists) return;
+    upsertInventory({
+      dealer_code: account.dealer_code,
+      dealer_name: account.dealer_name,
+      product_name: product.product_name,
+      sku: product.sku,
+      category: product.category,
+      color: product.color_name || colorNameFromText(product.product_name),
+      stock_qty: 0,
+      safety_stock: 0,
+      location: `${account.dealer_name} 창고`,
+      updated_at: nowText()
+    });
+  });
+}
+
+function generateLocalBulkSku(category, brand) {
+  const prefix = category === "TINTING" ? "GL-TINT-" : category === "DETAILING" ? "GL-DET-" : "GL-PPF-";
+  const normalizedBrand = String(brand || "GLOC").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const brandCode = ["GLOC", "MYSTIC", "TITAN"].includes(normalizedBrand) ? normalizedBrand : (normalizedBrand || "BRAND").slice(0, 6);
+  const fullPrefix = `${prefix}${brandCode}-`;
+  const max = state.products.reduce((current, product) => {
+    const sku = String(product.sku || "").toUpperCase();
+    return sku.startsWith(fullPrefix) ? Math.max(current, Number(sku.slice(fullPrefix.length)) || 0) : current;
+  }, 0);
+  return `${fullPrefix}${String(max + 1).padStart(4, "0")}`;
+}
+
 async function saveProduct() {
   if (state.session?.role !== "admin") throw new Error("관리자만 제품을 등록할 수 있습니다.");
   const isTint = productCategoryMatches({ category: state.forms.productCategory }, "tint");
@@ -9940,6 +10399,12 @@ function productSearchFields(product) {
     product.opacityPercent,
     product.available_parts,
     product.availableParts,
+    product.main_category,
+    product.sub_category,
+    product.brand_line,
+    product.product_name_code,
+    product.lineup,
+    product.purpose,
     product.description
   ];
 }

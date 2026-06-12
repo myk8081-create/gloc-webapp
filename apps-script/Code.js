@@ -32,7 +32,7 @@ const HEADERS = {
   vehicles: ["id", "brand", "model_name", "generation_name", "facelift_type", "body_code", "model_year", "vehicle_type", "default_color", "thumbnail_url", "image_mode_enabled", "three_d_enabled", "glb_file_url", "created_at", "updated_at", "is_active"],
   vehicle3dParts: ["id", "vehicle_id", "part_key", "mesh_name", "part_type", "tint_available", "ppf_available", "material_group", "created_at", "updated_at"],
   consultations: ["consultation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_id", "vehicle_model", "vehicle_color", "selected_tint_products", "selected_ppf_products", "selected_ppf_parts", "applications", "quote_total", "screenshot_url", "memo", "status", "created_at", "updated_at"],
-  products: ["sku", "product_name", "category", "brand", "product_code", "color_name", "color_hex", "color_chart_image_url", "finish_type", "transparency_type", "opacity", "shade_percent", "available_parts", "description", "unit", "retail_price", "purchase_price", "is_active"],
+  products: ["sku", "product_name", "category", "brand", "product_code", "color_name", "color_hex", "color_chart_image_url", "finish_type", "transparency_type", "opacity", "shade_percent", "available_parts", "description", "unit", "retail_price", "purchase_price", "is_active", "main_category", "sub_category", "brand_line", "product_name_code", "lineup", "purpose", "created_at", "updated_at"],
   settings: ["key", "value"],
   pushSubscriptions: ["subscription_id", "login_id", "dealer_code", "role", "endpoint", "subscription_json", "user_agent", "is_active", "created_at", "updated_at"],
   notices: ["id", "title", "content", "notice_type", "target_category", "target_dealer_ids", "is_popup", "popup_start_at", "popup_end_at", "is_pinned", "is_active", "created_by", "created_at", "updated_at"],
@@ -60,7 +60,7 @@ const DEFAULT_RETAIL_PRICE = 1000000;
 const DEFAULT_PURCHASE_PRICE = 500000;
 const DEFAULT_LEGACY_ORDER_DISCOUNT_RATE = 20;
 const PRODUCT_CATEGORIES = ["PPF", "TINTING", "DETAILING"];
-const SCHEMA_CACHE_VERSION = "2026-06-11-v3-notifications";
+const SCHEMA_CACHE_VERSION = "2026-06-12-v4-product-bulk-upload";
 const SCHEMA_CACHE_SECONDS = 21600;
 const CACHE_CHUNK_SIZE = 18000;
 const MAX_CACHE_CHUNKS = 40;
@@ -182,6 +182,7 @@ function doPost(e) {
     if (action === "saveVehicle") return ok_(handleSaveVehicle_(payload, user));
     if (action === "saveInventory") return ok_(handleSaveInventory_(payload, user));
     if (action === "saveProduct") return ok_(handleSaveProduct_(payload, user));
+    if (action === "bulkSaveProducts") return ok_(handleBulkSaveProducts_(payload, user));
     if (action === "updateDealerDiscount") return ok_(handleUpdateDealerDiscount_(payload, user));
     if (action === "updateDealerCategoryPermissions") return ok_(handleUpdateDealerCategoryPermissions_(payload, user));
     if (action === "updateDealerProfile") return ok_(handleUpdateDealerProfile_(payload, user, token));
@@ -1445,6 +1446,202 @@ function handleSaveProduct_(payload, user) {
   return { product: publicProduct_(saved) };
 }
 
+function handleBulkSaveProducts_(payload, user) {
+  requireAdmin_(user);
+  const category = normalizeProductCategory_(required_(payload.category, "category"), payload);
+  const mode = String(payload.mode || "SKIP").toUpperCase();
+  const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  if (["NEW", "UPDATE", "SKIP"].indexOf(mode) === -1) throw new Error("지원하지 않는 중복 처리 방식입니다.");
+  if (!rows.length) throw new Error("등록할 제품 행이 없습니다.");
+  if (rows.length > 1000) throw new Error("한 번에 최대 1,000개 제품까지 등록할 수 있습니다.");
+
+  const existingProducts = readRows_(SHEETS.products).slice();
+  const workingProducts = existingProducts.slice();
+  const createdProducts = [];
+  const reservedSkus = {};
+  existingProducts.forEach((product) => {
+    reservedSkus[String(product.sku || "").toUpperCase()] = true;
+  });
+
+  const result = {
+    total: rows.length,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+    rows: [],
+    products: []
+  };
+
+  rows.forEach((raw, index) => {
+    const rowNumber = Number(raw && raw.source_row || index + 2);
+    try {
+      const product = normalizeBulkProduct_(raw || {}, category);
+      validateBulkProduct_(product, category);
+      const duplicateKey = bulkProductDuplicateKey_(product, category);
+      const existing = workingProducts.find((item) => normalizeProductCategory_(item.category, item) === category && bulkProductDuplicateKey_(item, category) === duplicateKey);
+
+      if (existing && mode === "NEW") {
+        result.failed += 1;
+        result.rows.push({ source_row: rowNumber, status: "failed", message: "중복 상품이라 신규 등록할 수 없음", sku: existing.sku });
+        return;
+      }
+
+      if (existing && mode === "SKIP") {
+        result.skipped += 1;
+        result.rows.push({ source_row: rowNumber, status: "skipped", message: "중복 상품 건너뜀", sku: existing.sku });
+        return;
+      }
+
+      const now = isoNow_();
+      if (existing) {
+        product.sku = existing.sku;
+        product.product_code = existing.product_code || existing.sku || product.product_code;
+        product.created_at = existing.created_at || now;
+        product.updated_at = now;
+        const saved = updateRowByKey_(SHEETS.products, "sku", product.sku, product);
+        Object.assign(existing, saved);
+        result.updated += 1;
+        result.products.push(publicProduct_(saved));
+        result.rows.push({ source_row: rowNumber, status: "updated", message: "기존 상품 업데이트", sku: product.sku });
+        return;
+      }
+
+      product.sku = product.sku || generateBulkProductSku_(category, product.brand || product.brand_line, workingProducts, reservedSkus);
+      product.product_code = product.product_code || product.sku;
+      product.created_at = now;
+      product.updated_at = now;
+      const saved = upsertProductRow_(product.sku, product);
+      createdProducts.push(saved);
+      workingProducts.push(saved);
+      reservedSkus[String(product.sku).toUpperCase()] = true;
+      result.created += 1;
+      result.products.push(publicProduct_(saved));
+      result.rows.push({ source_row: rowNumber, status: "created", message: "신규 등록", sku: product.sku });
+    } catch (error) {
+      result.failed += 1;
+      result.rows.push({ source_row: rowNumber, status: "failed", message: error.message || String(error), sku: "" });
+    }
+  });
+
+  try {
+    seedInventoryForProducts_(createdProducts);
+  } catch (error) {
+    result.warning = "제품 등록은 완료되었지만 신규 제품 재고 초기화에 실패했습니다: " + (error.message || String(error));
+  }
+  invalidateSheetCache_([SHEETS.products, SHEETS.inventory]);
+  return result;
+}
+
+function normalizeBulkProduct_(row, category) {
+  const active = row.is_active === undefined ? true : toBool_(row.is_active);
+  const product = {
+    sku: String(row.sku || "").trim().toUpperCase(),
+    product_name: String(row.product_name || "").trim(),
+    category: category,
+    brand: String(row.brand || row.brand_line || "").trim(),
+    product_code: String(row.product_code || "").trim(),
+    color_name: String(row.color_name || "").trim(),
+    color_hex: String(row.color_hex || "").trim(),
+    color_chart_image_url: String(row.color_chart_image_url || "").trim(),
+    finish_type: String(row.finish_type || "").trim(),
+    transparency_type: String(row.transparency_type || "").trim(),
+    opacity: row.opacity === "" || row.opacity === undefined ? "" : Number(row.opacity),
+    shade_percent: row.shade_percent === "" || row.shade_percent === undefined ? "" : Number(row.shade_percent),
+    available_parts: String(row.available_parts || "").trim(),
+    description: String(row.description || "").trim(),
+    unit: String(row.unit || "").trim(),
+    retail_price: row.retail_price === "" || row.retail_price === undefined ? "" : Number(row.retail_price),
+    purchase_price: row.purchase_price === "" || row.purchase_price === undefined ? "" : Number(row.purchase_price),
+    is_active: active,
+    main_category: String(row.main_category || "").trim(),
+    sub_category: String(row.sub_category || "").trim(),
+    brand_line: String(row.brand_line || "").trim(),
+    product_name_code: String(row.product_name_code || "").trim(),
+    lineup: String(row.lineup || "").trim(),
+    purpose: String(row.purpose || "").trim()
+  };
+  product.active_source = String(row.active_source || "").trim().toUpperCase();
+
+  if (category === "TINTING") {
+    product.available_parts = product.available_parts || "frontGlass,firstRowGlass,secondRowGlass,rearGlass,roofGlass";
+  }
+  if (category === "DETAILING") {
+    product.main_category = product.main_category || "Detailing Care";
+    product.brand = product.brand || product.brand_line;
+    product.product_name = product.product_name || product.product_name_code;
+    product.product_code = product.product_code || product.product_name_code;
+    product.unit = product.unit || "개";
+  }
+  product.product_code = product.product_code || product.sku;
+  return product;
+}
+
+function validateBulkProduct_(product, category) {
+  const requiredFields = category === "DETAILING"
+    ? [["product_code", "상품코드"], ["sub_category", "하위카테고리"], ["brand_line", "브랜드/라인"], ["product_name_code", "제품명코드"], ["lineup", "라인업"], ["purpose", "용도"], ["unit", "재고단위"]]
+    : [["product_name", "제품명"], ["brand", "브랜드"], ["color_name", "색상명"], ["color_hex", "색상HEX"], ["unit", "단위"]];
+  requiredFields.forEach((field) => {
+    if (!String(product[field[0]] || "").trim()) throw new Error(field[1] + " 누락");
+  });
+  if (category === "PPF") {
+    if (["gloss", "matte", "semi_matte", "satin"].indexOf(product.finish_type) === -1) throw new Error("광택타입 허용값 오류");
+    if (["transparent", "semi_transparent", "opaque"].indexOf(product.transparency_type) === -1) throw new Error("투명도타입 허용값 오류");
+    validateBulkPercent_(product.opacity, "투명도수치");
+  }
+  if (category === "TINTING") {
+    validateBulkPercent_(product.shade_percent, "틴팅농도");
+    validateBulkPercent_(product.opacity, "투명도");
+  }
+  if (category !== "DETAILING" && (product.retail_price === "" || product.purchase_price === "")) {
+    throw new Error("소비자가 또는 매입가 누락");
+  }
+  if (product.retail_price !== "" && (!isFinite(product.retail_price) || product.retail_price < 0)) throw new Error("소비자가 값 오류");
+  if (product.purchase_price !== "" && (!isFinite(product.purchase_price) || product.purchase_price < 0)) throw new Error("매입가 값 오류");
+  if (["Y", "N"].indexOf(product.active_source) === -1) throw new Error("사용여부는 Y 또는 N만 가능");
+  if (category !== "DETAILING" && !/^#[0-9A-Fa-f]{6}$/.test(product.color_hex)) throw new Error("색상HEX 형식 오류");
+}
+
+function validateBulkPercent_(value, label) {
+  if (value === "" || value === undefined || value === null) throw new Error(label + " 누락");
+  if (!isFinite(Number(value)) || Number(value) < 0 || Number(value) > 100) throw new Error(label + "가 0~100 범위를 벗어남");
+}
+
+function bulkProductDuplicateKey_(product, category) {
+  if (category === "DETAILING") return "DETAILING|" + normalizeBulkKey_(product.product_code);
+  return category + "|" + normalizeBulkKey_(product.product_name) + "|" + normalizeBulkKey_(product.brand) + "|" + normalizeBulkKey_(product.color_name);
+}
+
+function normalizeBulkKey_(value) {
+  return String(value || "").toUpperCase().replace(/\s+/g, "").trim();
+}
+
+function bulkBrandCode_(value) {
+  const normalized = String(value || "GLOC").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (normalized === "GLOC" || normalized === "MYSTIC" || normalized === "TITAN") return normalized;
+  return (normalized || "BRAND").slice(0, 6);
+}
+
+function generateBulkProductSku_(category, brand, products, reservedSkus) {
+  const prefix = category === "TINTING" ? "GL-TINT-" : category === "DETAILING" ? "GL-DET-" : "GL-PPF-";
+  const brandCode = bulkBrandCode_(brand);
+  const fullPrefix = prefix + brandCode + "-";
+  let max = 0;
+  products.forEach((product) => {
+    const sku = String(product.sku || "").toUpperCase();
+    if (sku.indexOf(fullPrefix) !== 0) return;
+    const sequence = Number(sku.slice(fullPrefix.length));
+    if (isFinite(sequence)) max = Math.max(max, sequence);
+  });
+  let sequence = max + 1;
+  let sku = fullPrefix + String(sequence).padStart(4, "0");
+  while (reservedSkus[sku]) {
+    sequence += 1;
+    sku = fullPrefix + String(sequence).padStart(4, "0");
+  }
+  return sku;
+}
+
 function handleUpdateDealerDiscount_(payload, user) {
   requireAdmin_(user);
   const dealerCode = required_(payload.dealer_code, "dealer_code").toUpperCase();
@@ -2550,14 +2747,22 @@ function publicProduct_(product) {
     color_chart_image_url: product.color_chart_image_url || "",
     finish_type: product.finish_type || "",
     transparency_type: product.transparency_type || "",
-    opacity: product.opacity || "",
-    shade_percent: product.shade_percent || "",
+    opacity: product.opacity === undefined || product.opacity === null ? "" : product.opacity,
+    shade_percent: product.shade_percent === undefined || product.shade_percent === null ? "" : product.shade_percent,
     available_parts: product.available_parts || "",
     description: product.description || "",
     unit: product.unit,
     retail_price: productRetailPrice_(product),
     purchase_price: productPurchasePrice_(product),
-    is_active: toBool_(product.is_active)
+    is_active: toBool_(product.is_active),
+    main_category: product.main_category || "",
+    sub_category: product.sub_category || "",
+    brand_line: product.brand_line || "",
+    product_name_code: product.product_name_code || "",
+    lineup: product.lineup || "",
+    purpose: product.purpose || "",
+    created_at: product.created_at || "",
+    updated_at: product.updated_at || ""
   };
 }
 
@@ -2869,6 +3074,11 @@ function seedInventoryForDealer_(dealerCode, dealerName) {
 }
 
 function seedInventoryForProduct_(product) {
+  seedInventoryForProducts_([product]);
+}
+
+function seedInventoryForProducts_(products) {
+  if (!products || !products.length) return;
   const accountMap = {};
   accountMap[HEAD_OFFICE_CODE] = { dealer_code: HEAD_OFFICE_CODE, dealer_name: HEAD_OFFICE_NAME };
   readRows_(SHEETS.accounts)
@@ -2879,19 +3089,27 @@ function seedInventoryForProduct_(product) {
     });
   const accounts = Object.keys(accountMap).map((code) => accountMap[code]);
   const inventory = readRows_(SHEETS.inventory);
-  const missingRows = accounts.map((account) => {
-    const exists = inventory.some((row) => row.dealer_code === account.dealer_code && row.sku === product.sku);
-    if (exists) return null;
-    return {
-      dealer_code: account.dealer_code,
-      product_name: product.product_name,
-      sku: product.sku,
-      stock_qty: 0,
-      safety_stock: 0,
-      location: account.dealer_name + " 창고",
-      updated_at: isoNow_()
-    };
-  }).filter(Boolean);
+  const inventoryKeys = {};
+  inventory.forEach((row) => {
+    inventoryKeys[String(row.dealer_code || "").toUpperCase() + "|" + String(row.sku || "").toUpperCase()] = true;
+  });
+  const missingRows = [];
+  products.forEach((product) => {
+    accounts.forEach((account) => {
+      const key = String(account.dealer_code || "").toUpperCase() + "|" + String(product.sku || "").toUpperCase();
+      if (inventoryKeys[key]) return;
+      inventoryKeys[key] = true;
+      missingRows.push({
+        dealer_code: account.dealer_code,
+        product_name: product.product_name,
+        sku: product.sku,
+        stock_qty: 0,
+        safety_stock: 0,
+        location: account.dealer_name + " 창고",
+        updated_at: isoNow_()
+      });
+    });
+  });
   appendObjects_(SHEETS.inventory, missingRows);
 }
 

@@ -122,10 +122,17 @@ Google Sheets 로그인·조회·저장 속도 개선 구조와 배포 방법은
 | sku | SKU |
 | product_name | 제품명 |
 | category | `PPF`, `TINTING`, `DETAILING` |
+| brand, product_code | 브랜드, 상품코드 |
+| color_name, color_hex | PPF/틴팅 색상명과 HEX |
+| finish_type, transparency_type, opacity, shade_percent | PPF/틴팅 상담 연동 속성 |
+| main_category, sub_category, brand_line, product_name_code, lineup, purpose | 디테일링 상품 속성 |
 | unit | 단위 |
 | retail_price | 소비자가. 비어 있으면 기본 1,000,000원 적용 |
 | purchase_price | 매입가. 비어 있으면 기본 500,000원 적용 |
 | is_active | 판매 여부 |
+| created_at, updated_at | 생성일, 수정일 |
+
+기존 웹앱 호환성을 위해 PPF, 틴팅, 디테일링 상품은 기존 `제품등록` 시트에 함께 저장됩니다. 최신 Apps Script를 배포하면 누락된 컬럼은 자동으로 추가됩니다.
 
 ### 예약현황
 
@@ -340,9 +347,15 @@ app_public_url=https://stock.example.com
 - `재고조회` 화면에서는 본사 재고, 내 재고, 전체 대리점/샵 재고를 탭으로 분리해 조회할 수 있습니다.
 - 관리자는 `제품` 화면에서 SKU, 제품명, 카테고리, 단위, 판매 여부를 등록/수정할 수 있습니다.
 - 관리자는 `제품` 화면에서 소비자가와 매입가를 함께 입력합니다.
+- 관리자는 `제품` 화면의 `엑셀 일괄등록` 영역에서 PPF, Tint, Detailing Care 전용 양식을 내려받고 `.xlsx` 파일을 업로드할 수 있습니다.
+- 업로드 전에 오류 행과 기존/파일 내부 중복 상품을 확인할 수 있으며, 중복 상품은 업데이트, 건너뛰기, 신규 등록 실패 중 하나로 처리합니다.
+- 신규 SKU는 카테고리와 브랜드별 순번으로 자동 생성됩니다. 예: `GL-PPF-GLOC-0001`, `GL-TINT-GLOC-0001`, `GL-DET-MYSTIC-0001`.
+- 엑셀 등록이 끝나면 제품 목록과 활성 대리점별 신규 제품 재고 0개 행이 자동 갱신됩니다.
 - 관리자는 `대리점` 화면에서 대리점 최상위 관리자 계정의 공통 할인율(%)만 입력하거나 수정할 수 있습니다. 같은 `dealer_code`로 생성된 추가 담당자는 별도 할인율 칸이 없고 최상위 관리자 할인율을 그대로 사용합니다.
 - 새 제품을 등록하면 활성 대리점별 재고 행이 0개로 자동 생성됩니다.
 - 제품을 삭제하면 제품 행과 해당 SKU의 재고 행이 삭제됩니다. 기존 발주 이력은 보존됩니다.
+
+운영 사이트에서 엑셀 일괄등록을 사용하려면 최신 `apps-script/Code.js`를 Apps Script 편집기에 붙여 넣고 웹 앱을 다시 배포해야 합니다.
 
 ## 복합 예약 관리
 

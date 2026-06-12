@@ -64,6 +64,13 @@ function copyDirectory(source, target) {
 
 copyDirectory(publicDir, dist);
 
+const xlsxBrowserBundle = path.join(root, "node_modules", "xlsx", "dist", "xlsx.full.min.js");
+if (fs.existsSync(xlsxBrowserBundle)) {
+  const vendorDir = path.join(dist, "vendor");
+  fs.mkdirSync(vendorDir, { recursive: true });
+  fs.copyFileSync(xlsxBrowserBundle, path.join(vendorDir, "xlsx.full.min.js"));
+}
+
 const dataMode = process.env.DATA_MODE || "mock";
 const appsScriptUrl = process.env.APPS_SCRIPT_API_URL || "";
 const appPublicUrl = process.env.APP_PUBLIC_URL || "";

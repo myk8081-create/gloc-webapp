@@ -230,6 +230,10 @@
     return request("saveProduct", product);
   }
 
+  async function bulkSaveProducts({ category, mode, rows }) {
+    return request("bulkSaveProducts", { category, mode, rows });
+  }
+
   async function createSale(sale) {
     return request("createSale", sale);
   }
@@ -372,6 +376,7 @@
     clearOrders,
     saveInventory,
     saveProduct,
+    bulkSaveProducts,
     createSale,
     getSales,
     createReservation,
