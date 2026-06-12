@@ -9051,7 +9051,8 @@ function mapProductBulkRow(row, category) {
       brand_line: productBulkText(row["브랜드/라인"]),
       brand: productBulkText(row["브랜드/라인"]),
       product_name_code: productBulkText(row["제품명코드"]),
-      product_name: productBulkText(row["제품명코드"]),
+      // 제품명코드는 공란으로 저장할 수 있고, 기존 목록 표시용 제품명만 상품코드를 사용합니다.
+      product_name: productBulkText(row["제품명코드"]) || productBulkText(row["상품코드"]),
       lineup: productBulkText(row["라인업"]),
       purpose: productBulkText(row["용도"]),
       unit: productBulkText(row["재고단위"]),
@@ -9116,7 +9117,7 @@ function normalizeBulkTransparencyType(value) {
 function validateProductBulkRow(product, category) {
   const errors = [];
   const required = category === "DETAILING"
-    ? [["product_code", "상품코드"], ["sub_category", "하위카테고리"], ["brand_line", "브랜드/라인"], ["product_name_code", "제품명코드"], ["lineup", "라인업"], ["purpose", "용도"], ["unit", "재고단위"]]
+    ? [["product_code", "상품코드"], ["sub_category", "하위카테고리"], ["brand_line", "브랜드/라인"], ["lineup", "라인업"], ["purpose", "용도"], ["unit", "재고단위"]]
     : [["product_name", "제품명"], ["brand", "브랜드"], ["color_name", "색상명"], ["color_hex", "색상HEX"], ["unit", "단위"]];
   required.forEach(([key, label]) => {
     if (!String(product[key] ?? "").trim()) errors.push(`${label} 누락`);

@@ -1569,8 +1569,8 @@ function normalizeBulkProduct_(row, category) {
   if (category === "DETAILING") {
     product.main_category = product.main_category || "Detailing Care";
     product.brand = product.brand || product.brand_line;
-    product.product_name = product.product_name || product.product_name_code;
-    product.product_code = product.product_code || product.product_name_code;
+    // 제품명코드는 선택값이므로 공란이면 그대로 보존하고, 화면 호환용 제품명만 상품코드를 사용합니다.
+    product.product_name = product.product_name || product.product_name_code || product.product_code;
     product.unit = product.unit || "개";
   }
   product.product_code = product.product_code || product.sku;
@@ -1579,7 +1579,7 @@ function normalizeBulkProduct_(row, category) {
 
 function validateBulkProduct_(product, category) {
   const requiredFields = category === "DETAILING"
-    ? [["product_code", "상품코드"], ["sub_category", "하위카테고리"], ["brand_line", "브랜드/라인"], ["product_name_code", "제품명코드"], ["lineup", "라인업"], ["purpose", "용도"], ["unit", "재고단위"]]
+    ? [["product_code", "상품코드"], ["sub_category", "하위카테고리"], ["brand_line", "브랜드/라인"], ["lineup", "라인업"], ["purpose", "용도"], ["unit", "재고단위"]]
     : [["product_name", "제품명"], ["brand", "브랜드"], ["color_name", "색상명"], ["color_hex", "색상HEX"], ["unit", "단위"]];
   requiredFields.forEach((field) => {
     if (!String(product[field[0]] || "").trim()) throw new Error(field[1] + " 누락");
