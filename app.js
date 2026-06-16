@@ -10,6 +10,14 @@ const defaultPurchasePrice = 500000;
 const defaultLegacyOrderDiscountRate = 20;
 const inventoryPageSize = 10;
 const CATEGORY_ALL = "ALL";
+const TINT_ROLL_LENGTH_M = 30.5;
+const tintReservationAreaOptions = [
+  { value: "FRONT", label: "전면 유리", defaultLengthM: 1.0 },
+  { value: "FIRST_ROW", label: "1열 측면", defaultLengthM: 0.8 },
+  { value: "SECOND_ROW", label: "2열 측면", defaultLengthM: 1.0 },
+  { value: "REAR", label: "후면 유리", defaultLengthM: 1.4 },
+  { value: "SUNROOF_FULL", label: "썬루프 전체", defaultLengthM: 1.9 }
+];
 const productCategoryOptions = [
   { value: "PPF", label: "PPF", permissionKey: "ppf" },
   { value: "TINTING", label: "틴팅", permissionKey: "tinting" },
@@ -802,6 +810,7 @@ const state = {
     reservationDraftSku: "",
     reservationDraftUsageArea: "",
     reservationDraftQty: 1,
+    reservationTintDrafts: {},
     reservationMemo: "",
     verifySerial: "",
     labelSize: "post-overlay-150x100",
@@ -2068,8 +2077,8 @@ function renderInventoryStatsCards(rows) {
     </div>
     <div class="metric blue">
       <div class="metric-label">보유 재고</div>
-      <div class="metric-value">${roll(stats.totalStock)}</div>
-      <div class="metric-note">검색 결과 합산</div>
+      <div class="metric-value">${roll(stats.totalStock)}${stats.tintTotalLengthM ? ` · ${formatMeters(stats.tintTotalLengthM)}` : ""}</div>
+      <div class="metric-note">틴팅은 롤 환산과 총 미터 병행</div>
     </div>
     <div class="metric danger">
       <div class="metric-label">안전재고 이하</div>
@@ -2130,7 +2139,10 @@ function renderInventoryManage() {
   ensureInventoryForm();
   const rows = editableInventoryRows();
   const visibleProducts = getVisibleProducts();
-  const selectedProductName = state.products.find((product) => product.sku === state.forms.inventorySku)?.product_name || "";
+  const selectedInventoryProduct = state.products.find((product) => product.sku === state.forms.inventorySku);
+  const selectedProductName = selectedInventoryProduct?.product_name || "";
+  const selectedIsTint = isTintProduct(selectedInventoryProduct);
+  const selectedTotalLengthM = Number(state.forms.inventoryStockQty ?? 0) * TINT_ROLL_LENGTH_M;
   const ownerLabel = state.session?.role === "admin"
     ? `${headOfficeCode} · ${headOfficeName} 재고`
     : `${state.session?.dealer_code || ""} · ${state.session?.dealer_name || ""}`;
@@ -2174,9 +2186,16 @@ function renderInventoryManage() {
               <input type="text" value="${escapeAttr(selectedProductName)}" disabled />
             </label>
             <label class="field">
-              <span>현재 재고</span>
-              <input id="inventoryStockQty" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.inventoryStockQty)}" />
+              <span>${selectedIsTint ? "롤 수량" : "현재 재고"}</span>
+              <input id="inventoryStockQty" type="number" min="0" step="${selectedIsTint ? "0.01" : "1"}" inputmode="${selectedIsTint ? "decimal" : "numeric"}" value="${escapeAttr(state.forms.inventoryStockQty)}" />
             </label>
+            ${selectedIsTint ? `
+              <div class="detail-card tint-stock-conversion">
+                <span>자동 계산 총 길이</span>
+                <strong id="inventoryTintTotalLength">${formatMeters(selectedTotalLengthM)}</strong>
+                <small>1롤 = ${formatMeters(TINT_ROLL_LENGTH_M)} · 예약/시공은 미터 기준</small>
+              </div>
+            ` : ""}
             <label class="field">
               <span>안전재고</span>
               <input id="inventorySafetyStock" type="number" min="0" inputmode="numeric" value="${escapeAttr(state.forms.inventorySafetyStock)}" />
@@ -2775,6 +2794,7 @@ function renderReservations() {
   if (state.session?.role !== "dealer") return "";
   ensureReservationDraft();
   const items = state.forms.reservationItems;
+  const tintMode = normalizeBusinessCategory(state.selectedBusinessCategory) === "TINTING";
   return `
     <main class="screen ${state.screen === "reservations" ? "active" : ""}" data-screen="reservations">
       <section class="page-head">
@@ -2791,15 +2811,17 @@ function renderReservations() {
           <div class="panel-head-row">
             <div>
               <h3>예약 제품</h3>
-              <p class="product-meta">같은 제품도 시공 부위별로 여러 번 추가할 수 있습니다.</p>
+              <p class="product-meta">${tintMode ? "틴팅은 부위별 제품과 사용 길이를 선택하며, 재고는 제품별 미터 합계로 계산합니다." : "같은 제품도 시공 부위별로 여러 번 추가할 수 있습니다."}</p>
             </div>
             <span class="badge">${items.length}개 제품</span>
           </div>
-          <div class="reservation-item-composer">
-            ${renderSearchableProductSelect("reservationDraft", state.forms.reservationDraftSku, activeProducts())}
-            ${renderReservationDraftFields()}
-            <button type="button" class="secondary-button" data-action="addReservationItem">제품 추가</button>
-          </div>
+          ${tintMode ? renderTintReservationComposer() : `
+            <div class="reservation-item-composer">
+              ${renderSearchableProductSelect("reservationDraft", state.forms.reservationDraftSku, activeProducts())}
+              ${renderReservationDraftFields()}
+              <button type="button" class="secondary-button" data-action="addReservationItem">제품 추가</button>
+            </div>
+          `}
           ${renderReservationItemsTable(items)}
           ${renderReservationSummary(items)}
 
@@ -3731,6 +3753,8 @@ function renderInventoryOwnerMeta(row) {
 
 function renderInventoryRow(row) {
   const isLow = Number(row.stock_qty || 0) <= Number(row.safety_stock || 0);
+  const tint = isTintProduct(row);
+  const tintMetrics = tint ? tintInventoryMetrics(row) : null;
   return `
     <tr class="${isLow ? "is-low" : ""}">
       <td>
@@ -3742,7 +3766,10 @@ function renderInventoryRow(row) {
         <div class="product-meta">${escapeHtml(productCategoryLabel(row.category, row))} ${row.color ? `· ${escapeHtml(row.color)}` : ""}</div>
       </td>
       <td>${escapeHtml(row.sku)}</td>
-      <td><strong>${roll(Number(row.stock_qty || 0))}</strong></td>
+      <td>
+        <strong>${formatInventoryStock(row)}</strong>
+        ${tint ? `<div class="product-meta">예약중 ${formatMeters(tintMetrics.reservedLengthM)} · 예약가능 ${formatMeters(tintMetrics.availableLengthM)}</div>` : ""}
+      </td>
       <td>${roll(Number(row.safety_stock || 0))}</td>
       <td>${escapeHtml(row.location || "-")}</td>
     </tr>
@@ -3759,7 +3786,7 @@ function renderInventoryEditRow(row) {
         <span class="product-meta">${escapeHtml(row.dealer_name || row.dealer_code)} · ${escapeHtml(row.sku)}${isLow ? " · 안전재고 이하" : ""}</span>
       </span>
       <span class="stock-mini">
-        <strong>${roll(Number(row.stock_qty || 0))}</strong>
+        <strong>${formatInventoryStock(row)}</strong>
         <span>현재</span>
       </span>
     </button>
@@ -3844,7 +3871,7 @@ function renderSearchableProductOptions(id, products = activeProducts()) {
           <strong>${escapeHtml(product.product_name)}</strong>
           <small>${escapeHtml(product.sku)} · ${escapeHtml(productBrandText(product))} · ${escapeHtml(product.color_name || product.color || productCategoryLabel(product.category, product))}</small>
         </span>
-        <span class="stock-mini"><strong>${roll(Number(inventory?.stock_qty || 0))}</strong><span>재고</span></span>
+        <span class="stock-mini"><strong>${inventory ? formatInventoryStock(inventory) : roll(0)}</strong><span>재고</span></span>
       </button>
     `;
   }).join("");
@@ -3852,6 +3879,14 @@ function renderSearchableProductOptions(id, products = activeProducts()) {
 
 function ensureReservationDraft() {
   if (!Array.isArray(state.forms.reservationItems)) state.forms.reservationItems = [];
+  if (!state.forms.reservationTintDrafts || typeof state.forms.reservationTintDrafts !== "object") {
+    state.forms.reservationTintDrafts = {};
+  }
+  tintReservationAreaOptions.forEach((area) => {
+    if (!state.forms.reservationTintDrafts[area.value]) {
+      state.forms.reservationTintDrafts[area.value] = { sku: "", usage_length_m: area.defaultLengthM };
+    }
+  });
   const products = getVisibleProducts();
   if (!products.some((product) => product.sku === state.forms.reservationDraftSku)) {
     state.forms.reservationDraftSku = products[0]?.sku || "";
@@ -3865,9 +3900,49 @@ function reservationAreasForProduct(product) {
   return reservationUsageAreaOptions[normalizeProductCategory(product?.category, product)] || ["기타"];
 }
 
+function renderTintReservationComposer() {
+  const tintProducts = activeProducts().filter(isTintProduct);
+  const totalLength = tintReservationAreaOptions.reduce((sum, area) => (
+    sum + Number(state.forms.reservationTintDrafts[area.value]?.usage_length_m ?? area.defaultLengthM)
+  ), 0);
+  return `
+    <div class="tint-reservation-composer">
+      <div class="tint-reservation-head">
+        <div>
+          <strong>부위별 틴팅 제품</strong>
+          <span>1롤 ${formatMeters(TINT_ROLL_LENGTH_M)} · 전체 기본 사용량 ${formatMeters(totalLength)}</span>
+        </div>
+        <div class="page-actions">
+          <button type="button" class="secondary-button" data-action="addSelectedTintAreas">선택 부위 추가</button>
+          <button type="button" class="primary-button" data-action="addFullTintReservation">전체 시공 추가</button>
+        </div>
+      </div>
+      <div class="tint-reservation-grid">
+        ${tintReservationAreaOptions.map((area) => {
+          const draft = state.forms.reservationTintDrafts[area.value] || {};
+          return `
+            <article class="tint-area-card">
+              <div class="panel-head-row">
+                <div><strong>${escapeHtml(area.label)}</strong><span class="product-meta">기본 ${formatMeters(area.defaultLengthM)}</span></div>
+                <span class="badge">${draft.sku ? "제품 선택됨" : "제품 선택"}</span>
+              </div>
+              ${renderSearchableProductSelect(`reservationTint-${area.value}`, draft.sku || "", tintProducts)}
+              <label class="field">
+                <span>사용 길이(m)</span>
+                <input type="number" min="0.1" step="0.1" inputmode="decimal" value="${escapeAttr(draft.usage_length_m ?? area.defaultLengthM)}" data-tint-usage-length="${escapeAttr(area.value)}" />
+              </label>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderReservationDraftFields() {
   const product = state.products.find((item) => item.sku === state.forms.reservationDraftSku);
   const areas = reservationAreasForProduct(product);
+  const tint = isTintProduct(product);
   return `
     <div class="reservation-draft-fields">
       <label class="field">
@@ -3877,8 +3952,8 @@ function renderReservationDraftFields() {
         </select>
       </label>
       <label class="field">
-        <span>예약 수량</span>
-        <input id="reservationDraftQty" type="number" min="1" inputmode="numeric" value="${escapeAttr(state.forms.reservationDraftQty)}" />
+        <span>${tint ? "사용 길이(m)" : "예약 수량"}</span>
+        <input id="reservationDraftQty" type="number" min="${tint ? "0.1" : "1"}" step="${tint ? "0.1" : "1"}" inputmode="${tint ? "decimal" : "numeric"}" value="${escapeAttr(state.forms.reservationDraftQty)}" />
       </label>
     </div>
   `;
@@ -3889,19 +3964,19 @@ function renderReservationItemsTable(items) {
   return `
     <div class="table-wrap reservation-items-wrap">
       <table class="reservation-items-table">
-        <thead><tr><th>부위</th><th>제품명</th><th>제품코드</th><th>예약수량</th><th>현재재고</th><th>예약가능</th><th>예약후가능</th><th>삭제</th></tr></thead>
+        <thead><tr><th>부위</th><th>제품명</th><th>제품코드</th><th>예약수량/길이</th><th>현재재고</th><th>예약가능</th><th>예약후가능</th><th>삭제</th></tr></thead>
         <tbody>
           ${items.map((item) => {
             const summary = reservationItemStockSummary(item, items);
             return `
               <tr class="${summary.afterAvailable < 0 ? "is-low" : ""}">
-                <td>${escapeHtml(item.usage_area)}</td>
+                <td>${escapeHtml(tintUsageAreaLabel(item.usage_area))}</td>
                 <td><strong>${escapeHtml(item.product_name)}</strong><div class="product-meta">${escapeHtml(productCategoryLabel(item.category, item))}</div></td>
                 <td>${escapeHtml(item.sku)}</td>
-                <td>${roll(Number(item.qty || 0))}</td>
-                <td>${roll(summary.currentStock)}</td>
-                <td>${roll(summary.availableStock)}</td>
-                <td><strong>${roll(summary.afterAvailable)}</strong></td>
+                <td>${formatReservationAmount(item, reservationUsageAmount(item))}</td>
+                <td>${formatReservationStockAmount(item, summary.currentStock)}</td>
+                <td>${formatReservationStockAmount(item, summary.availableStock)}</td>
+                <td><strong>${formatReservationStockAmount(item, summary.afterAvailable)}</strong></td>
                 <td><button type="button" class="icon-delete-button" data-remove-reservation-item="${escapeAttr(item.id)}" title="예약 제품 삭제">삭제</button></td>
               </tr>
             `;
@@ -3913,14 +3988,35 @@ function renderReservationItemsTable(items) {
 }
 
 function renderReservationSummary(items) {
-  const totalQty = items.reduce((total, item) => total + Number(item.qty || 0), 0);
+  const totalQty = items.filter((item) => !isTintReservationItem(item)).reduce((total, item) => total + reservationUsageAmount(item), 0);
+  const totalTintLength = items.filter(isTintReservationItem).reduce((total, item) => total + reservationUsageAmount(item), 0);
   const shortages = new Set(items.filter((item) => reservationItemStockSummary(item, items).afterAvailable < 0).map((item) => item.sku)).size;
+  const tintUsageByProduct = items.filter(isTintReservationItem).reduce((map, item) => {
+    const current = map.get(item.sku) || {
+      productName: item.product_name,
+      usageLengthM: 0
+    };
+    current.usageLengthM += reservationUsageAmount(item);
+    map.set(item.sku, current);
+    return map;
+  }, new Map());
   return `
     <div class="reservation-summary">
       <div><span>선택 제품 수</span><strong>${items.length}개</strong></div>
-      <div><span>총 예약 수량</span><strong>${roll(totalQty)}</strong></div>
+      <div><span>총 예약 수량</span><strong>${roll(totalQty)}${totalTintLength ? ` · ${formatMeters(totalTintLength)}` : ""}</strong></div>
+      ${totalTintLength ? `<div><span>틴팅 롤 환산</span><strong>${formatRollEquivalent(totalTintLength)}</strong></div>` : ""}
       <div class="${shortages ? "danger-box" : ""}"><span>재고 부족 제품</span><strong>${shortages}개</strong></div>
     </div>
+    ${tintUsageByProduct.size ? `
+      <div class="tint-product-usage-summary">
+        <strong>틴팅 제품별 사용량</strong>
+        <div>
+          ${Array.from(tintUsageByProduct.values()).map((item) => `
+            <span>${escapeHtml(item.productName)} <strong>${formatMeters(item.usageLengthM)}</strong></span>
+          `).join("")}
+        </div>
+      </div>
+    ` : ""}
   `;
 }
 
@@ -4029,6 +4125,8 @@ function renderOrderDiscountHistory(orderId) {
 
 function renderReservationCard(reservation) {
   const items = reservationItemsFor(reservation);
+  const tintLengthM = items.filter(isTintReservationItem).reduce((total, item) => total + reservationUsageAmount(item), 0);
+  const standardQty = items.filter((item) => !isTintReservationItem(item)).reduce((total, item) => total + reservationUsageAmount(item), 0);
   const canComplete = state.session?.role === "dealer" &&
     reservation.dealer_code === state.session.dealer_code &&
     reservation.status !== "시공완료";
@@ -4044,16 +4142,16 @@ function renderReservationCard(reservation) {
       <div>
         <span class="badge ${tone}">${escapeHtml(reservation.status || "예약")}</span>
         <h3>${escapeHtml(items.length === 1 ? items[0].product_name : `${items[0]?.product_name || reservation.product_name} 외 ${Math.max(items.length - 1, 0)}개`)}</h3>
-        <p class="product-meta">${escapeHtml(reservation.reservation_id || "")} · 제품 ${items.length}개 · 총 ${roll(items.reduce((total, item) => total + Number(item.qty || 0), 0))}</p>
+        <p class="product-meta">${escapeHtml(reservation.reservation_id || "")} · 제품 ${items.length}개 · 총 ${standardQty ? roll(standardQty) : ""}${standardQty && tintLengthM ? " / " : ""}${tintLengthM ? formatMeters(tintLengthM) : ""}</p>
         <div class="reservation-card-items">
-          ${items.map((item) => `<span><strong>${escapeHtml(item.usage_area)}</strong> ${escapeHtml(item.product_name)} · ${roll(item.qty)}</span>`).join("")}
+          ${items.map((item) => `<span><strong>${escapeHtml(tintUsageAreaLabel(item.usage_area))}</strong> ${escapeHtml(item.product_name)} · ${formatReservationAmount(item, reservationUsageAmount(item))}</span>`).join("")}
         </div>
         <p class="product-meta">${escapeHtml(reservation.customer_name || "고객명 미입력")} · ${escapeHtml(reservation.customer_phone || "연락처 미입력")}</p>
         <p class="product-meta">차량: ${escapeHtml(reservation.vehicle_number || "미입력")} · ${escapeHtml(reservation.vehicle_model || "모델 미입력")}</p>
         <p class="product-meta">예약일: ${escapeHtml(reservation.reservation_date || "미지정")}</p>
       </div>
       <div class="order-side">
-        <strong>${roll(Number(reservation.qty || 0))}</strong>
+        <strong>${tintLengthM && !standardQty ? formatMeters(tintLengthM) : roll(Number(reservation.qty || 0))}</strong>
         <span>${escapeHtml(reservation.created_at || "")}</span>
       </div>
       <p class="order-memo">${escapeHtml(reservation.memo || "메모 없음")}</p>
@@ -4298,7 +4396,11 @@ function bindEvents() {
   bindInput("accountLoginId", (value) => (state.forms.accountLoginId = value));
   bindInput("accountDiscountRate", (value) => (state.forms.accountDiscountRate = Number(value || 0)));
   bindInput("accountTemporaryPassword", (value) => (state.forms.accountTemporaryPassword = value));
-  bindInput("inventoryStockQty", (value) => (state.forms.inventoryStockQty = Number(value || 0)));
+  bindInput("inventoryStockQty", (value) => {
+    state.forms.inventoryStockQty = Number(value || 0);
+    const output = document.querySelector("#inventoryTintTotalLength");
+    if (output) output.textContent = formatMeters(state.forms.inventoryStockQty * TINT_ROLL_LENGTH_M);
+  });
   bindInput("inventorySafetyStock", (value) => (state.forms.inventorySafetyStock = Number(value || 0)));
   bindInput("inventoryLocation", (value) => (state.forms.inventoryLocation = value));
   bindInput("orderQty", (value) => (state.forms.orderQty = Number(value || 0)));
@@ -4444,6 +4546,15 @@ function bindEvents() {
 
   document.querySelector("#reservationDraftUsageArea")?.addEventListener("change", (event) => {
     state.forms.reservationDraftUsageArea = event.target.value;
+    const product = state.products.find((item) => item.sku === state.forms.reservationDraftSku);
+    if (isTintProduct(product)) state.forms.reservationDraftQty = tintUsageLengthByArea(event.target.value);
+  });
+  document.querySelectorAll("[data-tint-usage-length]").forEach((input) => {
+    input.addEventListener("input", (event) => {
+      const area = event.currentTarget.dataset.tintUsageLength;
+      if (!state.forms.reservationTintDrafts[area]) return;
+      state.forms.reservationTintDrafts[area].usage_length_m = Number(event.currentTarget.value ?? 0);
+    });
   });
 
   document.querySelector("#productFinishType")?.addEventListener("change", (event) => {
@@ -5000,6 +5111,12 @@ function selectSearchableProduct(id, sku) {
     state.forms.reservationDraftSku = sku;
     const product = state.products.find((item) => item.sku === sku);
     state.forms.reservationDraftUsageArea = reservationAreasForProduct(product)[0] || "기타";
+    if (isTintProduct(product)) state.forms.reservationDraftQty = tintUsageLengthByArea(state.forms.reservationDraftUsageArea);
+  }
+  if (id.startsWith("reservationTint-")) {
+    const area = id.replace("reservationTint-", "");
+    ensureReservationDraft();
+    state.forms.reservationTintDrafts[area].sku = sku;
   }
   const search = productSearchState(id);
   search.open = false;
@@ -6907,6 +7024,8 @@ async function handleAction(action, button) {
   if (action === "receiveOrder") return receiveOrder(button.dataset.orderId);
   if (action === "createReservation") return createReservation();
   if (action === "addReservationItem") return addReservationItem();
+  if (action === "addSelectedTintAreas") return addSelectedTintAreas();
+  if (action === "addFullTintReservation") return addFullTintReservation();
   if (action === "completeReservation") return completeReservation(button.dataset.reservationId);
   if (action === "printCertificate") return printCertificate(button.dataset.certificateId);
   if (action === "saveConsultation") return saveConsultation();
@@ -8705,22 +8824,72 @@ async function createSale() {
 function addReservationItem() {
   ensureReservationDraft();
   const product = state.products.find((item) => item.sku === state.forms.reservationDraftSku);
-  const qty = Number(state.forms.reservationDraftQty || 0);
+  const qty = Number(state.forms.reservationDraftQty ?? 0);
   if (!product) throw new Error("예약 제품을 선택해 주세요.");
   if (!canAccessProductCategory(product.category, product)) throw new Error("해당 사업부 제품을 예약할 권한이 없습니다.");
-  if (qty < 1) throw new Error("예약 수량을 1개 이상 입력해 주세요.");
+  if (qty <= 0) throw new Error(isTintProduct(product) ? "틴팅 사용 길이를 입력해 주세요." : "예약 수량을 1개 이상 입력해 주세요.");
+  const usageArea = state.forms.reservationDraftUsageArea || reservationAreasForProduct(product)[0] || "기타";
   state.forms.reservationItems.push({
     id: `RITEM-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     product_id: product.sku,
     product_name: product.product_name,
     sku: product.sku,
     category: normalizeProductCategory(product.category, product),
-    usage_area: state.forms.reservationDraftUsageArea || reservationAreasForProduct(product)[0] || "기타",
+    usage_area: isTintProduct(product) ? normalizeTintUsageArea(usageArea) : usageArea,
+    usage_length_m: isTintProduct(product) ? qty : "",
+    roll_length_m: isTintProduct(product) ? TINT_ROLL_LENGTH_M : "",
     qty
   });
   state.forms.reservationDraftQty = 1;
   render();
   showToast("예약 제품을 추가했습니다.");
+}
+
+function addSelectedTintAreas(options = {}) {
+  ensureReservationDraft();
+  const defaultSku = options.defaultSku || tintReservationAreaOptions
+    .map((area) => state.forms.reservationTintDrafts[area.value]?.sku)
+    .find(Boolean);
+  const additions = tintReservationAreaOptions.map((area) => {
+    const draft = state.forms.reservationTintDrafts[area.value] || {};
+    const sku = draft.sku || (options.fillMissing ? defaultSku : "");
+    const product = state.products.find((item) => item.sku === sku);
+    const usageLengthM = Number(draft.usage_length_m ?? area.defaultLengthM);
+    if (!product) return null;
+    if (!isTintProduct(product)) throw new Error(`${area.label}에 틴팅 제품을 선택해 주세요.`);
+    if (usageLengthM <= 0) throw new Error(`${area.label} 사용 길이는 0m보다 커야 합니다.`);
+    return {
+      id: `RITEM-${Date.now()}-${area.value}-${Math.random().toString(36).slice(2, 6)}`,
+      product_id: product.sku,
+      product_name: product.product_name,
+      sku: product.sku,
+      category: "TINTING",
+      usage_area: area.value,
+      usage_length_m: usageLengthM,
+      roll_length_m: TINT_ROLL_LENGTH_M,
+      qty: usageLengthM
+    };
+  }).filter(Boolean);
+  if (!additions.length) throw new Error("부위별 틴팅 제품을 하나 이상 선택해 주세요.");
+  const replacedAreas = new Set(additions.map((item) => item.usage_area));
+  state.forms.reservationItems = state.forms.reservationItems
+    .filter((item) => !isTintReservationItem(item) || !replacedAreas.has(normalizeTintUsageArea(item.usage_area)))
+    .concat(additions);
+  render();
+  showToast(`${additions.length}개 틴팅 부위를 예약 목록에 추가했습니다.`);
+}
+
+function addFullTintReservation() {
+  const selectedSku = tintReservationAreaOptions
+    .map((area) => state.forms.reservationTintDrafts[area.value]?.sku)
+    .find(Boolean);
+  if (!selectedSku) throw new Error("전체 시공에 사용할 틴팅 제품을 한 부위에서 먼저 선택해 주세요.");
+  tintReservationAreaOptions.forEach((area) => {
+    const draft = state.forms.reservationTintDrafts[area.value];
+    draft.sku = draft.sku || selectedSku;
+    draft.usage_length_m = area.defaultLengthM;
+  });
+  addSelectedTintAreas({ fillMissing: true, defaultSku: selectedSku });
 }
 
 function reservationItemsFor(reservation) {
@@ -8749,20 +8918,25 @@ function reservationItemsFor(reservation) {
 function normalizeReservationItem(item) {
   if (!item?.sku) return null;
   const product = state.products.find((productRow) => productRow.sku === item.sku) || item;
+  const category = normalizeProductCategory(item.category || product.category, product);
+  const tint = category === "TINTING";
+  const usageLengthM = Number(item.usage_length_m ?? item.usageLengthM ?? (tint ? (item.qty ?? item.quantity ?? 0) : 0));
   return {
     id: item.id || `RITEM-${item.sku}-${Math.random().toString(36).slice(2, 7)}`,
     product_id: item.product_id || item.productId || item.sku,
     product_name: item.product_name || item.productName || product.product_name || item.sku,
     sku: item.sku,
-    category: normalizeProductCategory(item.category || product.category, product),
-    usage_area: item.usage_area || item.usageArea || "기타",
-    qty: Number(item.qty || item.quantity || 0)
+    category,
+    usage_area: tint ? normalizeTintUsageArea(item.usage_area || item.usageArea || "CUSTOM") : (item.usage_area || item.usageArea || "기타"),
+    usage_length_m: tint ? usageLengthM : "",
+    roll_length_m: tint ? Number(item.roll_length_m ?? item.rollLengthM ?? TINT_ROLL_LENGTH_M) : "",
+    qty: Number(item.qty ?? item.quantity ?? (tint ? usageLengthM : 0))
   };
 }
 
 function groupedReservationQuantities(items) {
   return items.reduce((map, item) => {
-    map.set(item.sku, (map.get(item.sku) || 0) + Number(item.qty || 0));
+    map.set(item.sku, (map.get(item.sku) || 0) + reservationUsageAmount(item));
     return map;
   }, new Map());
 }
@@ -8781,11 +8955,13 @@ async function createReservation() {
   const items = state.forms.reservationItems.map(normalizeReservationItem).filter(Boolean);
   if (state.session?.role !== "dealer") throw new Error("대리점 계정만 예약 등록할 수 있습니다.");
   if (!items.length) throw new Error("예약 제품을 1개 이상 추가해 주세요.");
-  const invalidItem = items.find((item) => !item.qty || item.qty < 1);
-  if (invalidItem) throw new Error("모든 예약 제품 수량을 1개 이상 입력해 주세요.");
+  const invalidItem = items.find((item) => reservationUsageAmount(item) <= 0);
+  if (invalidItem) throw new Error("모든 예약 제품의 수량 또는 사용 길이를 입력해 주세요.");
+  const tintShortage = items.find((item) => isTintReservationItem(item) && reservationItemStockSummary(item, items).afterAvailable < 0);
+  if (tintShortage) throw new Error(`${tintShortage.product_name} 제품의 예약 가능 재고가 부족합니다. 예약 사용 길이가 현재 예약 가능 재고보다 큽니다.`);
   const status = items.some((item) => reservationItemStockSummary(item, items).afterAvailable < 0) ? "재고부족" : "예약";
   const firstItem = items[0];
-  const totalQty = items.reduce((total, item) => total + Number(item.qty || 0), 0);
+  const totalQty = items.reduce((total, item) => total + reservationUsageAmount(item), 0);
 
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.createReservation({
@@ -8852,7 +9028,8 @@ async function completeReservation(reservationId) {
     if (Array.isArray(data?.inventories)) upsertInventoryRows(data.inventories);
   } else {
     groupedReservationQuantities(items).forEach((qty, sku) => {
-      adjustLocalInventory(reservation.dealer_code, sku, -qty, { requireEnoughStock: true });
+      const product = state.products.find((item) => item.sku === sku);
+      adjustLocalInventory(reservation.dealer_code, sku, -qty, { requireEnoughStock: true, unit: isTintProduct(product) ? "meter" : "stock" });
     });
     const completedAt = nowText();
     state.reservations = state.reservations.map((item) => (
@@ -8904,6 +9081,12 @@ async function saveInventory() {
     throw new Error("해당 카테고리 재고를 수정할 권한이 없습니다.");
   }
   if (payload.stock_qty < 0 || payload.safety_stock < 0) throw new Error("재고와 안전재고는 0 이상이어야 합니다.");
+  if (isTintProduct(selectedInventoryProduct)) {
+    payload.roll_qty = payload.stock_qty;
+    payload.roll_length_m = TINT_ROLL_LENGTH_M;
+    payload.total_length_m = payload.stock_qty * TINT_ROLL_LENGTH_M;
+    payload.stock_unit = "ROLL";
+  }
 
   if (window.FilmStockApi?.isEnabled()) {
     const data = await window.FilmStockApi.saveInventory(payload);
@@ -8918,6 +9101,10 @@ async function saveInventory() {
       category: product?.category || "",
       color: product?.color || colorNameFromText(product?.product_name || ""),
       stock_qty: payload.stock_qty,
+      roll_qty: payload.roll_qty,
+      roll_length_m: payload.roll_length_m,
+      total_length_m: payload.total_length_m,
+      stock_unit: payload.stock_unit,
       safety_stock: payload.safety_stock,
       location: payload.location,
       updated_at: nowText()
@@ -10000,10 +10187,16 @@ function inventoryStats(rows) {
   return rows.reduce(
     (stats, row) => {
       stats.totalStock += Number(row.stock_qty || 0);
+      if (isTintProduct(row)) {
+        const tint = tintInventoryMetrics(row);
+        stats.tintTotalLengthM += tint.totalLengthM;
+        stats.tintReservedLengthM += tint.reservedLengthM;
+        stats.tintAvailableLengthM += tint.availableLengthM;
+      }
       if (Number(row.stock_qty || 0) <= Number(row.safety_stock || 0)) stats.lowStock += 1;
       return stats;
     },
-    { totalStock: 0, lowStock: 0 }
+    { totalStock: 0, tintTotalLengthM: 0, tintReservedLengthM: 0, tintAvailableLengthM: 0, lowStock: 0 }
   );
 }
 
@@ -11156,7 +11349,10 @@ function dealerInventoryForProduct(sku) {
 
 function reservationStockSummary(sku) {
   const inventory = dealerInventoryForProduct(sku);
-  const currentStock = Number(inventory?.stock_qty || 0);
+  const product = state.products.find((item) => item.sku === sku);
+  const currentStock = isTintProduct(product)
+    ? tintInventoryMetrics(inventory || { sku, dealer_code: state.session?.dealer_code, category: "TINTING" }).totalLengthM
+    : Number(inventory?.stock_qty || 0);
   const pendingQty = pendingReservationQty(sku);
   return {
     currentStock,
@@ -11166,13 +11362,17 @@ function reservationStockSummary(sku) {
 }
 
 function pendingReservationQty(sku) {
-  if (!sku || !state.session) return 0;
+  return pendingReservationQtyForDealer(sku, state.session?.dealer_code);
+}
+
+function pendingReservationQtyForDealer(sku, dealerCode) {
+  if (!sku || !dealerCode) return 0;
   return state.reservations
-    .filter((reservation) => reservation.dealer_code === state.session.dealer_code && reservation.status !== "시공완료")
+    .filter((reservation) => reservation.dealer_code === dealerCode && reservation.status !== "시공완료")
     .reduce((total, reservation) => (
       total + reservationItemsFor(reservation)
         .filter((item) => item.sku === sku)
-        .reduce((itemTotal, item) => itemTotal + Number(item.qty || 0), 0)
+        .reduce((itemTotal, item) => itemTotal + reservationUsageAmount(item), 0)
     ), 0);
 }
 
@@ -11191,7 +11391,12 @@ function adjustLocalInventory(dealerCode, sku, deltaQty, options = {}) {
     location: `${dealerNameByCode(dealerCode)} 창고`,
     updated_at: ""
   };
-  const nextQty = Number(current.stock_qty || 0) + Number(deltaQty || 0);
+  const tint = isTintProduct(product);
+  const currentLengthM = tintInventoryMetrics({ ...current, category: "TINTING" }).totalLengthM;
+  const nextLengthM = options.unit === "meter" && tint ? currentLengthM + Number(deltaQty || 0) : currentLengthM;
+  const nextQty = options.unit === "meter" && tint
+    ? nextLengthM / TINT_ROLL_LENGTH_M
+    : Number(current.stock_qty || 0) + Number(deltaQty || 0);
   if (options.requireEnoughStock && nextQty < 0) throw new Error(`${dealerNameByCode(dealerCode)} 재고가 부족합니다.`);
   const next = {
     ...current,
@@ -11199,6 +11404,10 @@ function adjustLocalInventory(dealerCode, sku, deltaQty, options = {}) {
     category: current.category || product.category || "",
     color: current.color || product.color || colorNameFromText(product.product_name),
     stock_qty: nextQty,
+    roll_qty: tint ? nextQty : current.roll_qty,
+    roll_length_m: tint ? TINT_ROLL_LENGTH_M : current.roll_length_m,
+    total_length_m: tint ? (options.unit === "meter" ? nextLengthM : nextQty * TINT_ROLL_LENGTH_M) : current.total_length_m,
+    stock_unit: tint ? "ROLL" : current.stock_unit,
     updated_at: nowText()
   };
   if (index >= 0) state.inventory[index] = next;
@@ -11362,6 +11571,97 @@ function colorHex(value) {
 function colorNameFromText(value) {
   const found = colorOptions.find((option) => option.value !== "전체" && normalize(value).includes(normalize(option.value)));
   return found?.value || "";
+}
+
+function isTintProduct(product) {
+  return normalizeProductCategory(product?.category, product || {}) === "TINTING";
+}
+
+function isTintReservationItem(item) {
+  return normalizeProductCategory(item?.category, item || {}) === "TINTING";
+}
+
+function normalizeTintUsageArea(value) {
+  const text = String(value || "").trim();
+  const normalized = text.toUpperCase().replace(/\s+/g, "_");
+  const aliases = {
+    "전면_유리": "FRONT",
+    "전면유리": "FRONT",
+    "1열_측면": "FIRST_ROW",
+    "1열측면": "FIRST_ROW",
+    "2열_측면": "SECOND_ROW",
+    "2열측면": "SECOND_ROW",
+    "후면_유리": "REAR",
+    "후면유리": "REAR",
+    "루프_유리": "SUNROOF_FULL",
+    "루프유리": "SUNROOF_FULL",
+    "썬루프_전체": "SUNROOF_FULL",
+    "썬루프전체": "SUNROOF_FULL",
+    "기타": "CUSTOM"
+  };
+  if (aliases[text] || aliases[normalized]) return aliases[text] || aliases[normalized];
+  if (tintReservationAreaOptions.some((area) => area.value === normalized)) return normalized;
+  return normalized || "CUSTOM";
+}
+
+function tintUsageAreaLabel(value) {
+  const normalized = normalizeTintUsageArea(value);
+  return tintReservationAreaOptions.find((area) => area.value === normalized)?.label || (normalized === "CUSTOM" ? "기타" : String(value || "기타"));
+}
+
+function tintUsageLengthByArea(value) {
+  return tintReservationAreaOptions.find((area) => area.value === normalizeTintUsageArea(value))?.defaultLengthM ?? 1;
+}
+
+function reservationUsageAmount(item) {
+  if (isTintReservationItem(item)) {
+    return Number(item?.usage_length_m ?? item?.usageLengthM ?? item?.qty ?? 0);
+  }
+  return Number(item?.qty ?? item?.quantity ?? 0);
+}
+
+function formatMeters(value) {
+  return `${Number(value ?? 0).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}m`;
+}
+
+function formatRollEquivalent(lengthM) {
+  return `${(Number(lengthM ?? 0) / TINT_ROLL_LENGTH_M).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}롤`;
+}
+
+function formatReservationAmount(item, value) {
+  return isTintReservationItem(item) ? formatMeters(value) : roll(value);
+}
+
+function formatReservationStockAmount(item, value) {
+  return isTintReservationItem(item) ? formatMeters(value) : roll(value);
+}
+
+function tintInventoryMetrics(row) {
+  const rawTotalLengthM = row?.total_length_m ?? row?.totalLengthM;
+  const totalLengthM = rawTotalLengthM !== "" && rawTotalLengthM !== undefined && rawTotalLengthM !== null
+    ? Number(rawTotalLengthM)
+    : Number(row?.stock_qty ?? 0) * TINT_ROLL_LENGTH_M;
+  const rawRollQty = row?.roll_qty ?? row?.rollQty;
+  const rollQty = rawRollQty !== "" && rawRollQty !== undefined && rawRollQty !== null
+    ? Number(rawRollQty)
+    : totalLengthM / TINT_ROLL_LENGTH_M;
+  const calculatedReservedLengthM = pendingReservationQtyForDealer(row?.sku, row?.dealer_code);
+  const reservedLengthM = Number(state.reservations.length
+    ? calculatedReservedLengthM
+    : (row?.reserved_length_m ?? row?.reservedLengthM ?? calculatedReservedLengthM));
+  return {
+    rollQty,
+    rollLengthM: Number(row?.roll_length_m ?? row?.rollLengthM ?? TINT_ROLL_LENGTH_M),
+    totalLengthM,
+    reservedLengthM,
+    availableLengthM: Math.max(totalLengthM - reservedLengthM, 0)
+  };
+}
+
+function formatInventoryStock(row) {
+  if (!isTintProduct(row)) return roll(Number(row?.stock_qty ?? 0));
+  const metrics = tintInventoryMetrics(row);
+  return `${metrics.rollQty.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}롤 / ${formatMeters(metrics.totalLengthM)}`;
 }
 
 function roll(value) {

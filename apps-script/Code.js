@@ -23,7 +23,7 @@ const SHEETS = {
 
 const HEADERS = {
   accounts: ["login_id", "password_hash", "dealer_code", "dealer_name", "dealer_discount_rate", "can_access_ppf", "can_access_tinting", "can_access_detailing", "role", "is_first_login", "is_active", "contact_name", "phone", "zipcode", "address", "address_detail", "default_courier", "shipping_memo", "password_changed_at", "profile_completed_at", "updated_at"],
-  inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "updated_at"],
+  inventory: ["dealer_code", "product_name", "sku", "stock_qty", "safety_stock", "location", "roll_qty", "roll_length_m", "total_length_m", "reserved_length_m", "available_length_m", "stock_unit", "updated_at"],
   orders: ["order_id", "agency_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "product_category", "qty", "unit_retail_price", "dealer_discount_rate", "unit_sale_price", "unit_purchase_price", "dealer_default_discount_rate", "order_discount_rate", "discount_apply_type", "applied_discount_rate", "subtotal_amount", "discount_amount", "final_order_amount", "status", "memo", "recipient_name", "recipient_phone", "recipient_zipcode", "recipient_address", "recipient_address_detail", "default_courier", "shipping_memo", "courier", "tracking_no", "shipping_receipt_no", "shipping_error", "approved_at", "print_status", "printed_at", "print_count", "shipping_company", "tracking_number", "hq_stock_deducted_at", "dealer_received_at", "created_at", "updated_at"],
   sales: ["sale_id", "dealer_code", "dealer_name", "created_by_login_id", "product_name", "sku", "qty", "memo", "created_at", "updated_at"],
   reservations: ["reservation_id", "dealer_code", "dealer_name", "created_by_login_id", "customer_name", "customer_phone", "vehicle_number", "vehicle_model", "reservation_date", "product_name", "sku", "qty", "reservation_items", "status", "memo", "completed_at", "created_at", "updated_at"],
@@ -59,8 +59,9 @@ const HEAD_OFFICE_NAME = "본사";
 const DEFAULT_RETAIL_PRICE = 1000000;
 const DEFAULT_PURCHASE_PRICE = 500000;
 const DEFAULT_LEGACY_ORDER_DISCOUNT_RATE = 20;
+const TINT_ROLL_LENGTH_M = 30.5;
 const PRODUCT_CATEGORIES = ["PPF", "TINTING", "DETAILING"];
-const SCHEMA_CACHE_VERSION = "2026-06-12-v4-product-bulk-upload";
+const SCHEMA_CACHE_VERSION = "2026-06-15-v5-tint-meter-stock";
 const SCHEMA_CACHE_SECONDS = 21600;
 const CACHE_CHUNK_SIZE = 18000;
 const MAX_CACHE_CHUNKS = 40;
@@ -395,10 +396,14 @@ function handleGetInventory_(payload, user) {
   const allProducts = readRows_(SHEETS.products);
   const products = allProducts.filter((product) => canAccessCategory_(user, normalizeProductCategory_(product.category, product)));
   const productMap = mapBy_(allProducts, "sku");
+  const reservationRows = readRows_(SHEETS.reservations);
   const accountMap = dealerNameMap_();
   let inventory = readRows_(SHEETS.inventory).map((row) => {
     const product = productMap[row.sku] || {};
     const productName = product.product_name || row.product_name;
+    const tint = isTintProduct_(product);
+    const reservedLengthM = tint ? pendingReservationQty_(row.dealer_code, row.sku, productMap, reservationRows) : "";
+    const tintMetrics = tint ? tintInventoryMetrics_(row, reservedLengthM) : null;
     return {
       dealer_code: row.dealer_code,
       dealer_name: accountMap[row.dealer_code] || row.dealer_code,
@@ -409,6 +414,12 @@ function handleGetInventory_(payload, user) {
       stock_qty: Number(row.stock_qty || 0),
       safety_stock: Number(row.safety_stock || 0),
       location: row.location || "",
+      roll_qty: tint ? tintMetrics.rollQty : "",
+      roll_length_m: tint ? tintMetrics.rollLengthM : "",
+      total_length_m: tint ? tintMetrics.totalLengthM : "",
+      reserved_length_m: tint ? tintMetrics.reservedLengthM : "",
+      available_length_m: tint ? tintMetrics.availableLengthM : "",
+      stock_unit: tint ? "ROLL" : (row.stock_unit || ""),
       updated_at: row.updated_at || ""
     };
   }).filter((row) => canAccessCategory_(user, row.category));
@@ -955,12 +966,19 @@ function handleCreateReservation_(payload, user) {
     if (!product) throw new Error("제품을 찾을 수 없습니다: " + sku);
     requireCategoryAccess_(user, normalizeProductCategory_(product.category, product), "해당 사업부 제품을 예약할 권한이 없습니다.");
     const inventory = inventoryRowFor_(user.dealer_code, sku);
-    const availableQty = Math.max(Number(inventory.stock_qty || 0) - pendingReservationQty_(user.dealer_code, sku), 0);
-    if (availableQty < groupedQty[sku]) hasShortage = true;
+    const availableQty = isTintProduct_(product)
+      ? tintInventoryMetrics_(inventory, pendingReservationQty_(user.dealer_code, sku, productMap)).availableLengthM
+      : Math.max(Number(inventory.stock_qty || 0) - pendingReservationQty_(user.dealer_code, sku, productMap), 0);
+    if (availableQty < groupedQty[sku]) {
+      if (isTintProduct_(product)) {
+        throw new Error(product.product_name + " 제품의 예약 가능 재고가 부족합니다. 예약 사용 길이가 현재 예약 가능 재고보다 큽니다.");
+      }
+      hasShortage = true;
+    }
   });
 
   const firstItem = items[0];
-  const totalQty = items.reduce((total, item) => total + Number(item.qty || 0), 0);
+  const totalQty = items.reduce((total, item) => total + reservationItemUsageAmount_(item), 0);
   const now = isoNow_();
   const reservation = {
     reservation_id: makeReservationId_(),
@@ -983,6 +1001,9 @@ function handleCreateReservation_(payload, user) {
     updated_at: now
   };
   appendObject_(SHEETS.reservations, reservation);
+  Object.keys(groupedQty).forEach((sku) => {
+    if (isTintProduct_(productMap[sku])) syncTintReservationStock_(user.dealer_code, sku);
+  });
   return {
     reservation: reservation
   };
@@ -1006,11 +1027,16 @@ function handleCompleteReservation_(payload, user) {
     const product = productMap[sku] || { sku: sku, product_name: sku, category: "", unit: "롤" };
     requireCategoryAccess_(user, normalizeProductCategory_(product.category, product));
     const inventory = inventoryRowFor_(user.dealer_code, sku);
-    if (Number(inventory.stock_qty || 0) < groupedQty[sku]) throw new Error(product.product_name + " 재고가 부족합니다.");
+    const currentAmount = isTintProduct_(product)
+      ? tintInventoryMetrics_(inventory, 0).totalLengthM
+      : Number(inventory.stock_qty || 0);
+    if (currentAmount < groupedQty[sku]) throw new Error(product.product_name + " 재고가 부족합니다.");
   });
   const inventories = Object.keys(groupedQty).map((sku) => {
     const product = productMap[sku] || { sku: sku, product_name: sku, category: "", unit: "롤" };
-    return adjustInventoryStock_(user.dealer_code, user.dealer_name, product, -groupedQty[sku], { requireEnoughStock: true });
+    return isTintProduct_(product)
+      ? adjustTintInventoryLength_(user.dealer_code, user.dealer_name, product, -groupedQty[sku], { requireEnoughStock: true })
+      : adjustInventoryStock_(user.dealer_code, user.dealer_name, product, -groupedQty[sku], { requireEnoughStock: true });
   });
   const now = isoNow_();
   const updated = updateRowByKey_(SHEETS.reservations, "reservation_id", reservationId, {
@@ -1018,12 +1044,15 @@ function handleCompleteReservation_(payload, user) {
     completed_at: now,
     updated_at: now
   });
+  Object.keys(groupedQty).forEach((sku) => {
+    if (isTintProduct_(productMap[sku])) syncTintReservationStock_(user.dealer_code, sku);
+  });
   const certificateProduct = productMap[items[0] && items[0].sku] || { sku: updated.sku, product_name: updated.product_name, category: "" };
   const certificate = createCertificateForReservation_(updated, user, certificateProduct);
   return {
     reservation: updated,
     certificate: certificate,
-    inventories: inventories.map((inventory) => publicInventoryRow_(inventory, productMap, dealerNameMap_()))
+    inventories: Object.keys(groupedQty).map((sku) => publicInventoryRow_(inventoryRowFor_(user.dealer_code, sku), productMap, dealerNameMap_()))
   };
 }
 
@@ -1182,17 +1211,18 @@ function handleVerifyCertificate_(payload, event) {
   };
 }
 
-function pendingReservationQty_(dealerCode, sku) {
-  return readRows_(SHEETS.reservations)
+function pendingReservationQty_(dealerCode, sku, productMap, reservationRows) {
+  const productsBySku = productMap || mapBy_(readRows_(SHEETS.products), "sku");
+  return (reservationRows || readRows_(SHEETS.reservations))
     .filter((reservation) => (
       String(reservation.dealer_code).toUpperCase() === String(dealerCode).toUpperCase() &&
       reservation.status !== "시공완료"
     ))
     .reduce((total, reservation) => {
-      const items = normalizeReservationItems_(reservation.reservation_items, reservation, {});
+      const items = normalizeReservationItems_(reservation.reservation_items, reservation, productsBySku);
       return total + items
         .filter((item) => String(item.sku) === String(sku))
-        .reduce((itemTotal, item) => itemTotal + Number(item.qty || 0), 0);
+        .reduce((itemTotal, item) => itemTotal + reservationItemUsageAmount_(item), 0);
     }, 0);
 }
 
@@ -1219,15 +1249,20 @@ function normalizeReservationItems_(rawItems, legacy, productMap) {
     const sku = String(item.sku || item.product_id || item.productId || "").trim();
     if (!sku) return null;
     const product = productMap[sku] || {};
-    const qty = Number(item.qty || item.quantity || 0);
-    if (!qty || qty < 1) throw new Error("예약 제품 수량은 1 이상이어야 합니다.");
+    const category = normalizeProductCategory_(item.category || product.category, product);
+    const tint = category === "TINTING";
+    const usageLengthM = Number(item.usage_length_m !== undefined ? item.usage_length_m : (item.usageLengthM !== undefined ? item.usageLengthM : (tint ? (item.qty !== undefined ? item.qty : item.quantity) : 0)));
+    const qty = Number(item.qty !== undefined ? item.qty : (item.quantity !== undefined ? item.quantity : (tint ? usageLengthM : 0)));
+    if ((tint ? usageLengthM : qty) <= 0) throw new Error(tint ? "틴팅 예약 사용 길이는 0m보다 커야 합니다." : "예약 제품 수량은 1 이상이어야 합니다.");
     return {
       id: item.id || "RITEM-" + (index + 1),
       product_id: item.product_id || item.productId || sku,
       product_name: item.product_name || item.productName || product.product_name || sku,
       sku: sku,
-      category: normalizeProductCategory_(item.category || product.category, product),
-      usage_area: item.usage_area || item.usageArea || "기타",
+      category: category,
+      usage_area: tint ? normalizeTintUsageArea_(item.usage_area || item.usageArea || "CUSTOM") : (item.usage_area || item.usageArea || "기타"),
+      usage_length_m: tint ? usageLengthM : "",
+      roll_length_m: tint ? Number(item.roll_length_m || item.rollLengthM || TINT_ROLL_LENGTH_M) : "",
       qty: qty
     };
   }).filter(Boolean);
@@ -1235,16 +1270,43 @@ function normalizeReservationItems_(rawItems, legacy, productMap) {
 
 function groupReservationItemQty_(items) {
   return items.reduce((map, item) => {
-    map[item.sku] = Number(map[item.sku] || 0) + Number(item.qty || 0);
+    map[item.sku] = Number(map[item.sku] || 0) + reservationItemUsageAmount_(item);
     return map;
   }, {});
+}
+
+function reservationItemUsageAmount_(item) {
+  return normalizeProductCategory_(item && item.category, item || {}) === "TINTING"
+    ? Number(item.usage_length_m !== undefined ? item.usage_length_m : (item.usageLengthM !== undefined ? item.usageLengthM : item.qty || 0))
+    : Number(item && item.qty || 0);
+}
+
+function normalizeTintUsageArea_(value) {
+  const text = String(value || "").trim();
+  const normalized = text.toUpperCase().replace(/\s+/g, "_");
+  const aliases = {
+    "전면_유리": "FRONT",
+    "전면유리": "FRONT",
+    "1열_측면": "FIRST_ROW",
+    "1열측면": "FIRST_ROW",
+    "2열_측면": "SECOND_ROW",
+    "2열측면": "SECOND_ROW",
+    "후면_유리": "REAR",
+    "후면유리": "REAR",
+    "루프_유리": "SUNROOF_FULL",
+    "루프유리": "SUNROOF_FULL",
+    "썬루프_전체": "SUNROOF_FULL",
+    "썬루프전체": "SUNROOF_FULL",
+    "기타": "CUSTOM"
+  };
+  return aliases[text] || aliases[normalized] || normalized || "CUSTOM";
 }
 
 function filterReservationForUser_(reservation, user, productMap) {
   const items = normalizeReservationItems_(reservation.reservation_items, reservation, productMap)
     .filter((item) => canAccessCategory_(user, item.category));
   if (!items.length) return null;
-  const totalQty = items.reduce((total, item) => total + Number(item.qty || 0), 0);
+  const totalQty = items.reduce((total, item) => total + reservationItemUsageAmount_(item), 0);
   return Object.assign({}, reservation, {
     product_name: items.length === 1 ? items[0].product_name : items[0].product_name + " 외 " + (items.length - 1) + "개",
     sku: items[0].sku,
@@ -1400,6 +1462,11 @@ function handleSaveInventory_(payload, user) {
   const product = products.find((row) => row.sku === sku);
   if (!product) throw new Error("제품등록 시트에서 SKU를 찾을 수 없습니다.");
   requireCategoryAccess_(user, normalizeProductCategory_(product.category, product), "해당 카테고리 재고를 수정할 권한이 없습니다.");
+  const tint = isTintProduct_(product);
+  const rollLengthM = tint ? Number(payload.roll_length_m || TINT_ROLL_LENGTH_M) : "";
+  const totalLengthM = tint ? stockQty * rollLengthM : "";
+  const productMap = mapBy_(products, "sku");
+  const reservedLengthM = tint ? pendingReservationQty_(dealerCode, sku, productMap) : "";
 
   const row = upsertInventoryRow_(dealerCode, sku, {
     dealer_code: dealerCode,
@@ -1408,6 +1475,12 @@ function handleSaveInventory_(payload, user) {
     stock_qty: stockQty,
     safety_stock: safetyStock,
     location: location,
+    roll_qty: tint ? stockQty : "",
+    roll_length_m: rollLengthM,
+    total_length_m: totalLengthM,
+    reserved_length_m: reservedLengthM,
+    available_length_m: tint ? Math.max(totalLengthM - reservedLengthM, 0) : "",
+    stock_unit: tint ? "ROLL" : "",
     updated_at: isoNow_()
   });
   if (dealerCode === HEAD_OFFICE_CODE && Number(row.stock_qty || 0) <= Number(row.safety_stock || 0)) {
@@ -2490,8 +2563,85 @@ function inventoryRowFor_(dealerCode, sku) {
     stock_qty: 0,
     safety_stock: 0,
     location: dealerNameMap_()[dealerCode] ? dealerNameMap_()[dealerCode] + " 창고" : "",
+    roll_qty: "",
+    roll_length_m: "",
+    total_length_m: "",
+    reserved_length_m: "",
+    available_length_m: "",
+    stock_unit: "",
     updated_at: ""
   };
+}
+
+function isTintProduct_(product) {
+  return normalizeProductCategory_(product && product.category, product || {}) === "TINTING";
+}
+
+function tintInventoryMetrics_(row, reservedLengthM) {
+  const rollLengthM = Number(row && row.roll_length_m || TINT_ROLL_LENGTH_M);
+  const totalLengthM = row && row.total_length_m !== "" && row.total_length_m !== undefined
+    ? Number(row.total_length_m || 0)
+    : Number(row && row.stock_qty || 0) * rollLengthM;
+  const rollQty = row && row.roll_qty !== "" && row.roll_qty !== undefined
+    ? Number(row.roll_qty || 0)
+    : totalLengthM / rollLengthM;
+  const reserved = reservedLengthM === undefined
+    ? Number(row && row.reserved_length_m || 0)
+    : Number(reservedLengthM || 0);
+  return {
+    rollQty: rollQty,
+    rollLengthM: rollLengthM,
+    totalLengthM: totalLengthM,
+    reservedLengthM: reserved,
+    availableLengthM: Math.max(totalLengthM - reserved, 0)
+  };
+}
+
+function adjustTintInventoryLength_(dealerCode, dealerName, product, deltaLengthM, options) {
+  const opts = options || {};
+  const current = inventoryRowFor_(dealerCode, product.sku);
+  const metrics = tintInventoryMetrics_(current, 0);
+  const nextLengthM = metrics.totalLengthM + Number(deltaLengthM || 0);
+  if (opts.requireEnoughStock && nextLengthM < 0) {
+    throw new Error((dealerName || dealerCode) + " 틴팅 재고가 부족합니다. 현재 " + metrics.totalLengthM.toFixed(1) + "m");
+  }
+  const nextRollQty = nextLengthM / metrics.rollLengthM;
+  const reservedLengthM = pendingReservationQty_(dealerCode, product.sku, { [product.sku]: product });
+  return upsertInventoryRow_(dealerCode, product.sku, {
+    dealer_code: dealerCode,
+    product_name: product.product_name || current.product_name || "",
+    sku: product.sku,
+    stock_qty: nextRollQty,
+    safety_stock: Number(current.safety_stock || 0),
+    location: current.location || (dealerName ? dealerName + " 창고" : ""),
+    roll_qty: nextRollQty,
+    roll_length_m: metrics.rollLengthM,
+    total_length_m: nextLengthM,
+    reserved_length_m: reservedLengthM,
+    available_length_m: Math.max(nextLengthM - reservedLengthM, 0),
+    stock_unit: "ROLL",
+    updated_at: isoNow_()
+  });
+}
+
+function syncTintReservationStock_(dealerCode, sku) {
+  const current = inventoryRowFor_(dealerCode, sku);
+  const metrics = tintInventoryMetrics_(current, pendingReservationQty_(dealerCode, sku));
+  return upsertInventoryRow_(dealerCode, sku, {
+    dealer_code: current.dealer_code || dealerCode,
+    product_name: current.product_name || "",
+    sku: sku,
+    stock_qty: metrics.rollQty,
+    safety_stock: Number(current.safety_stock || 0),
+    location: current.location || "",
+    roll_qty: metrics.rollQty,
+    roll_length_m: metrics.rollLengthM,
+    total_length_m: metrics.totalLengthM,
+    reserved_length_m: metrics.reservedLengthM,
+    available_length_m: metrics.availableLengthM,
+    stock_unit: "ROLL",
+    updated_at: isoNow_()
+  });
 }
 
 function adjustInventoryStock_(dealerCode, dealerName, product, deltaQty, options) {
@@ -2769,6 +2919,9 @@ function publicProduct_(product) {
 function publicInventoryRow_(row, productMap, accountMap) {
   const product = productMap[row.sku] || {};
   const productName = product.product_name || row.product_name;
+  const tint = isTintProduct_(product);
+  const reservedLengthM = tint ? pendingReservationQty_(row.dealer_code, row.sku, productMap) : "";
+  const tintMetrics = tint ? tintInventoryMetrics_(row, reservedLengthM) : null;
   return {
     dealer_code: row.dealer_code,
     dealer_name: accountMap[row.dealer_code] || row.dealer_code,
@@ -2779,6 +2932,12 @@ function publicInventoryRow_(row, productMap, accountMap) {
     stock_qty: Number(row.stock_qty || 0),
     safety_stock: Number(row.safety_stock || 0),
     location: row.location || "",
+    roll_qty: tint ? tintMetrics.rollQty : "",
+    roll_length_m: tint ? tintMetrics.rollLengthM : "",
+    total_length_m: tint ? tintMetrics.totalLengthM : "",
+    reserved_length_m: tint ? tintMetrics.reservedLengthM : "",
+    available_length_m: tint ? tintMetrics.availableLengthM : "",
+    stock_unit: tint ? "ROLL" : (row.stock_unit || ""),
     updated_at: row.updated_at || ""
   };
 }
@@ -3045,6 +3204,7 @@ function ensureInventoryForOwner_(dealerCode, dealerName) {
   const missingRows = products.map((product) => {
     const exists = inventory.some((row) => row.dealer_code === dealerCode && row.sku === product.sku);
     if (exists) return null;
+    const tint = isTintProduct_(product);
     return {
       dealer_code: dealerCode,
       product_name: product.product_name,
@@ -3052,6 +3212,12 @@ function ensureInventoryForOwner_(dealerCode, dealerName) {
       stock_qty: 0,
       safety_stock: 0,
       location: dealerName + " 창고",
+      roll_qty: tint ? 0 : "",
+      roll_length_m: tint ? TINT_ROLL_LENGTH_M : "",
+      total_length_m: tint ? 0 : "",
+      reserved_length_m: tint ? 0 : "",
+      available_length_m: tint ? 0 : "",
+      stock_unit: tint ? "ROLL" : "",
       updated_at: isoNow_()
     };
   }).filter(Boolean);
@@ -3069,6 +3235,12 @@ function seedInventoryForDealer_(dealerCode, dealerName) {
       stock_qty: 0,
       safety_stock: 80 + (index % 5) * 10,
       location: dealerName + " 창고",
+      roll_qty: isTintProduct_(product) ? 0 : "",
+      roll_length_m: isTintProduct_(product) ? TINT_ROLL_LENGTH_M : "",
+      total_length_m: isTintProduct_(product) ? 0 : "",
+      reserved_length_m: isTintProduct_(product) ? 0 : "",
+      available_length_m: isTintProduct_(product) ? 0 : "",
+      stock_unit: isTintProduct_(product) ? "ROLL" : "",
       updated_at: isoNow_()
     })));
 }
@@ -3106,6 +3278,12 @@ function seedInventoryForProducts_(products) {
         stock_qty: 0,
         safety_stock: 0,
         location: account.dealer_name + " 창고",
+        roll_qty: isTintProduct_(product) ? 0 : "",
+        roll_length_m: isTintProduct_(product) ? TINT_ROLL_LENGTH_M : "",
+        total_length_m: isTintProduct_(product) ? 0 : "",
+        reserved_length_m: isTintProduct_(product) ? 0 : "",
+        available_length_m: isTintProduct_(product) ? 0 : "",
+        stock_unit: isTintProduct_(product) ? "ROLL" : "",
         updated_at: isoNow_()
       });
     });

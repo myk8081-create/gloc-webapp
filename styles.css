@@ -1647,6 +1647,38 @@ h3 {
   font-size: 20px;
 }
 
+.tint-product-usage-summary {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.tint-product-usage-summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tint-product-usage-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tint-product-usage-summary strong {
+  color: var(--gold);
+}
+
 .icon-delete-button {
   min-height: 32px;
   padding: 0 10px;
@@ -4123,5 +4155,79 @@ h3 {
   .order-discount-controls input,
   .order-discount-controls button {
     width: 100%;
+  }
+}
+.tint-reservation-composer {
+  display: grid;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.tint-reservation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tint-reservation-head > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.tint-reservation-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tint-reservation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tint-area-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 88%, #000);
+}
+
+.tint-area-card:last-child {
+  grid-column: 1 / -1;
+}
+
+.tint-area-card .searchable-product-select {
+  margin: 12px 0;
+}
+
+.tint-stock-conversion {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+}
+
+.tint-stock-conversion strong {
+  color: var(--gold);
+  font-size: 24px;
+}
+
+.tint-stock-conversion small {
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .tint-reservation-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tint-reservation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tint-area-card:last-child {
+    grid-column: auto;
   }
 }
